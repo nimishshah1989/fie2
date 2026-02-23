@@ -132,13 +132,8 @@ with st.sidebar:
             st.success(f"✅ {result['count']} test alerts created!")
             time.sleep(1)
             st.rerun()
-    if st.button("📊 Update Performance", use_container_width=True):
-        with st.spinner("Fetching live prices..."):
-            result = api_post("/api/performance/refresh")
-            if result:
-                st.success(f"✅ {result.get('updated_count', 0)} updated")
-                time.sleep(1)
-                st.rerun()
+
+    st.markdown("<br><div style='text-align:center; font-size:11px; color:#64748b; font-family:\"JetBrains Mono\";'>Performance is auto-updated via TradingView Heartbeats</div>", unsafe_allow_html=True)
 
 # Build filter params
 fp = {}
@@ -198,8 +193,9 @@ if page == "📊 Live Alerts":
             if alert.get("alert_type") == "RELATIVE":
                 num = alert.get("numerator_ticker", "?")
                 den = alert.get("denominator_ticker", "?")
-                ticker_d = f"{num} / {den}"
-                type_badge = '<span class="relative-badge">RELATIVE</span>'
+                if num and den:
+                    ticker_d = f"{num} / {den}"
+                type_badge = '<span class="relative-badge">RELATIVE RATIO</span>'
             
             # Indicators
             ind_html = ""
@@ -218,7 +214,12 @@ if page == "📊 Live Alerts":
             
             # Sector & Price
             sec_html = f'<span class="sector-tag">{alert["sector"]}</span>' if alert.get("sector") else ""
-            price = f"₹{alert['price_at_alert']:,.2f}" if alert.get("price_at_alert") else (f"Ratio: {alert['ratio_value']:.4f}" if alert.get("ratio_value") else "—")
+            
+            # For ratio trades, show the ratio value instead of currency
+            if alert.get("alert_type") == "RELATIVE":
+                price = f"Ratio: {alert.get('ratio_value', alert.get('price_at_alert', 0)):.4f}"
+            else:
+                price = f"₹{alert.get('price_at_alert', 0):,.2f}"
             
             st.markdown(f"""
             <div class="alert-card {sig_class}{pend_class}">
@@ -259,7 +260,7 @@ if page == "📊 Live Alerts":
                     st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
             st.markdown("---")
     else:
-        st.info("📭 No alerts yet. Click **Load Test Alerts** in the sidebar or configure your TradingView webhook.")
+        st.info("📭 No alerts yet. Configure your TradingView webhook or click **Load Test Alerts**.")
 
 
 # ═══════════════════════════════════════════════════════
@@ -299,7 +300,10 @@ elif page == "✅ Action Center":
                     mc = st.columns(4)
                     for i, (lbl, key) in enumerate([("Price", "price_at_alert"), ("Open", "price_open"), ("High", "price_high"), ("Low", "price_low")]):
                         with mc[i]:
-                            st.metric(lbl, fmt(alert.get(key), prefix="₹"))
+                            if is_rel:
+                                st.metric(lbl, fmt(alert.get(key), decimals=4))
+                            else:
+                                st.metric(lbl, fmt(alert.get(key), prefix="₹"))
                     
                     if alert.get("indicator_values"):
                         st.markdown("**Indicators:**")
@@ -321,29 +325,17 @@ elif page == "✅ Action Center":
                     if decision == "APPROVED":
                         actions = ["BUY", "SELL", "HOLD", "STRONG_BUY", "STRONG_SELL", "OVERBOUGHT", "OVERSOLD", "EXIT", "ACCUMULATE", "REDUCE", "WATCH"]
                         
-                        ptk = alert.get("numerator_ticker") or alert.get("ticker", "?")
+                        # We map the primary action directly to the charted ticker (ratio or absolute)
+                        ptk = alert.get("ticker", "?")
                         st.markdown(f"**📌 {ptk}:**")
-                        pc = st.selectbox("Primary Call", actions, key=f"pc_{alert['id']}", label_visibility="collapsed")
+                        pc = st.selectbox("Action on Instrument", actions, key=f"pc_{alert['id']}", label_visibility="collapsed")
                         pn = st.text_input("Notes", key=f"pn_{alert['id']}", placeholder="Optional...")
                         
                         pc1, pc2 = st.columns(2)
-                        with pc1: pt = st.number_input("Target ₹", value=0.0, key=f"pt_{alert['id']}", format="%.2f")
-                        with pc2: ps = st.number_input("Stop Loss ₹", value=0.0, key=f"ps_{alert['id']}", format="%.2f")
+                        with pc1: pt = st.number_input("Target Level", value=0.0, key=f"pt_{alert['id']}", format="%.4f")
+                        with pc2: ps = st.number_input("Stop Loss", value=0.0, key=f"ps_{alert['id']}", format="%.4f")
                         
                         payload.update({"primary_call": pc, "primary_notes": pn or None, "primary_target_price": pt if pt > 0 else None, "primary_stop_loss": ps if ps > 0 else None})
-                        
-                        if is_rel:
-                            st.markdown("---")
-                            dtk = alert.get("denominator_ticker", "?")
-                            st.markdown(f"**📌 {dtk}:**")
-                            sc = st.selectbox("Secondary Call", actions, key=f"sc_{alert['id']}", label_visibility="collapsed")
-                            sn = st.text_input("Notes", key=f"sn_{alert['id']}", placeholder="Optional...")
-                            
-                            sc1, sc2 = st.columns(2)
-                            with sc1: stt = st.number_input("Target ₹", value=0.0, key=f"st_{alert['id']}", format="%.2f")
-                            with sc2: ss = st.number_input("Stop Loss ₹", value=0.0, key=f"ss_{alert['id']}", format="%.2f")
-                            
-                            payload.update({"secondary_call": sc, "secondary_notes": sn or None, "secondary_target_price": stt if stt > 0 else None, "secondary_stop_loss": ss if ss > 0 else None})
                         
                         st.markdown("---")
                         conv = st.select_slider("Conviction", ["LOW", "MEDIUM", "HIGH"], value="MEDIUM", key=f"cv_{alert['id']}")
@@ -412,44 +404,36 @@ elif page == "📈 Performance":
         df = pd.DataFrame(perfs)
         
         if not df.empty:
-            # Tabs: Table view and Chart view
             tab1, tab2, tab3 = st.tabs(["📊 Performance Table", "📈 Returns Chart", "🏆 Sector Analysis"])
             
             with tab1:
-                # Format for display
-                display_cols = ["ticker", "call", "conviction", "reference_price", "current_price", "return_pct", "return_1d", "return_1w", "return_1m", "return_3m", "return_6m", "max_drawdown", "approved_at"]
+                display_cols = ["ticker", "call", "conviction", "reference_price", "current_price", "return_pct", "approved_at"]
                 avail_cols = [c for c in display_cols if c in df.columns]
                 display_df = df[avail_cols].copy()
                 
-                # Rename columns
                 col_names = {
-                    "ticker": "Ticker", "call": "Call", "conviction": "Conv.",
-                    "reference_price": "Entry ₹", "current_price": "Current ₹",
-                    "return_pct": "Total %", "return_1d": "1D %", "return_1w": "1W %",
-                    "return_1m": "1M %", "return_3m": "3M %", "return_6m": "6M %",
-                    "max_drawdown": "Max DD %", "approved_at": "Approved"
+                    "ticker": "Ticker/Ratio", "call": "Call", "conviction": "Conv.",
+                    "reference_price": "Entry Level", "current_price": "Current Level",
+                    "return_pct": "Net Return %", "approved_at": "Approved Date"
                 }
                 display_df = display_df.rename(columns={k: v for k, v in col_names.items() if k in display_df.columns})
                 
+                # Format datetimes
+                if "Approved Date" in display_df.columns:
+                    display_df["Approved Date"] = pd.to_datetime(display_df["Approved Date"]).dt.strftime('%Y-%m-%d %H:%M')
+
                 st.dataframe(
                     display_df,
                     use_container_width=True,
                     height=min(600, 50 + len(display_df) * 35),
                     column_config={
-                        "Total %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "1D %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "1W %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "1M %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "3M %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "6M %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Max DD %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Entry ₹": st.column_config.NumberColumn(format="₹%.2f"),
-                        "Current ₹": st.column_config.NumberColumn(format="₹%.2f"),
+                        "Net Return %": st.column_config.NumberColumn(format="%.2f%%"),
+                        "Entry Level": st.column_config.NumberColumn(format="%.4f"),
+                        "Current Level": st.column_config.NumberColumn(format="%.4f"),
                     }
                 )
             
             with tab2:
-                # Returns bar chart
                 if "return_pct" in df.columns and "ticker" in df.columns:
                     chart_df = df[["ticker", "return_pct", "call"]].dropna(subset=["return_pct"]).sort_values("return_pct", ascending=True)
                     
@@ -482,7 +466,6 @@ elif page == "📈 Performance":
                         st.plotly_chart(fig, use_container_width=True)
             
             with tab3:
-                # Sector analysis
                 if "sector" in df.columns:
                     sector_df = df.groupby("sector").agg(
                         count=("return_pct", "count"),
@@ -522,9 +505,9 @@ elif page == "📈 Performance":
                             "max_return": "Best %", "min_return": "Worst %"
                         }), use_container_width=True)
         else:
-            st.info("No performance data yet. Approve some alerts and click **Update Performance**.")
+            st.info("No performance data yet. Approve some alerts to begin tracking.")
     else:
-        st.info("📊 No performance data. Approve alerts first, then click **Update Performance** in sidebar.")
+        st.info("📊 No performance data. Approve alerts first, tracking handles automatically via Heartbeats.")
 
 
 # ═══════════════════════════════════════════════════════
@@ -545,58 +528,67 @@ elif page == "⚙️ Settings":
     ```
     {API_BASE}/webhook/tradingview
     ```
-    
-    Copy this URL into your TradingView alert's **Webhook URL** field.
     """)
     
     st.markdown("---")
     st.markdown("### 📝 Recommended Alert Message Templates")
     
-    templates = api_get("/api/webhook-template")
-    if templates:
-        tab_abs, tab_rel = st.tabs(["Single Index/Stock Alert", "Relative (Two Index) Alert"])
-        
-        with tab_abs:
-            st.markdown("Use this template for **single ticker** alerts (Nifty, Bank Nifty, individual stocks, etc.):")
-            st.code(templates.get("template", ""), language="json")
-        
-        with tab_rel:
-            st.markdown("Use this template for **relative/ratio** alerts (e.g., Nifty IT vs Nifty 50):")
-            st.code(templates.get("template_relative", ""), language="json")
+    tab_abs, tab_rel, tab_hb = st.tabs(["Single Asset Alert", "Relative Ratio Alert", "💓 Daily Heartbeat (Performance)"])
+    
+    with tab_abs:
+        st.markdown("Use this for **single ticker** alerts (Nifty, Stocks):")
+        st.code("""{
+    "ticker": "{{ticker}}",
+    "exchange": "{{exchange}}",
+    "interval": "{{interval}}",
+    "close": "{{close}}",
+    "timenow": "{{timenow}}",
+    "alert_name": "YOUR_ALERT_NAME",
+    "signal": "BULLISH",
+    "message": "YOUR_CUSTOM_MESSAGE"
+}""", language="json")
+    
+    with tab_rel:
+        st.markdown("Use this for **relative ratio** charts (e.g. charted directly as GOLD/SENSEX):")
+        st.code("""{
+    "ticker": "{{ticker}}",
+    "exchange": "{{exchange}}",
+    "interval": "{{interval}}",
+    "close": "{{close}}",
+    "timenow": "{{timenow}}",
+    "alert_type": "RELATIVE",
+    "alert_name": "YOUR_RATIO_ALERT",
+    "signal": "BEARISH",
+    "message": "Ratio dropping, initiate pair trade."
+}""", language="json")
+
+    with tab_hb:
+        st.markdown("""
+        **Crucial for Performance Tracking:** Set up a daily alert on the Daily Timeframe 
+        (Trigger: 'Once Per Bar Close') for every asset and ratio you monitor. 
+        This acts as the daily price feed instead of relying on external APIs.
+        """)
+        st.code("""{
+    "is_heartbeat": true,
+    "ticker": "{{ticker}}",
+    "close": "{{close}}",
+    "time": "{{timenow}}"
+}""", language="json")
     
     st.markdown("---")
     st.markdown("### 🏗️ TradingView Setup Guide")
     st.markdown("""
-    **Step 1:** Open your TradingView chart with the index/indicator
+    **Step 1:** Open your TradingView chart with the index/ratio.
     
-    **Step 2:** Click the alert icon (🔔) or press `Alt + A`
+    **Step 2:** Click the alert icon (🔔) or press `Alt + A`.
     
-    **Step 3:** Set your condition (e.g., RSI crosses above 70)
+    **Step 3:** Set your condition (e.g., RSI crosses above 70).
     
-    **Step 4:** In the **Alert Actions** section, check **Webhook URL** and paste:
-    """)
-    st.code(f"{API_BASE}/webhook/tradingview")
-    st.markdown("""
-    **Step 5:** In the **Message** field, paste the JSON template from above. Replace placeholder values with TradingView's built-in variables (`{{close}}`, `{{ticker}}`, etc.) or your indicator values.
+    **Step 4:** In the **Alert Actions** section, check **Webhook URL** and paste your webhook link.
     
-    **Step 6:** Click **Create** — the alert will now send data to your FIE dashboard when triggered!
+    **Step 5:** In the **Message** field, paste the correct JSON template from above. Replace placeholder values like `YOUR_ALERT_NAME`.
     
-    ---
-    
-    ### 📊 Supported TradingView Variables
-    
-    | Variable | Description |
-    |----------|-------------|
-    | `{{ticker}}` | Symbol name |
-    | `{{exchange}}` | Exchange |
-    | `{{close}}` | Current close price |
-    | `{{open}}` | Current open price |
-    | `{{high}}` | Current high |
-    | `{{low}}` | Current low |
-    | `{{volume}}` | Current volume |
-    | `{{time}}` | Bar time UTC |
-    | `{{timenow}}` | Current time UTC |
-    | `{{interval}}` | Timeframe |
+    **Step 6:** Click **Create** — the alert will now send data to your FIE dashboard!
     """)
     
     st.markdown("---")
@@ -606,6 +598,3 @@ elif page == "⚙️ Settings":
         st.success(f"✅ Backend: {health.get('status', 'unknown')} — {health.get('timestamp', '')}")
     else:
         st.error("❌ Backend not reachable. Make sure the server is running.")
-    
-    st.markdown(f"**API URL:** `{API_BASE}`")
-    st.markdown(f"**Database:** SQLite (local)")
