@@ -6,6 +6,7 @@ import time
 import os
 import base64
 import json
+import streamlit.components.v1 as components
 
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 
@@ -13,30 +14,41 @@ API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 st.set_page_config(page_title="Jhaveri Intelligence", layout="wide", initial_sidebar_state="expanded")
 
 # ─── CSS ─────────────────────────────────────────────────
-# 100% Safe CSS: Only styles the fonts and cards. Does NOT touch the sidebar or header.
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
     html, body, [class*="css"] { font-family: 'DM Sans', sans-serif !important; }
     .stApp { background: #FAFBFC !important; }
+    #MainMenu, footer { display: none !important; }
     
-    /* Metrics Styling */
+    .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
+    
+    /* Metrics and Cards */
     div[data-testid="stMetric"] {
         background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 8px;
         padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
     div[data-testid="stMetric"] label { font-size: 11px !important; color: #64748B !important; font-weight: 700 !important; text-transform: uppercase !important; }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] { font-size: 22px !important; color: #0F172A !important; font-weight: 800 !important; }
+    h1 { color: #0F172A !important; font-size: 20px !important; font-weight: 800 !important; margin-bottom: 2px !important; }
+    h3 { color: #1E293B !important; font-size: 14px !important; font-weight: 700 !important; margin-bottom: 16px !important; }
+    .divider { border-top: 1px solid #E2E8F0; margin: 24px 0; }
+    .empty-state { text-align: center; padding: 40px 20px; color: #94A3B8; }
+    .refresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22C55E; margin-right: 6px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     
-    /* Card Styling */
-    [data-testid="stVerticalBlockBorderWrapper"] { 
-        padding: 16px !important; border-radius: 10px !important; 
-        background: #FFFFFF !important; box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
-        border-color: #E8ECF1 !important;
+    /* Native container tightening */
+    [data-testid="stVerticalBlockBorderWrapper"] { padding: 16px !important; border-radius: 10px !important; background: #FFFFFF !important; box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important; }
+    [data-testid="stVerticalBlockBorderWrapper"]:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important; border-color: #CBD5E1 !important; }
+
+    /* Make buttons neater and smaller */
+    .stButton button {
+        padding: 4px 12px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        height: auto !important;
+        min-height: 32px !important;
     }
-    
-    /* Neater Buttons */
-    .stButton button { padding: 4px 12px !important; font-size: 13px !important; font-weight: 600 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,6 +71,7 @@ def fmt_price(val):
     except: return "—"
 
 def fmt_ist(iso_str):
+    """Parses UTC string, converts to IST, formats to strict standard"""
     if not iso_str: return "—"
     try:
         dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
@@ -91,10 +104,6 @@ def stat_pill(s):
     if s == "APPROVED": return "<span style='color:#059669; background:#ECFDF5; border:1px solid #A7F3D0; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>APPROVED</span>"
     return f"<span style='color:#DC2626; background:#FEF2F2; border:1px solid #FECACA; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>{s}</span>"
 
-def ret_color(v):
-    if v is None: return "#64748B"
-    return "#059669" if v > 0 else "#DC2626" if v < 0 else "#64748B"
-
 def clean_placeholder(text):
     if not text: return ""
     t = str(text).strip()
@@ -106,28 +115,27 @@ def clean_placeholder(text):
 
 # ─── Sidebar ─────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""<div style='padding:12px 0 24px;'>
-        <div style='font-size:18px; font-weight:800; color:#0F172A !important; letter-spacing:-0.3px;'>JHAVERI</div>
+    st.markdown("""<div style='padding:12px 0 36px;'>
+        <div style='font-size:18px; font-weight:800; color:#FFFFFF !important; letter-spacing:-0.3px;'>JHAVERI</div>
         <div style='font-size:9px; color:#64748B !important; text-transform:uppercase; letter-spacing:2px; margin-top:2px;'>Intelligence Platform</div>
     </div>""", unsafe_allow_html=True)
     page = st.radio("Nav", ["Command Center", "Trade Desk", "Portfolio Analytics", "Alert Database", "Integrations"], label_visibility="collapsed")
     st.markdown("<div style='height:30px'></div>", unsafe_allow_html=True)
     sc1, sc2 = st.columns(2)
     with sc1:
-        if st.button("Sync", use_container_width=True): st.rerun()
+        if st.button("Sync", use_container_width=True, key="manual_sync_btn"): st.rerun()
     with sc2:
-        # Defaulted to FALSE so it never freezes your browser
         auto = st.toggle("Auto", value=False, key="auto_refresh")
     st.markdown(f"<div style='font-size:10px; color:#475569; margin-top:8px;'><span class='refresh-dot'></span>Live · {datetime.now().strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
 
-_should_auto_refresh = st.session_state.get("auto_refresh", False) and page in ["Command Center", "Portfolio Analytics"]
+_should_auto_refresh = st.session_state.get("auto_refresh", False) and page in ["Command Center", "Trade Desk", "Portfolio Analytics"]
 
 
 # ═══════════════════════════════════════════════════════════
 # COMMAND CENTER
 # ═══════════════════════════════════════════════════════════
 if page == "Command Center":
-    st.markdown("<h1 style='color:#0F172A; font-size:22px; font-weight:800; margin-bottom:4px;'>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     
     c1, c2, c3 = st.columns(3)
@@ -148,7 +156,7 @@ if page == "Command Center":
     data = api_call('GET', "/api/alerts", params=params)
     
     if not data or not data.get("alerts"):
-        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No signals found in the database</p></div>", unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No signals found</p></div>", unsafe_allow_html=True)
     else:
         cols = st.columns(3)
         for i, al in enumerate(data["alerts"]):
@@ -181,7 +189,7 @@ if page == "Command Center":
 # TRADE DESK
 # ═══════════════════════════════════════════════════════════
 elif page == "Trade Desk":
-    st.markdown("<h1 style='color:#0F172A; font-size:22px; font-weight:800; margin-bottom:4px;'>Trade Desk</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Review and record rationale for each alert</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Trade Desk</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Review and record rationale for each alert</p>", unsafe_allow_html=True)
     st.markdown("### Pending Execution Queue")
     
     pending_data = api_call('GET', "/api/alerts", params={"status": "PENDING", "limit": 30})
@@ -279,7 +287,7 @@ elif page == "Trade Desk":
 # PORTFOLIO ANALYTICS
 # ═══════════════════════════════════════════════════════════
 elif page == "Portfolio Analytics":
-    st.markdown("<h1 style='color:#0F172A; font-size:22px; font-weight:800; margin-bottom:4px;'>Portfolio Analytics</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Live performance of approved positions</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Portfolio Analytics</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Live performance of approved positions</p>", unsafe_allow_html=True)
     cr, _ = st.columns([1, 5])
     with cr:
         if st.button("🔄 Sync Prices", type="primary", use_container_width=True):
@@ -309,7 +317,7 @@ elif page == "Portfolio Analytics":
         cols = st.columns(3)
         for i, p in enumerate(perf):
             rp = p.get("return_pct")
-            rc = ret_color(rp)
+            rc = "#059669" if rp and rp > 0 else "#DC2626" if rp and rp < 0 else "#64748B"
             rs = f"{rp:+.2f}%" if rp is not None else "—"
             
             dd = p.get("max_drawdown")
@@ -358,7 +366,7 @@ elif page == "Portfolio Analytics":
 # ALERT DATABASE
 # ═══════════════════════════════════════════════════════════
 elif page == "Alert Database":
-    st.markdown("<h1 style='color:#0F172A; font-size:22px; font-weight:800; margin-bottom:4px;'>Alert Database</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Board-ready view of all approved recommendations</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Alert Database</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Board-ready view of all approved recommendations</p>", unsafe_allow_html=True)
     
     f1, f2, f3 = st.columns([1,1,2])
     with f1: ds = st.selectbox("Status", ["APPROVED", "All", "PENDING", "DENIED"], key="ds", label_visibility="collapsed")
@@ -434,7 +442,7 @@ elif page == "Alert Database":
 # INTEGRATIONS
 # ═══════════════════════════════════════════════════════════
 elif page == "Integrations":
-    st.markdown("<h1 style='color:#0F172A; font-size:22px; font-weight:800; margin-bottom:4px;'>Integrations</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Webhook configuration and templates</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Integrations</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Webhook configuration and templates</p>", unsafe_allow_html=True)
     
     wh = f"{API_BASE}/webhook/tradingview"
     st.markdown(f"<div style='background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px; font-family:monospace; font-size:13px;'>POST <b>{wh}</b></div>", unsafe_allow_html=True)
@@ -475,8 +483,19 @@ elif page == "Integrations":
 
     
 # ═══════════════════════════════════════════════════════
-# AUTO-REFRESH (Safely throttled to 10 seconds)
+# NON-BLOCKING AUTO-REFRESH SCRIPT
 # ═══════════════════════════════════════════════════════
 if _should_auto_refresh:
-    time.sleep(10)
-    st.rerun()
+    # This clicks the Sync button in the background without freezing the server.
+    components.html(
+        """
+        <script>
+        setTimeout(function() {
+            const buttons = Array.from(window.parent.document.querySelectorAll('button'));
+            const syncBtn = buttons.find(el => el.innerText === 'Sync');
+            if(syncBtn) { syncBtn.click(); }
+        }, 5000);
+        </script>
+        """,
+        height=0, width=0
+    )
