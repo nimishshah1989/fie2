@@ -219,7 +219,8 @@ if page == "📊 Live Alerts":
             if alert.get("alert_type") == "RELATIVE":
                 price = f"Ratio: {alert.get('ratio_value', alert.get('price_at_alert', 0)):.4f}"
             else:
-                price = f"Rs.{alert.get('price_at_alert', 0):,.2f}"
+                price_val = alert.get('price_at_alert')
+                price = f"Rs.{price_val if price_val is not None else 0:.2f}"
             
             st.markdown(f"""
             <div class="alert-card {sig_class}{pend_class}">
