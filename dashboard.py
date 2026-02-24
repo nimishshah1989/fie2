@@ -22,14 +22,28 @@ st.markdown("""
     code, pre, .stCode { font-family: 'JetBrains Mono', monospace !important; }
     .stApp { background: #FAFBFC !important; }
     #MainMenu, footer { display: none !important; }
-    header[data-testid="stHeader"] { display: none !important; }
+    
+    /* Hide top header so it looks like a clean app */
+    header[data-testid="stHeader"] { display: none !important; height: 0 !important; }
+    
     .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
+    
+    /* 🚨 PERMANENT SIDEBAR LOCK 🚨 - Prevents sidebar from ever disappearing */
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0C1222 0%, #131B2E 100%) !important;
         border-right: 1px solid rgba(255,255,255,0.04) !important;
-        min-width: 240px !important; width: 240px !important;
+        min-width: 240px !important; max-width: 240px !important; width: 240px !important;
+        transform: none !important; margin-left: 0 !important;
+        display: block !important; visibility: visible !important;
     }
+    section[data-testid="stSidebar"][aria-expanded="false"] {
+        display: block !important; min-width: 240px !important; width: 240px !important;
+        transform: none !important; margin-left: 0 !important;
+    }
+    button[data-testid="stSidebarCollapseButton"] { display: none !important; }
     section[data-testid="stSidebar"] * { color: #C8D1DC !important; }
+    
+    /* Metrics and Cards */
     div[data-testid="stMetric"] {
         background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 8px;
         padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
@@ -141,23 +155,25 @@ if page == "Command Center":
     st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     
-    # Restored to 3 balanced metrics
+    # Cleaned up metrics
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Alerts", stats.get("total_alerts", 0))
     c2.metric("Pending Queue", stats.get("pending", 0))
-    c3.metric("Market", "OPEN" if (datetime.now().weekday() < 5 and 9 <= datetime.now().hour < 16) else "CLOSED")
+    now = datetime.now()
+    c3.metric("Market Status", "OPEN" if (now.weekday() < 5 and 9 <= now.hour < 16) else "CLOSED")
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     
-    # The Missing Dropdown Filter has been RESTORED!
+    # Restored the Filter!
     fc1, _, _, _ = st.columns([1, 1, 1, 2])
     with fc1:
         sf = st.selectbox("Filter", ["PENDING", "All", "APPROVED", "DENIED"], label_visibility="collapsed", key="cf")
     
     params = {"limit": 50}
     if sf != "All": params["status"] = sf
-        
+    
     data = api_call('GET', "/api/alerts", params=params)
+    
     if not data or not data.get("alerts"):
         st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No signals found</p></div>", unsafe_allow_html=True)
     else:
@@ -229,7 +245,7 @@ elif page == "Trade Desk":
                     if approve_key not in st.session_state:
                         st.session_state[approve_key] = False
                     
-                    # Stripped down to just 2 buttons
+                    # Stripped down to just 2 buttons (Approve / Reject)
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("✓ Approve", key=f"ab{aid}", type="primary", use_container_width=True):
