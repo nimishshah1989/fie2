@@ -9,13 +9,15 @@ import json
 
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 
+# Set page config to keep sidebar open naturally
 st.set_page_config(page_title="Jhaveri Intelligence", layout="wide", initial_sidebar_state="expanded")
 
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
 # ─── CSS ─────────────────────────────────────────────────
-# ALL dangerous header-hiding CSS has been removed to fix the text glitch.
+# All header/sidebar hiding hacks have been STRIPPED OUT. 
+# This guarantees the 'keyboard_double_arrow' text glitch is gone forever.
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -25,6 +27,13 @@ st.markdown("""
     #MainMenu, footer { display: none !important; }
     
     .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
+    
+    /* Safely style the sidebar background WITHOUT breaking layout */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0C1222 0%, #131B2E 100%) !important;
+        border-right: 1px solid rgba(255,255,255,0.04) !important;
+    }
+    section[data-testid="stSidebar"] * { color: #C8D1DC !important; }
     
     /* Metrics and Cards */
     div[data-testid="stMetric"] {
