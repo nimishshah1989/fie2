@@ -88,7 +88,7 @@ def fmt_price(val):
     except: return "—"
 
 def fmt_ist(iso_str):
-    """Parses UTC string, converts to IST, formats to strict standard"""
+    """Parses UTC string, converts to IST"""
     if not iso_str: return "—"
     try:
         dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
@@ -108,7 +108,11 @@ def fmt_vol(val):
     except: return "—"
 
 def asset_pill(asset_class):
-    a = str(asset_class or "EQUITY").upper()
+    """Fixed: Replaces empty dashes with a clean default tag"""
+    a = str(asset_class).strip().upper()
+    if a in ["NONE", "NULL", "", "—"]: 
+        a = "EQUITY"
+        
     if a == "COMMODITY": bg, tc, br = "#FFFBEB", "#B45309", "#FDE68A"
     elif a == "CURRENCY": bg, tc, br = "#ECFDF5", "#059669", "#A7F3D0"
     elif a == "INDEX": bg, tc, br = "#F3E8FF", "#7E22CE", "#D8B4FE"
@@ -121,16 +125,11 @@ def stat_pill(s):
     if s == "APPROVED": return "<span style='color:#059669; background:#ECFDF5; border:1px solid #A7F3D0; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>APPROVED</span>"
     return f"<span style='color:#DC2626; background:#FEF2F2; border:1px solid #FECACA; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>{s}</span>"
 
-def ret_color(v):
-    if v is None: return "#64748B"
-    return "#059669" if v > 0 else "#DC2626" if v < 0 else "#64748B"
-
 def clean_placeholder(text):
     if not text: return ""
     t = str(text).strip()
-    invalid_names = ["{{strategy.order.comment}}", "{{alert_name}}", "alert_name", "None", "null", ""]
-    if t in invalid_names:
-        return "Manual Alert"
+    invalid_names = ["{{alert_name}}", "alert_name", "None", "null", ""]
+    if t in invalid_names: return "Manual Alert"
     return t
 
 
@@ -148,7 +147,6 @@ with st.sidebar:
     with sc2:
         auto = st.toggle("Auto", value=True, key="auto_refresh")
         
-    # 🔥 FIX: Forces the sidebar "Live" timestamp to calculate exactly as IST
     ist_now = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime('%d-%b-%y %I:%M:%S %p')
     st.markdown(f"<div style='font-size:10px; color:#475569; margin-top:8px;'><span class='refresh-dot'></span>Live &middot; {ist_now} IST</div>", unsafe_allow_html=True)
 
@@ -165,8 +163,6 @@ if page == "Command Center":
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Alerts", stats.get("total_alerts", 0))
     c2.metric("Pending Queue", stats.get("pending", 0))
-    
-    # Calculate Market Status based on IST
     now_ist = datetime.utcnow() + timedelta(hours=5, minutes=30)
     c3.metric("Market Status", "OPEN" if (now_ist.weekday() < 5 and 9 <= now_ist.hour < 16) else "CLOSED")
     
@@ -188,6 +184,11 @@ if page == "Command Center":
         for i, al in enumerate(data["alerts"]):
             with cols[i % 3]:
                 with st.container(border=True):
+                    # Smart deduplication logic
+                    alert_nm = clean_placeholder(al.get("alert_name"))
+                    tkr = al.get("ticker", "—")
+                    tkr_html = f"<div style='font-size:12px; font-weight:600; color:#475569;'>{tkr}</div>" if alert_nm.upper() != tkr.upper() else ""
+
                     st.markdown(f"""
                     <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
                         {asset_pill(al.get('asset_class'))}
@@ -195,8 +196,8 @@ if page == "Command Center":
                     </div>
                     <div style='display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;'>
                         <div>
-                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(al.get("alert_name", "Alert"))}</div>
-                            <div style='font-size:12px; font-weight:600; color:#475569;'>{al.get("ticker", "—")}</div>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{alert_nm}</div>
+                            {tkr_html}
                         </div>
                         <div style='text-align:right;'>
                             <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get("price_at_alert"))}</div>
@@ -205,7 +206,7 @@ if page == "Command Center":
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    msg = al.get("alert_message") or ""
+                    msg = clean_placeholder(al.get("alert_message") or "")
                     if msg:
                         st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:80px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;'>{msg}</div>", unsafe_allow_html=True)
 
@@ -228,6 +229,11 @@ elif page == "Trade Desk":
             aid = al["id"]
             with cols[i % 3]:
                 with st.container(border=True):
+                    # Smart deduplication logic
+                    alert_nm = clean_placeholder(al.get("alert_name"))
+                    tkr = al.get("ticker", "—")
+                    tkr_html = f"<div style='font-size:12px; font-weight:600; color:#475569;'>{tkr} &middot; Vol: {fmt_vol(al.get('volume'))}</div>" if alert_nm.upper() != tkr.upper() else f"<div style='font-size:12px; font-weight:600; color:#475569;'>Vol: {fmt_vol(al.get('volume'))}</div>"
+
                     st.markdown(f"""
                     <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
                         {asset_pill(al.get('asset_class'))}
@@ -235,8 +241,8 @@ elif page == "Trade Desk":
                     </div>
                     <div style='display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px;'>
                         <div>
-                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(al.get('alert_name','Signal'))}</div>
-                            <div style='font-size:12px; font-weight:600; color:#475569;'>{al.get('ticker','—')} &middot; Vol: {fmt_vol(al.get('volume'))}</div>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{alert_nm}</div>
+                            {tkr_html}
                         </div>
                         <div style='text-align:right;'>
                             <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get('price_at_alert'))}</div>
@@ -346,12 +352,9 @@ elif page == "Portfolio Analytics":
             rs = f"{rp:+.2f}%" if rp is not None else "—"
             
             dd = p.get("max_drawdown")
-            try:
-                if dd is not None:
-                    dd_html = f"<div style='font-size:13px;font-weight:600;color:#DC2626;'>{float(dd):.2f}%</div>"
-                else:
-                    dd_html = "<div style='font-size:13px;font-weight:600;color:#94A3B8;'>—</div>"
-            except:
+            if dd is not None:
+                dd_html = f"<div style='font-size:13px;font-weight:600;color:#DC2626;'>{float(dd):.2f}%</div>"
+            else:
                 dd_html = "<div style='font-size:13px;font-weight:600;color:#94A3B8;'>—</div>"
             
             with cols[i % 3]:
@@ -413,95 +416,4 @@ elif page == "Alert Database":
                 with cols[i % 3]:
                     with st.container(border=True):
                         st.markdown(f"""
-                        <div style='display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;'>
-                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(a.get('alert_name','—'))}</div>
-                            {stat_pill(a.get('status'))}
-                        </div>
-                        <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
-                            <div style='font-size:13px; font-weight:700; color:#334155;'>{a.get('ticker','—')}</div>
-                            <div style='font-size:10px; color:#94A3B8; font-weight:700;'>{fmt_ist(a.get('received_at'))}</div>
-                        </div>
-                        <div style='font-size:12px; color:#64748B; font-weight:600; margin-bottom:16px;'>
-                            Price: <span style='color:#0F172A;'>{fmt_price(a.get('price_at_alert'))}</span> &middot; Call: <span style='color:#0F172A;'>{act.get('call','—')}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
-                        remarks = act.get("remarks")
-                        if remarks:
-                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; margin-bottom:12px;'><strong>FM View:</strong> {remarks}</div>", unsafe_allow_html=True)
-                        
-                        if act.get("has_chart"):
-                            chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
-                            if chart_data and chart_data.get("chart_image_b64"):
-                                try:
-                                    img_bytes = base64.b64decode(chart_data["chart_image_b64"])
-                                    st.image(img_bytes, width=100) 
-                                except: pass
-                        
-                        bc1, bc2 = st.columns([1,2])
-                        with bc1:
-                            if st.button("🗑️ Delete", key=f"del_{a['id']}"):
-                                api_call('DELETE', f"/api/alerts/{a['id']}")
-                                st.rerun()
-        else:
-            rows = [{
-                "Date (IST)": fmt_ist(a.get("received_at")),
-                "Alert": clean_placeholder(a.get("alert_name","—")),
-                "Ticker": a.get("ticker","—"),
-                "Price": fmt_price(a.get("price_at_alert")),
-                "Status": a.get("status","PENDING"),
-                "Call": (a.get("action") or {}).get("call","—"),
-                "Remarks": (a.get("action") or {}).get("remarks","—")
-            } for a in als]
-            df = pd.DataFrame(rows)
-            def cs(v):
-                return {"APPROVED":"background-color:#ECFDF5;color:#059669","DENIED":"background-color:#FEF2F2;color:#DC2626","PENDING":"background-color:#FFFBEB;color:#B45309"}.get(v,"")
-            st.dataframe(df.style.map(cs, subset=["Status"]), use_container_width=True, hide_index=True)
-
-    else:
-        st.markdown("<div class='empty-state'><div style='font-size:40px;opacity:0.3;'>📁</div><p style='font-size:14px;margin-top:12px;'>No alerts in database</p></div>", unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════
-# INTEGRATIONS
-# ═══════════════════════════════════════════════════════════
-elif page == "Integrations":
-    st.markdown("<h1>Integrations</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Webhook configuration and templates</p>", unsafe_allow_html=True)
-    
-    wh = f"{API_BASE}/webhook/tradingview"
-    st.markdown(f"<div style='background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px; font-family:monospace; font-size:13px;'>POST <b>{wh}</b></div>", unsafe_allow_html=True)
-    
-    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    st.markdown("### Universal Webhook Template")
-    st.markdown("<p style='font-size:12px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text.</p>", unsafe_allow_html=True)
-    st.code(json.dumps({
-        "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
-        "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
-        "close": "{{close}}", "volume": "{{volume}}", "time": "{{time}}",
-        "timenow": "{{timenow}}",
-        "alert_name": "Your Custom Alert Name",
-        "message": "Write what happened here (e.g. Price broke resistance)"
-    }, indent=2), language="json")
-    
-# ═══════════════════════════════════════════════════════
-# 🔥 NON-BLOCKING AUTO-REFRESH SCRIPT (SET TO 2 SECONDS) 🔥
-# ═══════════════════════════════════════════════════════
-if _should_auto_refresh:
-    # This clicks the Sync button exactly every 2000 milliseconds (2 seconds).
-    # Because it uses JavaScript instead of Python's time.sleep(), your UI will never freeze again!
-    components.html(
-        """
-        <script>
-        setTimeout(function() {
-            const buttons = window.parent.document.querySelectorAll('button');
-            for (let i = 0; i < buttons.length; i++) {
-                if (buttons[i].innerText === 'Sync') {
-                    buttons[i].click();
-                    break;
-                }
-            }
-        }, 2000);
-        </script>
-        """,
-        height=0, width=0
-    )
+                        <div style='display:
