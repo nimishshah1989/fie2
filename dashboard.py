@@ -16,7 +16,7 @@ import base64
 
 # ─── Configuration ─────────────────────────────────────
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
-REFRESH_INTERVAL = 10  # Auto-refresh every 10 seconds
+REFRESH_INTERVAL = 3  # ⚡ UPGRADED: Near real-time 3-second refresh
 
 st.set_page_config(
     page_title="FIE — Alert Intelligence",
@@ -324,7 +324,7 @@ st.markdown("""
         background: #10B981;
         border-radius: 50%;
         margin-right: 6px;
-        animation: pulse-dot 2s ease-in-out infinite;
+        animation: pulse-dot 1.5s ease-in-out infinite; /* slightly faster pulse */
     }
     @keyframes pulse-dot {
         0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
@@ -583,16 +583,25 @@ if page == "📊 Live Alerts":
                             else:
                                 st.error("Delete failed.")
                 else:
-                    # Non-pending alerts still get a delete option
-                    c1, c2 = st.columns([5, 1])
+                    # Approved Alerts - Display the Institutional Rationale
+                    c1, c2 = st.columns([8, 1])
                     with c1:
                         if status == "APPROVED" and alert.get("action"):
                             a = alert["action"]
                             parts = []
-                            if a.get("primary_call"): parts.append(f"**{a.get('primary_ticker','?')}**: {a['primary_call']}")
-                            if a.get("secondary_call"): parts.append(f"**{a.get('secondary_ticker','?')}**: {a['secondary_call']}")
-                            if parts:
-                                st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
+                            if a.get("primary_call"): parts.append(f"<b>{a.get('primary_ticker', alert.get('ticker', '?'))}</b>: {a['primary_call']}")
+                            if a.get("secondary_call"): parts.append(f"<b>{a.get('secondary_ticker', alert.get('denominator_ticker', '?'))}</b>: {a['secondary_call']}")
+                            
+                            st.markdown(f"<div style='font-size: 13px; color: #059669; padding-bottom: 6px;'><b>Execution:</b> {' | '.join(parts)} — Conviction: {a.get('conviction', '—')}</div>", unsafe_allow_html=True)
+                            
+                            # Display the AI-Synthesized Voice Note
+                            if a.get("fm_remarks"):
+                                st.markdown(f"""
+                                <div style='background: #F0FDF4; border-left: 3px solid #10B981; padding: 12px 16px; margin-top: 4px; border-radius: 0 8px 8px 0;'>
+                                    <div style='font-size: 11px; color: #065F46; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;'>Fund Manager's View</div>
+                                    <div style='font-size: 13.5px; color: #1F2937; line-height: 1.5;'>{a.get('fm_remarks')}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
                     with c2:
                         if st.button("🗑️", key=f"del_{alert['id']}", help="Delete this alert permanently"):
                             result = api_delete(f"/api/alerts/{alert['id']}")
@@ -692,7 +701,7 @@ elif page == "✅ Action Center":
 
                         payload.update({"primary_call": pc, "primary_notes": pn or None, "primary_target_price": pt if pt > 0 else None, "primary_stop_loss": ps if ps > 0 else None})
 
-                        # ─── New AI Processed Voice/Text Input Section ───
+                        # ─── AI Processed Voice/Text Input Section ───
                         st.markdown("---")
                         st.markdown("##### 🧠 Fund Manager Rationale (AI Processed)")
                         st.caption("Speak or type your thesis. The AI will synthesize it into a formal record.")
