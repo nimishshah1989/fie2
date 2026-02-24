@@ -28,7 +28,7 @@ st.markdown("""
     
     .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
     
-    /* 🚨 PERMANENT SIDEBAR LOCK 🚨 - Prevents sidebar from ever disappearing */
+    /* 🚨 PERMANENT SIDEBAR LOCK 🚨 */
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0C1222 0%, #131B2E 100%) !important;
         border-right: 1px solid rgba(255,255,255,0.04) !important;
@@ -60,6 +60,15 @@ st.markdown("""
     /* Native container tightening */
     [data-testid="stVerticalBlockBorderWrapper"] { padding: 16px !important; border-radius: 10px !important; background: #FFFFFF !important; box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important; }
     [data-testid="stVerticalBlockBorderWrapper"]:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important; border-color: #CBD5E1 !important; }
+
+    /* Make buttons neater and smaller */
+    .stButton button {
+        padding: 4px 12px !important;
+        font-size: 13px !important;
+        font-weight: 600 !important;
+        height: auto !important;
+        min-height: 32px !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -164,7 +173,7 @@ if page == "Command Center":
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     
-    # Restored the Filter!
+    # Filter
     fc1, _, _, _ = st.columns([1, 1, 1, 2])
     with fc1:
         sf = st.selectbox("Filter", ["PENDING", "All", "APPROVED", "DENIED"], label_visibility="collapsed", key="cf")
@@ -245,13 +254,13 @@ elif page == "Trade Desk":
                     if approve_key not in st.session_state:
                         st.session_state[approve_key] = False
                     
-                    # Stripped down to just 2 buttons (Approve / Reject)
+                    # Neater, smaller buttons (removed use_container_width=True)
                     b1, b2 = st.columns(2)
                     with b1:
-                        if st.button("✓ Approve", key=f"ab{aid}", type="primary", use_container_width=True):
+                        if st.button("✓ Approve", key=f"ab{aid}", type="primary"):
                             st.session_state[approve_key] = True
                     with b2:
-                        if st.button("✗ Reject", key=f"db{aid}", use_container_width=True):
+                        if st.button("✗ Reject", key=f"db{aid}"):
                             api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"DENIED"})
                             st.rerun()
                     
@@ -262,18 +271,26 @@ elif page == "Trade Desk":
                         conv = st.select_slider("Conviction", ["LOW","MEDIUM","HIGH"], value="MEDIUM", key=f"conv{aid}", label_visibility="collapsed")
                         commentary = st.text_area("Remarks", placeholder="Rationale...", key=f"cmt{aid}", height=68, label_visibility="collapsed")
                         
+                        # RESTORED: Chart Upload
+                        chart_file = st.file_uploader("Attach Chart (Optional)", type=["png","jpg","jpeg"], key=f"ch{aid}", label_visibility="collapsed")
+                        cb64 = None
+                        if chart_file:
+                            cb64 = base64.b64encode(chart_file.read()).decode('utf-8')
+                            st.image(chart_file, caption="Preview", width=150)
+                        
                         sc1, sc2 = st.columns(2)
                         with sc1:
-                            if st.button("Submit", key=f"sub{aid}", type="primary", use_container_width=True):
+                            if st.button("Submit", key=f"sub{aid}", type="primary"):
                                 api_call('POST', f"/api/alerts/{aid}/action", {
                                     "alert_id": aid, "decision": "APPROVED",
                                     "primary_call": call, "conviction": conv,
-                                    "fm_rationale_text": commentary if commentary else None
+                                    "fm_rationale_text": commentary if commentary else None,
+                                    "chart_image_b64": cb64
                                 })
                                 st.session_state[approve_key] = False
                                 st.rerun()
                         with sc2:
-                            if st.button("Cancel", key=f"can{aid}", use_container_width=True):
+                            if st.button("Cancel", key=f"can{aid}"):
                                 st.session_state[approve_key] = False
                                 st.rerun()
     
@@ -405,10 +422,25 @@ elif page == "Alert Database":
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # Bottom Actions
-                        bc1, bc2 = st.columns([1,1])
+                        # RESTORED: FM Rationale Display
+                        remarks = act.get("remarks")
+                        if remarks:
+                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; margin-bottom:12px;'><strong>FM View:</strong> {remarks}</div>", unsafe_allow_html=True)
+                        
+                        # RESTORED: Chart Thumbnail Display
+                        if act.get("has_chart"):
+                            chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
+                            if chart_data and chart_data.get("chart_image_b64"):
+                                try:
+                                    img_bytes = base64.b64decode(chart_data["chart_image_b64"])
+                                    # Clicking this small image automatically opens it fullscreen in Streamlit
+                                    st.image(img_bytes, width=100) 
+                                except: pass
+                        
+                        # Bottom Actions (Neater button)
+                        bc1, bc2 = st.columns([1,2])
                         with bc1:
-                            if st.button("🗑️ Delete", key=f"del_{a['id']}", use_container_width=True):
+                            if st.button("🗑️ Delete", key=f"del_{a['id']}"):
                                 api_call('DELETE', f"/api/alerts/{a['id']}")
                                 st.rerun()
         else:
@@ -418,7 +450,8 @@ elif page == "Alert Database":
                 "Ticker": a.get("ticker","—"),
                 "Price": fmt_price(a.get("price_at_alert")),
                 "Status": a.get("status","PENDING"),
-                "Call": (a.get("action") or {}).get("call","—")
+                "Call": (a.get("action") or {}).get("call","—"),
+                "Remarks": (a.get("action") or {}).get("remarks","—")
             } for a in als]
             df = pd.DataFrame(rows)
             def cs(v):
@@ -451,8 +484,8 @@ elif page == "Integrations":
     }, indent=2), language="json")
     
 # ═══════════════════════════════════════════════════════
-# AUTO-REFRESH
+# AUTO-REFRESH (Increased to 5 seconds to reduce flicker)
 # ═══════════════════════════════════════════════════════
 if _should_auto_refresh:
-    time.sleep(2)
+    time.sleep(5)
     st.rerun()
