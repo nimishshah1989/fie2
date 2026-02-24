@@ -239,7 +239,6 @@ if page == "Command Center":
                 {f'<div class="ac-msg">{msg[:180]}</div>' if msg else ''}
             </div>"""
         html += "</div>"
-        # Removing linebreaks safely prevents Streamlit markdown rendering bugs
         st.markdown(html.replace('\n', ''), unsafe_allow_html=True)
 
 
@@ -355,13 +354,16 @@ elif page == "Trade Desk":
         for a in [x for x in hist["alerts"] if x.get("status") in ("APPROVED","DENIED","REVIEW_LATER")][:10]:
             act = a.get("action") or {}
             nm = clean_placeholder(a.get('alert_name', a.get('ticker','—')))
-            rd_html = f"""<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #F1F5F9;">
-                <div><span style="font-weight:600;color:#0F172A;font-size:13px;">{nm}</span>&ensp;{stat_pill(a.get('status'))}&ensp;<span style="font-size:12px;color:#334155;font-weight:600;">{act.get('call','—')}</span>&ensp;<span style="font-size:11px;color:#94A3B8;">{act.get('conviction','')}</span>
-                {f"<div style='font-size:11px;color:#64748B;margin-top:2px;'>{act.get('remarks','')[:100]}</div>" if act.get('remarks') else ''}
-                </div>
-                <div style="text-align:right;"><div style="font-size:12px;color:#0F172A;font-weight:600;">{a.get('ticker','—')}</div><div style="font-size:10px;color:#94A3B8;">{fmt_short(act.get('decision_at') or a.get('received_at'))}</div></div>
-            </div>"""
-            st.markdown(rd_html.replace('\n', ''), unsafe_allow_html=True)
+            
+            # Use native Streamlit containers to stop ghosting/fading issues
+            with st.container(border=True):
+                rc1, rc2 = st.columns([3, 1])
+                with rc1:
+                    st.markdown(f"**{nm}** &ensp; {stat_pill(a.get('status'))} &ensp; **{act.get('call','—')}** ({act.get('conviction','')})", unsafe_allow_html=True)
+                    if act.get('remarks'):
+                        st.markdown(f"<div style='font-size:12px; color:#64748B;'>{act.get('remarks','')[:100]}</div>", unsafe_allow_html=True)
+                with rc2:
+                    st.markdown(f"<div style='text-align:right;'><strong>{a.get('ticker','—')}</strong><br><span style='font-size:11px;color:#94A3B8;'>{fmt_short(act.get('decision_at') or a.get('received_at'))}</span></div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -450,45 +452,52 @@ elif page == "Alert Database":
                 rs = f"{rp:+.2f}%" if rp is not None else "—"
                 nm = clean_placeholder(a.get('alert_name','—'))
                 
-                # Card HTML
-                card = f"""<div class="db-card">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;">
-                        <div>
-                            <div style="font-size:16px;font-weight:700;color:#0F172A;margin-bottom:4px;">{nm}</div>
-                            <div>{dir_pill(a.get('signal_direction'))} {stat_pill(a.get('status'))}
-                            {f"<span style='margin-left:8px;padding:3px 10px;background:#F1F5F9;border-radius:100px;font-size:10px;font-weight:700;color:#334155;'>{act.get('call','')}</span>" if act.get('call') else ''}
-                            {f"<span style='margin-left:4px;font-size:10px;color:#64748B;'>({act.get('conviction','')})</span>" if act.get('conviction') else ''}
+                with st.container(border=True):
+                    # Top section HTML
+                    card = f"""
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;">
+                            <div>
+                                <div style="font-size:16px;font-weight:700;color:#0F172A;margin-bottom:4px;">{nm}</div>
+                                <div>{dir_pill(a.get('signal_direction'))} {stat_pill(a.get('status'))}
+                                {f"<span style='margin-left:8px;padding:3px 10px;background:#F1F5F9;border-radius:100px;font-size:10px;font-weight:700;color:#334155;'>{act.get('call','')}</span>" if act.get('call') else ''}
+                                {f"<span style='margin-left:4px;font-size:10px;color:#64748B;'>({act.get('conviction','')})</span>" if act.get('conviction') else ''}
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="font-size:22px;font-weight:700;color:{rc};">{rs}</div>
+                                <div style="font-size:10px;color:#94A3B8;">{fmt_short(a.get('received_at'))}</div>
                             </div>
                         </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:22px;font-weight:700;color:{rc};">{rs}</div>
-                            <div style="font-size:10px;color:#94A3B8;">{fmt_short(a.get('received_at'))}</div>
-                        </div>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
-                        <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Ticker</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{a.get('ticker','—')}</div></div>
-                        <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Entry Price</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{fmt_price(a.get('price_at_alert'))}</div></div>
-                        <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Current</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{fmt_price(perf.get('current_price'))}</div></div>
-                        <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Exchange</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{a.get('exchange','—')}</div></div>
-                    </div>"""
-                
-                remarks = act.get("remarks")
-                if remarks:
-                    card += f"""<div style="background:#F8FAFC;border-left:3px solid #3B82F6;padding:12px 16px;border-radius:0 8px 8px 0;margin-top:10px;">
-                        <div style="font-size:10px;color:#3B82F6;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Fund Manager's View</div>
-                        <div style="font-size:13px;color:#334155;line-height:1.6;">{remarks}</div>
-                    </div>"""
-                
-                card += "</div>"
-                st.markdown(card.replace('\n', ''), unsafe_allow_html=True)
-                
-                if act.get("has_chart"):
-                    chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
-                    if chart_data and chart_data.get("chart_image_b64"):
-                        try:
-                            img_bytes = base64.b64decode(chart_data["chart_image_b64"])
-                            st.image(img_bytes, caption=f"Chart: {a.get('ticker','—')}", use_container_width=True)
-                        except: pass
+                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Ticker</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{a.get('ticker','—')}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Entry Price</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{fmt_price(a.get('price_at_alert'))}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Current</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{fmt_price(perf.get('current_price'))}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Exchange</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{a.get('exchange','—')}</div></div>
+                        </div>"""
+                    
+                    remarks = act.get("remarks")
+                    if remarks:
+                        card += f"""<div style="background:#F8FAFC;border-left:3px solid #3B82F6;padding:12px 16px;border-radius:0 8px 8px 0;margin-top:10px;margin-bottom:14px;">
+                            <div style="font-size:10px;color:#3B82F6;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Fund Manager's View</div>
+                            <div style="font-size:13px;color:#334155;line-height:1.6;">{remarks}</div>
+                        </div>"""
+                    st.markdown(card.replace('\n', ''), unsafe_allow_html=True)
+                    
+                    # Native Streamlit actions at the bottom of the card
+                    act_col1, act_col2 = st.columns([1, 4])
+                    with act_col1:
+                        if st.button("🗑️ Delete", key=f"del_{a['id']}", use_container_width=True):
+                            api_call('DELETE', f"/api/alerts/{a['id']}")
+                            st.rerun()
+                    with act_col2:
+                        if act.get("has_chart"):
+                            with st.expander("📊 View Attached Chart"):
+                                chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
+                                if chart_data and chart_data.get("chart_image_b64"):
+                                    try:
+                                        img_bytes = base64.b64decode(chart_data["chart_image_b64"])
+                                        st.image(img_bytes, caption=f"Chart for {a.get('ticker','—')}", use_container_width=True)
+                                    except: pass
         
         else:
             rows = [{
@@ -506,15 +515,7 @@ elif page == "Alert Database":
             def cs(v):
                 return {"APPROVED":"background-color:#ECFDF5;color:#059669","DENIED":"background-color:#FEF2F2;color:#DC2626","PENDING":"background-color:#FFFBEB;color:#B45309","REVIEW_LATER":"background-color:#EFF6FF;color:#2563EB"}.get(v,"")
             st.dataframe(df.style.map(cs, subset=["Status"]), use_container_width=True, hide_index=True, height=600)
-        
-        st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-        dc1, dc2 = st.columns([1,3])
-        with dc1: did = st.number_input("Delete ID", min_value=1, step=1, key="did")
-        with dc2:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-            if st.button("Delete"):
-                r = api_call('DELETE', f"/api/alerts/{int(did)}")
-                if r and r.get("success"): st.success(f"Deleted #{int(did)}"); st.rerun()
+
     else:
         st.markdown("<div class='empty-state'><div style='font-size:40px;opacity:0.3;'>📁</div><p style='font-size:14px;margin-top:12px;'>No alerts in database</p></div>", unsafe_allow_html=True)
 
