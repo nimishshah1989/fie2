@@ -15,6 +15,8 @@ if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
 # ─── CSS ─────────────────────────────────────────────────
+# All dangerous header/sidebar hiding CSS has been removed. 
+# Streamlit will handle its native navigation safely.
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -23,32 +25,7 @@ st.markdown("""
     .stApp { background: #FAFBFC !important; }
     #MainMenu, footer { display: none !important; }
     
-    /* Extreme cleanup of Streamlit's native header to prevent 'keyboard_do' text spilling */
-    header[data-testid="stHeader"] { display: none !important; height: 0 !important; visibility: hidden !important; }
-    [data-testid="collapsedControl"], [data-testid="stSidebarCollapseButton"], .st-emotion-cache-1dp5vir { 
-        display: none !important; 
-        visibility: hidden !important; 
-        color: transparent !important; 
-        font-size: 0 !important;
-        width: 0 !important;
-        height: 0 !important;
-    }
-    
     .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
-    
-    /* 🚨 PERMANENT SIDEBAR LOCK 🚨 */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0C1222 0%, #131B2E 100%) !important;
-        border-right: 1px solid rgba(255,255,255,0.04) !important;
-        min-width: 240px !important; max-width: 240px !important; width: 240px !important;
-        transform: none !important; margin-left: 0 !important;
-        display: block !important; visibility: visible !important;
-    }
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        display: block !important; min-width: 240px !important; width: 240px !important;
-        transform: none !important; margin-left: 0 !important;
-    }
-    section[data-testid="stSidebar"] * { color: #C8D1DC !important; }
     
     /* Metrics and Cards */
     div[data-testid="stMetric"] {
@@ -98,7 +75,6 @@ def fmt_price(val):
     except: return "—"
 
 def fmt_ist(iso_str):
-    """Parses UTC string, converts to IST, formats to strict standard"""
     if not iso_str: return "—"
     try:
         dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
@@ -118,7 +94,6 @@ def fmt_vol(val):
     except: return "—"
 
 def asset_pill(asset_class):
-    """Returns color-coded HTML span based on asset class"""
     a = str(asset_class or "EQUITY").upper()
     if a == "COMMODITY": bg, tc, br = "#FFFBEB", "#B45309", "#FDE68A"
     elif a == "CURRENCY": bg, tc, br = "#ECFDF5", "#059669", "#A7F3D0"
@@ -170,7 +145,6 @@ if page == "Command Center":
     st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     
-    # Cleaned up metrics
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Alerts", stats.get("total_alerts", 0))
     c2.metric("Pending Queue", stats.get("pending", 0))
@@ -179,7 +153,6 @@ if page == "Command Center":
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     
-    # Filter
     fc1, _, _, _ = st.columns([1, 1, 1, 2])
     with fc1:
         sf = st.selectbox("Filter", ["PENDING", "All", "APPROVED", "DENIED"], label_visibility="collapsed", key="cf")
@@ -192,12 +165,10 @@ if page == "Command Center":
     if not data or not data.get("alerts"):
         st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No signals found</p></div>", unsafe_allow_html=True)
     else:
-        # Standardized 3-Column Grid
         cols = st.columns(3)
         for i, al in enumerate(data["alerts"]):
             with cols[i % 3]:
                 with st.container(border=True):
-                    # Clean Card Header
                     st.markdown(f"""
                     <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
                         {asset_pill(al.get('asset_class'))}
@@ -216,9 +187,10 @@ if page == "Command Center":
                     """, unsafe_allow_html=True)
                     
                     msg = al.get("alert_message") or ""
-                    # Safely wrapping message in a scrolling div in case the webhook dumps raw JSON
                     if msg:
-                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:80px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;'>{msg}</div>", unsafe_allow_html=True)
+                        # Safely replace HTML tags so literal JSON doesn't break the layout
+                        safe_msg = str(msg).replace('<', '&lt;').replace('>', '&gt;')
+                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:80px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;'>{safe_msg}</div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -234,13 +206,11 @@ elif page == "Trade Desk":
     if not pending:
         st.markdown("<div style='background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:20px; text-align:center;'><span style='color:#166534; font-weight:600;'>✓ Queue is clear</span></div>", unsafe_allow_html=True)
     else:
-        # Standardized 3-Column Grid for Processing
         cols = st.columns(3)
         for i, al in enumerate(pending):
             aid = al["id"]
             with cols[i % 3]:
                 with st.container(border=True):
-                    # Tight layout header
                     st.markdown(f"""
                     <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
                         {asset_pill(al.get('asset_class'))}
@@ -261,7 +231,6 @@ elif page == "Trade Desk":
                     if approve_key not in st.session_state:
                         st.session_state[approve_key] = False
                     
-                    # Stripped down to just 2 buttons (Approve / Reject)
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("✓ Approve", key=f"ab{aid}", type="primary"):
@@ -271,14 +240,12 @@ elif page == "Trade Desk":
                             api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"DENIED"})
                             st.rerun()
                     
-                    # Condensed Form only shows if clicked
                     if st.session_state.get(approve_key, False):
                         st.divider()
                         call = st.selectbox("Call", ["BUY","SELL","HOLD","STRONG_BUY","STRONG_SELL"], key=f"call{aid}", label_visibility="collapsed")
                         conv = st.select_slider("Conviction", ["LOW","MEDIUM","HIGH"], value="MEDIUM", key=f"conv{aid}", label_visibility="collapsed")
                         commentary = st.text_area("Remarks", placeholder="Rationale...", key=f"cmt{aid}", height=68, label_visibility="collapsed")
                         
-                        # Chart Upload
                         chart_file = st.file_uploader("Attach Chart (Optional)", type=["png","jpg","jpeg"], key=f"ch{aid}", label_visibility="collapsed")
                         cb64 = None
                         if chart_file:
@@ -355,18 +322,20 @@ elif page == "Portfolio Analytics":
         
         st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
         
-        # Standardized 3-Column Grid for Analytics
         cols = st.columns(3)
         for i, p in enumerate(perf):
             rp = p.get("return_pct")
             rc = ret_color(rp)
             rs = f"{rp:+.2f}%" if rp is not None else "—"
             
-            # 🔥 Bulletproof protection against NoneType math crashes
+            # 🔥 Bulletproof protection against NoneType format crash
             dd = p.get("max_drawdown")
-            if dd is not None:
-                dd_html = f"<div style='font-size:13px;font-weight:600;color:#DC2626;'>{float(dd):.2f}%</div>"
-            else:
+            try:
+                if dd is not None:
+                    dd_html = f"<div style='font-size:13px;font-weight:600;color:#DC2626;'>{float(dd):.2f}%</div>"
+                else:
+                    dd_html = "<div style='font-size:13px;font-weight:600;color:#94A3B8;'>—</div>"
+            except:
                 dd_html = "<div style='font-size:13px;font-weight:600;color:#94A3B8;'>—</div>"
             
             with cols[i % 3]:
@@ -422,7 +391,6 @@ elif page == "Alert Database":
         st.markdown(f"<p style='font-size:11px; color:#94A3B8; margin-bottom:16px; font-weight:700;'>Showing {len(als)} records</p>", unsafe_allow_html=True)
         
         if view_mode == "Cards":
-            # Standardized 3-Column Grid
             cols = st.columns(3)
             for i, a in enumerate(als):
                 act = a.get("action") or {}
@@ -442,12 +410,11 @@ elif page == "Alert Database":
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # FM Rationale Display
                         remarks = act.get("remarks")
                         if remarks:
-                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; margin-bottom:12px;'><strong>FM View:</strong> {remarks}</div>", unsafe_allow_html=True)
+                            safe_remarks = str(remarks).replace('<', '&lt;').replace('>', '&gt;')
+                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; margin-bottom:12px;'><strong>FM View:</strong> {safe_remarks}</div>", unsafe_allow_html=True)
                         
-                        # Chart Thumbnail Display
                         if act.get("has_chart"):
                             chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
                             if chart_data and chart_data.get("chart_image_b64"):
@@ -456,7 +423,6 @@ elif page == "Alert Database":
                                     st.image(img_bytes, width=100) 
                                 except: pass
                         
-                        # Bottom Actions
                         bc1, bc2 = st.columns([1,2])
                         with bc1:
                             if st.button("🗑️ Delete", key=f"del_{a['id']}"):
@@ -501,6 +467,29 @@ elif page == "Integrations":
         "alert_name": "Your Custom Alert Name",
         "message": "Write what happened here (e.g. Price broke resistance)"
     }, indent=2), language="json")
+    
+    st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
+    st.markdown("### 🧪 Connection Tester")
+    st.markdown("<p style='font-size:12px;color:#64748B;'>Use this button to instantly test if the app is receiving webhooks properly.</p>", unsafe_allow_html=True)
+    
+    test_json = json.dumps({
+        "ticker": "RELIANCE", "exchange": "NSE", "interval": "1D",
+        "close": "2950.50", "volume": "14500000",
+        "time": "2026-02-24T09:15:00Z", "timenow": "2026-02-24T15:30:00Z",
+        "alert_name": "System Health Test",
+        "message": "This is an automated test to confirm the database and UI are working."
+    })
+    
+    if st.button("🚀 Fire Test Webhook", type="primary"):
+        try:
+            r = api_call('POST', "/webhook/tradingview", data=json.loads(test_json))
+            if r and r.get("success"): 
+                st.success(f"✓ Test Alert successfully inserted into database! Check the Command Center.")
+            else: 
+                st.error(f"Failed to insert. Backend returned: {r}")
+        except Exception as e:
+            st.error(f"Connection failed: {e}")
+
     
 # ═══════════════════════════════════════════════════════
 # AUTO-REFRESH
