@@ -141,15 +141,25 @@ if page == "Command Center":
     st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     
-    c1, c2, c3 = st.columns([1,1,3])
-    c1.metric("Pending Queue", stats.get("pending", 0))
-    c2.metric("Market", "OPEN" if (datetime.now().weekday() < 5 and 9 <= datetime.now().hour < 16) else "CLOSED")
+    # Restored to 3 balanced metrics
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Alerts", stats.get("total_alerts", 0))
+    c2.metric("Pending Queue", stats.get("pending", 0))
+    c3.metric("Market", "OPEN" if (datetime.now().weekday() < 5 and 9 <= datetime.now().hour < 16) else "CLOSED")
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     
-    data = api_call('GET', "/api/alerts", params={"limit": 50, "status": "PENDING"})
+    # The Missing Dropdown Filter has been RESTORED!
+    fc1, _, _, _ = st.columns([1, 1, 1, 2])
+    with fc1:
+        sf = st.selectbox("Filter", ["PENDING", "All", "APPROVED", "DENIED"], label_visibility="collapsed", key="cf")
+    
+    params = {"limit": 50}
+    if sf != "All": params["status"] = sf
+        
+    data = api_call('GET', "/api/alerts", params=params)
     if not data or not data.get("alerts"):
-        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No pending signals in the feed</p></div>", unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No signals found</p></div>", unsafe_allow_html=True)
     else:
         # Standardized 3-Column Grid
         cols = st.columns(3)
@@ -169,6 +179,7 @@ if page == "Command Center":
                         </div>
                         <div style='text-align:right;'>
                             <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get("price_at_alert"))}</div>
+                            <div style='margin-top:4px;'>{stat_pill(al.get('status'))}</div>
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
