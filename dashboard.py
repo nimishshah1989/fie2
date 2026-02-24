@@ -148,7 +148,12 @@ def ret_color(v):
 def clean_placeholder(text):
     """Fallback to remove ugly literal placeholders from the UI"""
     if not text: return ""
-    return text.replace("{{strategy.order.comment}}", "Manual Alert")
+    t = str(text)
+    t = t.replace("{{strategy.order.comment}}", "Manual Alert")
+    t = t.replace("{{alert_name}}", "Manual Alert")
+    t = t.replace("alert_name", "Manual Alert")
+    t = t.replace("{{strategy.order.action}}", "NEUTRAL")
+    return t
 
 
 # ─── Sidebar ─────────────────────────────────────────────
@@ -259,40 +264,18 @@ elif page == "Trade Desk":
             aid = al["id"]
             with st.container(border=True):
                 nm = clean_placeholder(al.get('alert_name','Signal'))
-                tk = al.get('ticker','—')
-                pr = fmt_price(al.get('price_at_alert'))
-                dr = al.get('signal_direction','NEUTRAL')
-                exch = al.get('exchange','—')
-                iv = al.get('interval','—')
-                sec = al.get('sector','—')
-                vol = fmt_vol(al.get('volume'))
                 
-                header_html = f"""<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-                    <div>
-                        <span style="font-weight:700;font-size:16px;color:#0F172A;">{nm}</span>&ensp;{dir_pill(dr)}&ensp;{stat_pill(al.get('status'))}
-                        <div style="font-size:12px;color:#64748B;margin-top:3px;">{tk} · {exch} · {iv} · {sec}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:18px;font-weight:700;color:#0F172A;">{pr}</div>
-                        <div style="font-size:10px;color:#94A3B8;">Vol: {vol} · {fmt_short(al.get('received_at'))}</div>
-                    </div>
-                </div>"""
-                st.markdown(header_html.replace('\n', ''), unsafe_allow_html=True)
-                
-                # Indicators
-                inds = al.get("indicator_values") or {}
-                if inds:
-                    ihtml = "<div style='display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;'>"
-                    for k, v in list(inds.items())[:6]:
-                        try: vs = f"{float(v):.2f}"
-                        except: vs = str(v)[:12]
-                        ihtml += f"<span style='padding:3px 9px;background:#F1F5F9;border-radius:5px;font-size:10px;color:#334155;font-weight:600;'>{k.upper()}: {vs}</span>"
-                    ihtml += "</div>"
-                    st.markdown(ihtml.replace('\n', ''), unsafe_allow_html=True)
+                # Native Streamlit components to prevent HTML DOM ghosting
+                header_col1, header_col2 = st.columns([3, 1])
+                with header_col1:
+                    st.markdown(f"#### {nm}")
+                    st.caption(f"{al.get('ticker','—')} · {al.get('exchange','—')} · {al.get('interval','—')}")
+                with header_col2:
+                    st.markdown(f"<div style='text-align:right;'><h4>{fmt_price(al.get('price_at_alert'))}</h4><span style='font-size:12px; color:#64748B;'>Vol: {fmt_vol(al.get('volume'))}</span></div>", unsafe_allow_html=True)
                 
                 msg = clean_placeholder(al.get("alert_message"))
                 if msg:
-                    st.markdown(f"<div style='background:#F8FAFC;padding:8px 12px;border-radius:6px;font-size:11px;color:#475569;margin-bottom:10px;'>{msg[:250]}</div>".replace('\n',''), unsafe_allow_html=True)
+                    st.info(msg[:250], icon="💬")
                 
                 # ─── Action Buttons ───
                 approve_key = f"approve_{aid}"
@@ -314,7 +297,7 @@ elif page == "Trade Desk":
                 
                 # ─── Condensed Approval Form ───
                 if st.session_state.get(approve_key, False):
-                    st.markdown("---")
+                    st.divider()
                     
                     ac1, ac2 = st.columns(2)
                     with ac1:
@@ -355,15 +338,17 @@ elif page == "Trade Desk":
             act = a.get("action") or {}
             nm = clean_placeholder(a.get('alert_name', a.get('ticker','—')))
             
-            # Use native Streamlit containers to stop ghosting/fading issues
+            # Using 100% native Streamlit components to permanently kill the ghosting bug
             with st.container(border=True):
                 rc1, rc2 = st.columns([3, 1])
                 with rc1:
-                    st.markdown(f"**{nm}** &ensp; {stat_pill(a.get('status'))} &ensp; **{act.get('call','—')}** ({act.get('conviction','')})", unsafe_allow_html=True)
+                    status_emoji = "✅" if a.get('status') == 'APPROVED' else "❌" if a.get('status') == 'DENIED' else "⏳"
+                    st.markdown(f"**{nm}** &nbsp;|&nbsp; {status_emoji} `{a.get('status')}` &nbsp;|&nbsp; **{act.get('call','—')}** ({act.get('conviction','')})")
                     if act.get('remarks'):
-                        st.markdown(f"<div style='font-size:12px; color:#64748B;'>{act.get('remarks','')[:100]}</div>", unsafe_allow_html=True)
+                        st.caption(act.get('remarks')[:100])
                 with rc2:
-                    st.markdown(f"<div style='text-align:right;'><strong>{a.get('ticker','—')}</strong><br><span style='font-size:11px;color:#94A3B8;'>{fmt_short(act.get('decision_at') or a.get('received_at'))}</span></div>", unsafe_allow_html=True)
+                    st.markdown(f"**{a.get('ticker','—')}**")
+                    st.caption(f"{fmt_short(act.get('decision_at') or a.get('received_at'))}")
 
 
 # ═══════════════════════════════════════════════════════════
