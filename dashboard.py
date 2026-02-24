@@ -27,6 +27,13 @@ st.markdown("""
     code, pre, .stCode { font-family: 'JetBrains Mono', monospace !important; }
     .stApp { background: #FAFBFC !important; }
     #MainMenu, footer { display: none !important; }
+    /* Hide entire Streamlit header bar (contains broken Material icon text) */
+    header[data-testid="stHeader"],
+    .stAppHeader, header.stAppHeader,
+    div[data-testid="stHeader"],
+    .st-emotion-cache-h4xjwg,
+    .st-emotion-cache-18ni7ap { display: none !important; height: 0 !important; visibility: hidden !important; }
+    .block-container { padding-top: 1rem !important; }
     
     /* FORCE SIDEBAR ALWAYS VISIBLE */
     section[data-testid="stSidebar"] {
@@ -39,7 +46,11 @@ st.markdown("""
     section[data-testid="stSidebar"] .stRadio label:hover { color: #FFFFFF !important; }
     button[data-testid="stSidebarCollapseButton"],
     button[data-testid="baseButton-headerNoPadding"],
-    [data-testid="collapsedControl"], .css-1dp5vir { display: none !important; }
+    [data-testid="collapsedControl"], .css-1dp5vir,
+    button[kind="headerNoPadding"],
+    .st-emotion-cache-1dp5vir,
+    header[data-testid="stHeader"],
+    [data-testid="stHeaderActionElements"] { display: none !important; visibility: hidden !important; height: 0 !important; overflow: hidden !important; }
     section[data-testid="stSidebar"][aria-expanded="false"] {
         display: block !important; min-width: 260px !important; width: 260px !important;
         transform: none !important; margin-left: 0 !important;
