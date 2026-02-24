@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import json
 import time
 import os
+import base64
 
 # ─── Configuration ─────────────────────────────────────
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
@@ -268,7 +269,8 @@ st.markdown("""
         border-radius: 10px !important;
         color: #374151 !important;
     }
-    .stTextInput > div > div > input {
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea {
         border-radius: 10px !important;
         border: 1px solid #E5E7EB !important;
         background: #FFFFFF !important;
@@ -338,12 +340,6 @@ st.markdown("""
     .stAlert { border-radius: 12px !important; border: 1px solid #E5E7EB !important; }
 </style>
 """, unsafe_allow_html=True)
-
-
-# ─── Auto-Refresh ─────────────────────────────────────
-# We use st.fragment with run_every to refresh data in the background
-# without reloading the page or disrupting user interaction.
-# (No JS/meta refresh — those cause full page reloads)
 
 
 # ─── Helpers ───────────────────────────────────────────
@@ -458,7 +454,7 @@ if page == "📊 Live Alerts":
     if filter_sector != "All": fp["sector"] = filter_sector
     if filter_search: fp["search"] = filter_search
 
-    # ── Auto-refreshing data section ──
+    # ── Auto-refreshing data section (Background Fragment) ──
     @st.fragment(run_every=REFRESH_INTERVAL)
     def live_alerts_data():
         # ── Stats Row ──
@@ -530,7 +526,7 @@ if page == "📊 Live Alerts":
                     price = f"Ratio: {(alert.get('ratio_value') or alert.get('price_at_alert') or 0):.4f}"
                 else:
                     price_val = alert.get('price_at_alert')
-                    price = f"₹{price_val if price_val is not None else 0:,.2f}"
+                    price = f"Rs. {price_val if price_val is not None else 0:,.2f}"
 
                 st.markdown(f"""
                 <div class="alert-card {sig_class}{pend_class}">
@@ -618,7 +614,7 @@ if page == "📊 Live Alerts":
 
 
 # ═══════════════════════════════════════════════════════
-# PAGE: ACTION CENTER
+# PAGE: ACTION CENTER (Manual Refresh Only)
 # ═══════════════════════════════════════════════════════
 
 elif page == "✅ Action Center":
@@ -633,7 +629,13 @@ elif page == "✅ Action Center":
 
     if pending_data and pending_data.get("alerts"):
         pending = pending_data["alerts"]
-        st.markdown(f"### ⏳ {len(pending)} Alerts Awaiting Decision")
+        
+        col_title, col_sync = st.columns([4, 1])
+        with col_title:
+            st.markdown(f"### ⏳ {len(pending)} Alerts Awaiting Decision")
+        with col_sync:
+            if st.button("🔄 Sync New Alerts", use_container_width=True):
+                st.rerun()
 
         for alert in pending:
             is_rel = alert.get("alert_type") == "RELATIVE"
@@ -657,7 +659,7 @@ elif page == "✅ Action Center":
                             if is_rel:
                                 st.metric(lbl, fmt(alert.get(key), decimals=4))
                             else:
-                                st.metric(lbl, fmt(alert.get(key), prefix="₹"))
+                                st.metric(lbl, fmt(alert.get(key), prefix="Rs. "))
 
                     if alert.get("indicator_values"):
                         st.markdown("**Indicators:**")
@@ -666,8 +668,8 @@ elif page == "✅ Action Center":
                     if is_rel:
                         st.markdown("**Relative Alert Details:**")
                         rc = st.columns(3)
-                        with rc[0]: st.metric(f"Num: {alert.get('numerator_ticker','?')}", fmt(alert.get("numerator_price"), prefix="₹"))
-                        with rc[1]: st.metric(f"Den: {alert.get('denominator_ticker','?')}", fmt(alert.get("denominator_price"), prefix="₹"))
+                        with rc[0]: st.metric(f"Num: {alert.get('numerator_ticker','?')}", fmt(alert.get("numerator_price"), prefix="Rs. "))
+                        with rc[1]: st.metric(f"Den: {alert.get('denominator_ticker','?')}", fmt(alert.get("denominator_price"), prefix="Rs. "))
                         with rc[2]: st.metric("Ratio", fmt(alert.get("ratio_value"), decimals=4))
 
                 with col_act:
@@ -690,10 +692,29 @@ elif page == "✅ Action Center":
 
                         payload.update({"primary_call": pc, "primary_notes": pn or None, "primary_target_price": pt if pt > 0 else None, "primary_stop_loss": ps if ps > 0 else None})
 
+                        # ─── New AI Processed Voice/Text Input Section ───
                         st.markdown("---")
+                        st.markdown("##### 🧠 Fund Manager Rationale (AI Processed)")
+                        st.caption("Speak or type your thesis. The AI will synthesize it into a formal record.")
+
+                        col_text, col_voice = st.columns([1, 1])
+                        with col_text:
+                            thesis_text = st.text_area("Type your rationale...", placeholder="E.g., Bouncing off the 200 EMA...", key=f"tt_{alert['id']}")
+                        with col_voice:
+                            thesis_audio = st.audio_input("🎙️ Record Voice Note", key=f"ta_{alert['id']}")
+
+                        audio_b64 = None
+                        if thesis_audio:
+                            audio_b64 = base64.b64encode(thesis_audio.read()).decode("utf-8")
+
                         conv = st.select_slider("Conviction", ["LOW", "MEDIUM", "HIGH"], value="MEDIUM", key=f"cv_{alert['id']}")
-                        remarks = st.text_area("Remarks", key=f"rm_{alert['id']}", placeholder="Reasoning...", height=60)
-                        payload.update({"conviction": conv, "fm_remarks": remarks or None})
+
+                        payload.update({
+                            "conviction": conv,
+                            "fm_rationale_text": thesis_text,
+                            "fm_rationale_audio": audio_b64
+                        })
+                        # ──────────────────────────────────────────────────
 
                     btn_label = "✅ Approve & Submit" if decision == "APPROVED" else "❌ Deny Alert"
                     if st.button(btn_label, key=f"sub_{alert['id']}", type="primary" if decision == "APPROVED" else "secondary", use_container_width=True):
@@ -707,9 +728,11 @@ elif page == "✅ Action Center":
         <div style="text-align:center; padding:60px 40px;">
             <div style="font-size:3rem; margin-bottom:16px;">🎉</div>
             <div style="font-size:1.1rem; font-weight:600; color:#111827;">All caught up!</div>
-            <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">No pending alerts. New alerts will appear here automatically.</div>
+            <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">No pending alerts. Use 'Sync New Alerts' to check for updates.</div>
         </div>
         """, unsafe_allow_html=True)
+        if st.button("🔄 Sync New Alerts", use_container_width=True):
+            st.rerun()
 
     # Recently actioned
     st.markdown("---")
@@ -721,7 +744,7 @@ elif page == "✅ Action Center":
             for a in actioned:
                 act = a.get("action") or {}
                 call = act.get("primary_call", "—")
-                st.markdown(f"{signal_emoji(a.get('signal_direction'))} **{a.get('ticker','?')}** — {status_badge(a.get('status'))} → {call} ({act.get('conviction', '—')})", unsafe_allow_html=True)
+                st.markdown(f"{signal_emoji(a.get('signal_direction'))} **{a.get('ticker','?')}** — {status_badge(a.get('status'))} → {call} ({act.get('conviction', '—')})<br><span style='font-size:12px; color:#6B7280;'>{act.get('fm_remarks', '')}</span>", unsafe_allow_html=True)
         else:
             st.caption("No actioned alerts yet.")
 
@@ -738,147 +761,148 @@ elif page == "📈 Performance":
     </div>
     """, unsafe_allow_html=True)
 
+    # ── Auto-refreshing data section (Background Fragment) ──
     @st.fragment(run_every=REFRESH_INTERVAL)
     def performance_data():
         perf_data = api_get("/api/performance", params={"limit": 100})
         stats = api_get("/api/stats")
 
-    if stats:
-        mc1, mc2, mc3, mc4 = st.columns(4)
-        with mc1:
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10B981;">{stats.get("approved",0)}</div><div class="stat-label">Approved Calls</div></div>', unsafe_allow_html=True)
-        with mc2:
-            ar = stats.get("avg_return_pct", 0) or 0
-            rc = "#10B981" if ar >= 0 else "#EF4444"
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{rc};">{ar:+.1f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
-        with mc3:
-            wr = stats.get("win_rate", 0) or 0
-            wc = "#10B981" if wr >= 50 else "#EF4444"
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{wc};">{wr:.0f}%</div><div class="stat-label">Win Rate</div></div>', unsafe_allow_html=True)
-        with mc4:
-            tp = stats.get("top_performer", {}).get("return_pct", 0) or 0
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10B981;">{tp:+.1f}%</div><div class="stat-label">Best Return</div></div>', unsafe_allow_html=True)
+        if stats:
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            with mc1:
+                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10B981;">{stats.get("approved",0)}</div><div class="stat-label">Approved Calls</div></div>', unsafe_allow_html=True)
+            with mc2:
+                ar = stats.get("avg_return_pct", 0) or 0
+                rc = "#10B981" if ar >= 0 else "#EF4444"
+                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{rc};">{ar:+.1f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
+            with mc3:
+                wr = stats.get("win_rate", 0) or 0
+                wc = "#10B981" if wr >= 50 else "#EF4444"
+                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{wc};">{wr:.0f}%</div><div class="stat-label">Win Rate</div></div>', unsafe_allow_html=True)
+            with mc4:
+                tp = stats.get("top_performer", {}).get("return_pct", 0) or 0
+                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10B981;">{tp:+.1f}%</div><div class="stat-label">Best Return</div></div>', unsafe_allow_html=True)
 
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-    if perf_data and perf_data.get("performance"):
-        perfs = perf_data["performance"]
-        df = pd.DataFrame(perfs)
+        if perf_data and perf_data.get("performance"):
+            perfs = perf_data["performance"]
+            df = pd.DataFrame(perfs)
 
-        if not df.empty:
-            tab1, tab2, tab3 = st.tabs(["📊 Performance Table", "📈 Returns Chart", "🏆 Sector Analysis"])
+            if not df.empty:
+                tab1, tab2, tab3 = st.tabs(["📊 Performance Table", "📈 Returns Chart", "🏆 Sector Analysis"])
 
-            with tab1:
-                display_cols = ["ticker", "call", "conviction", "reference_price", "current_price", "return_pct", "approved_at"]
-                avail_cols = [c for c in display_cols if c in df.columns]
-                display_df = df[avail_cols].copy()
+                with tab1:
+                    display_cols = ["ticker", "call", "conviction", "reference_price", "current_price", "return_pct", "approved_at"]
+                    avail_cols = [c for c in display_cols if c in df.columns]
+                    display_df = df[avail_cols].copy()
 
-                col_names = {
-                    "ticker": "Ticker/Ratio", "call": "Call", "conviction": "Conv.",
-                    "reference_price": "Entry Level", "current_price": "Current Level",
-                    "return_pct": "Net Return %", "approved_at": "Approved Date"
-                }
-                display_df = display_df.rename(columns={k: v for k, v in col_names.items() if k in display_df.columns})
-
-                if "Approved Date" in display_df.columns:
-                    display_df["Approved Date"] = pd.to_datetime(display_df["Approved Date"]).dt.strftime('%Y-%m-%d %H:%M')
-
-                st.dataframe(
-                    display_df,
-                    use_container_width=True,
-                    height=min(600, 50 + len(display_df) * 35),
-                    column_config={
-                        "Net Return %": st.column_config.NumberColumn(format="%.2f%%"),
-                        "Entry Level": st.column_config.NumberColumn(format="%.4f"),
-                        "Current Level": st.column_config.NumberColumn(format="%.4f"),
+                    col_names = {
+                        "ticker": "Ticker/Ratio", "call": "Call", "conviction": "Conv.",
+                        "reference_price": "Entry Level", "current_price": "Current Level",
+                        "return_pct": "Net Return %", "approved_at": "Approved Date"
                     }
-                )
+                    display_df = display_df.rename(columns={k: v for k, v in col_names.items() if k in display_df.columns})
 
-            with tab2:
-                if "return_pct" in df.columns and "ticker" in df.columns:
-                    chart_df = df[["ticker", "return_pct", "call"]].dropna(subset=["return_pct"]).sort_values("return_pct", ascending=True)
+                    if "Approved Date" in display_df.columns:
+                        display_df["Approved Date"] = pd.to_datetime(display_df["Approved Date"]).dt.strftime('%Y-%m-%d %H:%M')
 
-                    if not chart_df.empty:
-                        colors = ["#10B981" if x >= 0 else "#EF4444" for x in chart_df["return_pct"]]
-
-                        fig = go.Figure(go.Bar(
-                            y=chart_df["ticker"],
-                            x=chart_df["return_pct"],
-                            orientation="h",
-                            marker_color=colors,
-                            text=[f"{x:+.2f}%" for x in chart_df["return_pct"]],
-                            textposition="outside",
-                            hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>",
-                        ))
-
-                        fig.update_layout(
-                            title="Returns by Alert (Total since Approval)",
-                            paper_bgcolor="#FFFFFF",
-                            plot_bgcolor="#FAFBFC",
-                            font=dict(family="DM Sans", color="#374151"),
-                            height=max(400, len(chart_df) * 35),
-                            xaxis_title="Return %",
-                            yaxis_title="",
-                            showlegend=False,
-                            margin=dict(l=120, r=60, t=50, b=40),
-                            xaxis=dict(gridcolor="#F3F4F6", zerolinecolor="#E5E7EB"),
-                            yaxis=dict(gridcolor="#F3F4F6"),
-                        )
-
-                        st.plotly_chart(fig, use_container_width=True)
-
-            with tab3:
-                if "sector" in df.columns:
-                    sector_df = df.groupby("sector").agg(
-                        count=("return_pct", "count"),
-                        avg_return=("return_pct", "mean"),
-                        max_return=("return_pct", "max"),
-                        min_return=("return_pct", "min"),
-                    ).reset_index()
-
-                    if not sector_df.empty:
-                        colors_map = {
-                            "Banking": "#2563EB", "Information Technology": "#0891B2",
-                            "Broad Market": "#7C3AED", "Pharma & Healthcare": "#10B981",
-                            "FMCG": "#F59E0B", "Automobile": "#EF4444"
+                    st.dataframe(
+                        display_df,
+                        use_container_width=True,
+                        height=min(600, 50 + len(display_df) * 35),
+                        column_config={
+                            "Net Return %": st.column_config.NumberColumn(format="%.2f%%"),
+                            "Entry Level": st.column_config.NumberColumn(format="%.4f"),
+                            "Current Level": st.column_config.NumberColumn(format="%.4f"),
                         }
+                    )
 
-                        fig2 = go.Figure()
-                        fig2.add_trace(go.Bar(
-                            x=sector_df["sector"],
-                            y=sector_df["avg_return"],
-                            name="Avg Return",
-                            marker_color=[colors_map.get(s, "#6B7280") for s in sector_df["sector"]],
-                            text=[f"{x:.1f}%" for x in sector_df["avg_return"]],
-                            textposition="outside",
-                        ))
+                with tab2:
+                    if "return_pct" in df.columns and "ticker" in df.columns:
+                        chart_df = df[["ticker", "return_pct", "call"]].dropna(subset=["return_pct"]).sort_values("return_pct", ascending=True)
 
-                        fig2.update_layout(
-                            title="Average Return by Sector",
-                            paper_bgcolor="#FFFFFF",
-                            plot_bgcolor="#FAFBFC",
-                            font=dict(family="DM Sans", color="#374151"),
-                            height=450,
-                            yaxis_title="Return %",
-                            margin=dict(l=60, r=40, t=50, b=40),
-                            xaxis=dict(gridcolor="#F3F4F6"),
-                            yaxis=dict(gridcolor="#F3F4F6", zerolinecolor="#E5E7EB"),
-                        )
+                        if not chart_df.empty:
+                            colors = ["#10B981" if x >= 0 else "#EF4444" for x in chart_df["return_pct"]]
 
-                        st.plotly_chart(fig2, use_container_width=True)
+                            fig = go.Figure(go.Bar(
+                                y=chart_df["ticker"],
+                                x=chart_df["return_pct"],
+                                orientation="h",
+                                marker_color=colors,
+                                text=[f"{x:+.2f}%" for x in chart_df["return_pct"]],
+                                textposition="outside",
+                                hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>",
+                            ))
 
-                        st.dataframe(sector_df.rename(columns={
-                            "sector": "Sector", "count": "Alerts", "avg_return": "Avg %",
-                            "max_return": "Best %", "min_return": "Worst %"
-                        }), use_container_width=True)
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:60px 40px;">
-            <div style="font-size:3rem; margin-bottom:16px;">📊</div>
-            <div style="font-size:1rem; font-weight:600; color:#111827;">No performance data yet</div>
-            <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">Approve alerts first — tracking begins automatically via TradingView Heartbeats.</div>
-        </div>
-        """, unsafe_allow_html=True)
+                            fig.update_layout(
+                                title="Returns by Alert (Total since Approval)",
+                                paper_bgcolor="#FFFFFF",
+                                plot_bgcolor="#FAFBFC",
+                                font=dict(family="DM Sans", color="#374151"),
+                                height=max(400, len(chart_df) * 35),
+                                xaxis_title="Return %",
+                                yaxis_title="",
+                                showlegend=False,
+                                margin=dict(l=120, r=60, t=50, b=40),
+                                xaxis=dict(gridcolor="#F3F4F6", zerolinecolor="#E5E7EB"),
+                                yaxis=dict(gridcolor="#F3F4F6"),
+                            )
+
+                            st.plotly_chart(fig, use_container_width=True)
+
+                with tab3:
+                    if "sector" in df.columns:
+                        sector_df = df.groupby("sector").agg(
+                            count=("return_pct", "count"),
+                            avg_return=("return_pct", "mean"),
+                            max_return=("return_pct", "max"),
+                            min_return=("return_pct", "min"),
+                        ).reset_index()
+
+                        if not sector_df.empty:
+                            colors_map = {
+                                "Banking": "#2563EB", "Information Technology": "#0891B2",
+                                "Broad Market": "#7C3AED", "Pharma & Healthcare": "#10B981",
+                                "FMCG": "#F59E0B", "Automobile": "#EF4444"
+                            }
+
+                            fig2 = go.Figure()
+                            fig2.add_trace(go.Bar(
+                                x=sector_df["sector"],
+                                y=sector_df["avg_return"],
+                                name="Avg Return",
+                                marker_color=[colors_map.get(s, "#6B7280") for s in sector_df["sector"]],
+                                text=[f"{x:.1f}%" for x in sector_df["avg_return"]],
+                                textposition="outside",
+                            ))
+
+                            fig2.update_layout(
+                                title="Average Return by Sector",
+                                paper_bgcolor="#FFFFFF",
+                                plot_bgcolor="#FAFBFC",
+                                font=dict(family="DM Sans", color="#374151"),
+                                height=450,
+                                yaxis_title="Return %",
+                                margin=dict(l=60, r=40, t=50, b=40),
+                                xaxis=dict(gridcolor="#F3F4F6"),
+                                yaxis=dict(gridcolor="#F3F4F6", zerolinecolor="#E5E7EB"),
+                            )
+
+                            st.plotly_chart(fig2, use_container_width=True)
+
+                            st.dataframe(sector_df.rename(columns={
+                                "sector": "Sector", "count": "Alerts", "avg_return": "Avg %",
+                                "max_return": "Best %", "min_return": "Worst %"
+                            }), use_container_width=True)
+        else:
+            st.markdown("""
+            <div style="text-align:center; padding:60px 40px;">
+                <div style="font-size:3rem; margin-bottom:16px;">📊</div>
+                <div style="font-size:1rem; font-weight:600; color:#111827;">No performance data yet</div>
+                <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">Approve alerts first — tracking begins automatically via TradingView Heartbeats.</div>
+            </div>
+            """, unsafe_allow_html=True)
 
     # Call the fragment
     performance_data()
@@ -907,24 +931,24 @@ elif page == "⚙️ Settings":
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.error("❌ Backend not reachable. Make sure the server is running.")
+        st.error("❌ Critical: Backend engine is unreachable. Ensure the server is online.")
 
     # Quick actions
     col_qa1, col_qa2, col_qa3 = st.columns(3)
     with col_qa1:
-        if st.button("🔄 Force Refresh", use_container_width=True):
+        if st.button("🔄 Force Refresh Cache", use_container_width=True):
             st.rerun()
     with col_qa2:
         if st.button("📥 Load Test Alerts", use_container_width=True):
             result = api_post("/api/test-alert")
             if result and result.get("success"):
-                st.success(f"✅ {result['count']} test alerts created!")
+                st.success(f"✅ {result['count']} test alerts injected!")
                 time.sleep(1)
                 st.rerun()
     with col_qa3:
         st.markdown(f"""
         <div style="background:#F3F4F6; border-radius:10px; padding:10px 16px; text-align:center;">
-            <span style="font-size:12px; color:#6B7280;">Auto-refresh: <strong>{REFRESH_INTERVAL}s</strong></span>
+            <span style="font-size:12px; color:#6B7280;">Background Sync: <strong>{REFRESH_INTERVAL}s</strong></span>
         </div>
         """, unsafe_allow_html=True)
 
@@ -996,5 +1020,5 @@ elif page == "⚙️ Settings":
 
     **Step 5:** In the **Message** field, paste the correct JSON template. Replace placeholder values.
 
-    **Step 6:** Click **Create** — the alert will now send data to your FIE dashboard!
+    **Step 6:** Click **Create** — the alert will now silently route to your dashboard!
     """)
