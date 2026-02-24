@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import os
 import base64
@@ -22,63 +22,30 @@ st.markdown("""
     code, pre, .stCode { font-family: 'JetBrains Mono', monospace !important; }
     .stApp { background: #FAFBFC !important; }
     #MainMenu, footer { display: none !important; }
-    header[data-testid="stHeader"], .stAppHeader, header.stAppHeader,
-    div[data-testid="stHeader"], .st-emotion-cache-h4xjwg,
-    .st-emotion-cache-18ni7ap { display: none !important; height: 0 !important; visibility: hidden !important; }
-    .block-container { padding-top: 1rem !important; max-width: 1400px !important; }
+    header[data-testid="stHeader"] { display: none !important; }
+    .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
     section[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0C1222 0%, #131B2E 100%) !important;
         border-right: 1px solid rgba(255,255,255,0.04) !important;
         min-width: 240px !important; width: 240px !important;
     }
-    section[data-testid="stSidebar"] > div:first-child { padding-top: 1rem !important; }
     section[data-testid="stSidebar"] * { color: #C8D1DC !important; }
-    section[data-testid="stSidebar"] .stRadio label:hover { color: #FFFFFF !important; }
-    button[data-testid="stSidebarCollapseButton"],
-    button[data-testid="baseButton-headerNoPadding"],
-    [data-testid="collapsedControl"], .css-1dp5vir,
-    button[kind="headerNoPadding"], .st-emotion-cache-1dp5vir,
-    [data-testid="stHeaderActionElements"] { display: none !important; visibility: hidden !important; height: 0 !important; }
-    section[data-testid="stSidebar"][aria-expanded="false"] {
-        display: block !important; min-width: 240px !important; width: 240px !important;
-        transform: none !important; margin-left: 0 !important;
-    }
     div[data-testid="stMetric"] {
-        background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 10px;
-        padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 8px;
+        padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
-    div[data-testid="stMetric"]:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-    div[data-testid="stMetric"] label {
-        font-size: 10px !important; color: #8493A8 !important;
-        font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.5px !important;
-    }
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-        font-size: 24px !important; color: #0F172A !important; font-weight: 700 !important;
-    }
-    h1 { color: #0F172A !important; font-size: 22px !important; font-weight: 700 !important; margin-bottom: 2px !important; }
-    h3 { color: #1E293B !important; font-size: 15px !important; font-weight: 600 !important; }
-    .pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .pill-pending { background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; }
-    .pill-approved { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }
-    .pill-denied { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
-    .pill-review { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; }
-    .divider { border-top: 1px solid #F1F5F9; margin: 20px 0; }
-    .empty-state { text-align: center; padding: 60px 20px; color: #94A3B8; }
+    div[data-testid="stMetric"] label { font-size: 11px !important; color: #64748B !important; font-weight: 700 !important; text-transform: uppercase !important; }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] { font-size: 22px !important; color: #0F172A !important; font-weight: 800 !important; }
+    h1 { color: #0F172A !important; font-size: 20px !important; font-weight: 800 !important; margin-bottom: 2px !important; }
+    h3 { color: #1E293B !important; font-size: 14px !important; font-weight: 700 !important; margin-bottom: 16px !important; }
+    .divider { border-top: 1px solid #E2E8F0; margin: 24px 0; }
+    .empty-state { text-align: center; padding: 40px 20px; color: #94A3B8; }
     .refresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22C55E; margin-right: 6px; animation: pulse 2s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-    .alert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
-    .alert-card { background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all 0.15s ease; border-left: 4px solid #3B82F6; }
-    .alert-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.08); transform: translateY(-1px); }
-    .ac-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-    .ac-title { font-size: 15px; font-weight: 700; color: #0F172A; }
-    .ac-time { font-size: 10px; color: #94A3B8; }
-    .ac-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 10px 0; }
-    .ac-lbl { font-size: 9px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
-    .ac-val { font-size: 13px; color: #1E293B; font-weight: 600; }
-    .ac-msg { font-size: 12px; color: #475569; padding: 8px 12px; background: #F8FAFC; border-radius: 6px; margin-top: 8px; line-height: 1.5; border: 1px solid #E2E8F0; }
-    .db-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); border-left: 4px solid #3B82F6; }
-    .db-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
-    [data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; border: 1px solid #E8ECF1; }
+    
+    /* Native container tightening */
+    [data-testid="stVerticalBlockBorderWrapper"] { padding: 16px !important; border-radius: 10px !important; background: #FFFFFF !important; box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important; }
+    [data-testid="stVerticalBlockBorderWrapper"]:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06) !important; border-color: #CBD5E1 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -100,11 +67,14 @@ def fmt_price(val):
     try: return f"₹{float(val):,.2f}"
     except: return "—"
 
-def fmt_short(iso_str):
+def fmt_ist(iso_str):
+    """Parses UTC string, converts to IST, formats to strict standard"""
     if not iso_str: return "—"
     try:
         dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
-        return dt.strftime("%d %b, %H:%M")
+        # Add 5 hours 30 mins for IST
+        ist_dt = dt + timedelta(hours=5, minutes=30)
+        return ist_dt.strftime("%d-%b-%y %I:%M %p").lower()
     except: return str(iso_str)[:16]
 
 def fmt_vol(val):
@@ -118,13 +88,20 @@ def fmt_vol(val):
         return f"{v:,.0f}"
     except: return "—"
 
+def asset_pill(asset_class):
+    """Returns color-coded HTML span based on asset class"""
+    a = str(asset_class or "EQUITY").upper()
+    if a == "COMMODITY": bg, tc, br = "#FFFBEB", "#B45309", "#FDE68A"
+    elif a == "CURRENCY": bg, tc, br = "#ECFDF5", "#059669", "#A7F3D0"
+    elif a == "INDEX": bg, tc, br = "#F3E8FF", "#7E22CE", "#D8B4FE"
+    else: bg, tc, br = "#EFF6FF", "#2563EB", "#BFDBFE"
+    return f"<span style='background:{bg}; color:{tc}; border:1px solid {br}; padding:3px 8px; border-radius:6px; font-size:9px; font-weight:800; letter-spacing:0.5px;'>{a}</span>"
+
 def stat_pill(s):
     s = str(s or "PENDING").upper()
-    cm = {"PENDING":"pill-pending","APPROVED":"pill-approved","DENIED":"pill-denied","REVIEW_LATER":"pill-review"}
-    lm = {"REVIEW_LATER": "REVIEW"}
-    pill_cls = cm.get(s, "pill-pending")
-    label = lm.get(s, s)
-    return f"<span class='pill {pill_cls}'>{label}</span>"
+    if s == "PENDING": return "<span style='color:#B45309; background:#FFFBEB; border:1px solid #FDE68A; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>PENDING</span>"
+    if s == "APPROVED": return "<span style='color:#059669; background:#ECFDF5; border:1px solid #A7F3D0; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>APPROVED</span>"
+    return f"<span style='color:#DC2626; background:#FEF2F2; border:1px solid #FECACA; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>{s}</span>"
 
 def ret_color(v):
     if v is None: return "#64748B"
@@ -161,195 +138,139 @@ _should_auto_refresh = st.session_state.get("auto_refresh", True) and page in ["
 # COMMAND CENTER
 # ═══════════════════════════════════════════════════════════
 if page == "Command Center":
-    st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed · Pending alerts requiring action</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
-    pending_ct = stats.get("pending", 0) + stats.get("review_later", 0)
     
-    # Cleaned up metrics
-    c1, c2 = st.columns(2)
-    c1.metric("Pending Alerts", pending_ct)
-    now = datetime.now()
-    c2.metric("Market Status", "OPEN" if (now.weekday() < 5 and 9 <= now.hour < 16) else "CLOSED")
+    c1, c2, c3 = st.columns([1,1,3])
+    c1.metric("Pending Queue", stats.get("pending", 0))
+    c2.metric("Market", "OPEN" if (datetime.now().weekday() < 5 and 9 <= datetime.now().hour < 16) else "CLOSED")
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    fc1, _, _, _ = st.columns([1, 1, 1, 2])
-    with fc1:
-        sf = st.selectbox("Filter", ["PENDING", "All", "APPROVED", "DENIED", "REVIEW_LATER"], label_visibility="collapsed", key="cf")
-    params = {"limit": 50}
-    if sf != "All": params["status"] = sf
-    data = api_call('GET', "/api/alerts", params=params)
     
+    data = api_call('GET', "/api/alerts", params={"limit": 50, "status": "PENDING"})
     if not data or not data.get("alerts"):
-        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No signals in the feed</p></div>", unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📡</div><p style='font-size:14px;margin-top:12px;'>No pending signals in the feed</p></div>", unsafe_allow_html=True)
     else:
-        html = "<div class='alert-grid'>"
-        for al in data["alerts"]:
-            nm = clean_placeholder(al.get("alert_name") or "System Trigger")
-            tk = al.get("ticker") or "—"
-            pr = al.get("price_at_alert")
-            sv = al.get("status", "PENDING")
-            iv = al.get("interval") or "—"
-            sec = al.get("sector") or "—"
-            vol = al.get("volume")
-            exch = al.get("exchange") or "—"
-            asset = al.get("asset_class") or "—"
-            rcv = fmt_short(al.get("received_at"))
-            msg = clean_placeholder(al.get("alert_message") or "")
-            inds = al.get("indicator_values") or {}
-            
-            ichips = ""
-            for k, v in list(inds.items())[:4]:
-                try: vv = f"{float(v):.1f}"
-                except: vv = str(v)[:12]
-                ichips += f"<span style='display:inline-block;padding:3px 8px;background:#F1F5F9;border-radius:4px;font-size:10px;color:#334155;margin-right:4px;margin-bottom:4px;font-weight:600;border:1px solid #E2E8F0;'>{k.upper()}: {vv}</span>"
-            
-            html += f"""<div class="alert-card">
-                <div class="ac-header">
-                    <div><div class="ac-title">{nm}</div><div style="margin-top:6px;">{stat_pill(sv)}</div></div>
-                    <div class="ac-time">{rcv}</div>
-                </div>
-                <div class="ac-grid">
-                    <div><div class="ac-lbl">Ticker</div><div class="ac-val">{tk}</div></div>
-                    <div><div class="ac-lbl">Price</div><div class="ac-val">{fmt_price(pr)}</div></div>
-                    <div><div class="ac-lbl">Exchange</div><div class="ac-val">{exch}</div></div>
-                    <div><div class="ac-lbl">Interval</div><div class="ac-val">{iv}</div></div>
-                    <div><div class="ac-lbl">Volume</div><div class="ac-val">{fmt_vol(vol)}</div></div>
-                    <div><div class="ac-lbl">Asset</div><div class="ac-val">{asset}</div></div>
-                </div>
-                {f'<div style="margin-bottom:8px;margin-top:6px;">{ichips}</div>' if ichips else ''}
-                {f'<div class="ac-msg">{msg[:180]}</div>' if msg else ''}
-            </div>"""
-        html += "</div>"
-        st.markdown(html.replace('\n', ''), unsafe_allow_html=True)
+        # Standardized 3-Column Grid
+        cols = st.columns(3)
+        for i, al in enumerate(data["alerts"]):
+            with cols[i % 3]:
+                with st.container(border=True):
+                    # Clean Card Header
+                    st.markdown(f"""
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
+                        {asset_pill(al.get('asset_class'))}
+                        <div style='font-size:11px; color:#64748B; font-weight:700;'>{fmt_ist(al.get('received_at'))}</div>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px;'>
+                        <div>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(al.get("alert_name", "Alert"))}</div>
+                            <div style='font-size:12px; font-weight:600; color:#475569;'>{al.get("ticker", "—")}</div>
+                        </div>
+                        <div style='text-align:right;'>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get("price_at_alert"))}</div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    msg = clean_placeholder(al.get("alert_message") or "")
+                    if msg:
+                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4;'>{msg[:150]}</div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
 # TRADE DESK
 # ═══════════════════════════════════════════════════════════
 elif page == "Trade Desk":
-    st.markdown("<h1>Trade Desk</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Review, approve, and record rationale for each alert</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Trade Desk</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Review and record rationale for each alert</p>", unsafe_allow_html=True)
     st.markdown("### Pending Execution Queue")
-    d1 = api_call('GET', "/api/alerts", params={"status": "PENDING", "limit": 20})
-    d2 = api_call('GET', "/api/alerts", params={"status": "REVIEW_LATER", "limit": 20})
-    pending = (d1.get("alerts", []) if d1 else []) + (d2.get("alerts", []) if d2 else [])
+    
+    pending_data = api_call('GET', "/api/alerts", params={"status": "PENDING", "limit": 30})
+    pending = pending_data.get("alerts", []) if pending_data else []
     
     if not pending:
         st.markdown("<div style='background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:20px; text-align:center;'><span style='color:#166534; font-weight:600;'>✓ Queue is clear</span></div>", unsafe_allow_html=True)
     else:
-        for al in pending:
+        # Standardized 3-Column Grid for Processing
+        cols = st.columns(3)
+        for i, al in enumerate(pending):
             aid = al["id"]
-            with st.container(border=True):
-                nm = clean_placeholder(al.get('alert_name','Signal'))
-                tk = al.get('ticker','—')
-                pr = fmt_price(al.get('price_at_alert'))
-                exch = al.get('exchange','—')
-                iv = al.get('interval','—')
-                sec = al.get('sector','—')
-                vol = fmt_vol(al.get('volume'))
-                msg = clean_placeholder(al.get("alert_message", ""))
-                
-                # Single, bulletproof HTML block for the data display (fixes invisibility bug)
-                td_html = f"""
-                <div style="margin-bottom:14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+            with cols[i % 3]:
+                with st.container(border=True):
+                    # Tight layout header
+                    st.markdown(f"""
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
+                        {asset_pill(al.get('asset_class'))}
+                        <div style='font-size:11px; color:#64748B; font-weight:700;'>{fmt_ist(al.get('received_at'))}</div>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px;'>
                         <div>
-                            <div style="font-size:18px;font-weight:700;color:#0F172A;margin-bottom:4px;">{nm}</div>
-                            <div style="font-size:12px;color:#64748B;font-weight:500;">{tk} &nbsp;&bull;&nbsp; {exch} &nbsp;&bull;&nbsp; {iv} &nbsp;&bull;&nbsp; {sec}</div>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(al.get('alert_name','Signal'))}</div>
+                            <div style='font-size:12px; font-weight:600; color:#475569;'>{al.get('ticker','—')} &middot; Vol: {fmt_vol(al.get('volume'))}</div>
                         </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:20px;font-weight:700;color:#0F172A;">{pr}</div>
-                            <div style="font-size:11px;color:#64748B;font-weight:500;margin-top:2px;">Vol: {vol} &nbsp;&bull;&nbsp; {fmt_short(al.get('received_at'))}</div>
+                        <div style='text-align:right;'>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get('price_at_alert'))}</div>
                         </div>
                     </div>
-                """
-                if msg:
-                    td_html += f"<div style='background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 16px; border-radius:8px; font-size:13px; color:#334155; line-height:1.5;'>{msg[:250]}</div>"
-                td_html += "</div>"
-                
-                st.markdown(td_html.replace('\n', ''), unsafe_allow_html=True)
-                
-                # Action Buttons
-                approve_key = f"approve_{aid}"
-                if approve_key not in st.session_state:
-                    st.session_state[approve_key] = False
-                
-                b1, b2, b3, _ = st.columns([1,1,1,3])
-                with b1:
-                    if st.button("✓ Approve", key=f"ab{aid}", type="primary", use_container_width=True):
-                        st.session_state[approve_key] = True
-                with b2:
-                    if st.button("✗ Reject", key=f"db{aid}", use_container_width=True):
-                        api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"DENIED"})
-                        st.rerun()
-                with b3:
-                    if st.button("◷ Later", key=f"rb{aid}", use_container_width=True):
-                        api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"REVIEW_LATER"})
-                        st.rerun()
-                
-                # Condensed Approval Form
-                if st.session_state.get(approve_key, False):
-                    st.divider()
-                    ac1, ac2 = st.columns(2)
-                    with ac1:
-                        call = st.selectbox("Action Call", ["BUY","SELL","HOLD","STRONG_BUY","STRONG_SELL","ACCUMULATE","REDUCE","EXIT","WATCH"], key=f"call{aid}")
-                    with ac2:
-                        conv = st.select_slider("Conviction", ["LOW","MEDIUM","HIGH"], value="MEDIUM", key=f"conv{aid}")
+                    """, unsafe_allow_html=True)
                     
-                    commentary = st.text_area("FM Commentary", placeholder="Your thesis, rationale, or notes for the board...", key=f"cmt{aid}", height=68)
-                    chart_file = st.file_uploader("Attach Chart Image (Optional)", type=["png","jpg","jpeg"], key=f"ch{aid}")
+                    approve_key = f"approve_{aid}"
+                    if approve_key not in st.session_state:
+                        st.session_state[approve_key] = False
                     
-                    cb64 = None
-                    if chart_file:
-                        cb64 = base64.b64encode(chart_file.read()).decode('utf-8')
-                        st.image(chart_file, caption="Chart preview", width=300)
-                    
-                    sc1, sc2, _ = st.columns([1,1,4])
-                    with sc1:
-                        if st.button("✓ Submit", key=f"sub{aid}", type="primary", use_container_width=True):
-                            payload = {
-                                "alert_id": aid, "decision": "APPROVED",
-                                "primary_call": call, "conviction": conv,
-                                "fm_rationale_text": commentary if commentary else None,
-                                "chart_image_b64": cb64,
-                            }
-                            api_call('POST', f"/api/alerts/{aid}/action", payload)
-                            st.session_state[approve_key] = False
+                    # Stripped down to just 2 buttons
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        if st.button("✓ Approve", key=f"ab{aid}", type="primary", use_container_width=True):
+                            st.session_state[approve_key] = True
+                    with b2:
+                        if st.button("✗ Reject", key=f"db{aid}", use_container_width=True):
+                            api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"DENIED"})
                             st.rerun()
-                    with sc2:
-                        if st.button("Cancel", key=f"can{aid}", use_container_width=True):
-                            st.session_state[approve_key] = False
-                            st.rerun()
+                    
+                    # Condensed Form only shows if clicked
+                    if st.session_state.get(approve_key, False):
+                        st.divider()
+                        call = st.selectbox("Call", ["BUY","SELL","HOLD","STRONG_BUY","STRONG_SELL"], key=f"call{aid}", label_visibility="collapsed")
+                        conv = st.select_slider("Conviction", ["LOW","MEDIUM","HIGH"], value="MEDIUM", key=f"conv{aid}", label_visibility="collapsed")
+                        commentary = st.text_area("Remarks", placeholder="Rationale...", key=f"cmt{aid}", height=68, label_visibility="collapsed")
+                        
+                        sc1, sc2 = st.columns(2)
+                        with sc1:
+                            if st.button("Submit", key=f"sub{aid}", type="primary", use_container_width=True):
+                                api_call('POST', f"/api/alerts/{aid}/action", {
+                                    "alert_id": aid, "decision": "APPROVED",
+                                    "primary_call": call, "conviction": conv,
+                                    "fm_rationale_text": commentary if commentary else None
+                                })
+                                st.session_state[approve_key] = False
+                                st.rerun()
+                        with sc2:
+                            if st.button("Cancel", key=f"can{aid}", use_container_width=True):
+                                st.session_state[approve_key] = False
+                                st.rerun()
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     st.markdown("### Recent Decisions")
-    hist = api_call('GET', "/api/alerts", params={"limit": 20})
+    hist = api_call('GET', "/api/alerts", params={"limit": 12})
     if hist and hist.get("alerts"):
-        for a in [x for x in hist["alerts"] if x.get("status") in ("APPROVED","DENIED","REVIEW_LATER")][:10]:
+        r_cols = st.columns(3)
+        rc_list = [x for x in hist["alerts"] if x.get("status") in ("APPROVED","DENIED")][:12]
+        
+        for i, a in enumerate(rc_list):
             act = a.get("action") or {}
-            nm = clean_placeholder(a.get('alert_name', a.get('ticker','—')))
-            remarks = act.get('remarks')
-            
-            # Bulletproof HTML block to prevent ghosting and visibility issues
-            rd_html = f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:10px; padding:16px; margin-bottom:12px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <div style="font-size:15px; font-weight:700; color:#0F172A; margin-bottom:6px;">{nm}</div>
-                        <div>
-                            {stat_pill(a.get('status'))}
-                            <span style="margin-left:10px; font-size:13px; color:#1E293B; font-weight:700;">{act.get('call','—')}</span>
-                            <span style="margin-left:6px; font-size:12px; color:#64748B;">({act.get('conviction','')})</span>
-                        </div>
+            with r_cols[i % 3]:
+                with st.container(border=True):
+                    st.markdown(f"""
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                        <div style='font-size:14px; font-weight:800; color:#0F172A;'>{clean_placeholder(a.get('alert_name','—'))}</div>
+                        {stat_pill(a.get('status'))}
                     </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:15px; font-weight:700; color:#0F172A; margin-bottom:4px;">{a.get('ticker','—')}</div>
-                        <div style="font-size:11px; color:#94A3B8; font-weight:500;">{fmt_short(act.get('decision_at') or a.get('received_at'))}</div>
+                    <div style='display:flex; justify-content:space-between; align-items:center;'>
+                        <div style='font-size:12px; font-weight:600; color:#334155;'>{a.get('ticker','—')} &middot; <span style='color:#0F172A;'>{act.get('call','—')}</span></div>
+                        <div style='font-size:10px; color:#94A3B8; font-weight:700;'>{fmt_ist(act.get('decision_at') or a.get('received_at'))}</div>
                     </div>
-                </div>
-                {f"<div style='margin-top:12px; padding-top:10px; border-top:1px solid #F1F5F9; font-size:13px; color:#475569; line-height:1.5;'>{remarks}</div>" if remarks else ""}
-            </div>
-            """
-            st.markdown(rd_html.replace('\n', ''), unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -357,9 +278,9 @@ elif page == "Trade Desk":
 # ═══════════════════════════════════════════════════════════
 elif page == "Portfolio Analytics":
     st.markdown("<h1>Portfolio Analytics</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Live performance of approved positions</p>", unsafe_allow_html=True)
-    cr, _ = st.columns([1, 4])
+    cr, _ = st.columns([1, 5])
     with cr:
-        if st.button("🔄 Refresh Live Prices", type="primary", use_container_width=True):
+        if st.button("🔄 Sync Prices", type="primary", use_container_width=True):
             with st.spinner("Fetching live prices..."): result = api_call('POST', "/api/performance/refresh")
             if result: st.toast(f"Updated {result.get('updated_count',0)} positions")
             st.rerun()
@@ -380,137 +301,102 @@ elif page == "Portfolio Analytics":
         
         st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
         
-        for p in perf:
+        # Standardized 3-Column Grid for Analytics
+        cols = st.columns(3)
+        for i, p in enumerate(perf):
             rp = p.get("return_pct")
             rc = ret_color(rp)
             rs = f"{rp:+.2f}%" if rp is not None else "—"
-            with st.container(border=True):
-                pc1, pc2, pc3, pc4, pc5 = st.columns([2.5,1.5,1.5,1.5,1])
-                with pc1:
-                    nm = clean_placeholder(p.get('alert_name','—'))
-                    st.markdown(f"<div style='font-weight:700;font-size:16px;color:#0F172A;'>{p.get('ticker','—')}</div><div style='font-size:12px;color:#64748B;margin-top:2px;'>{nm}</div>".replace('\n',''), unsafe_allow_html=True)
-                with pc2:
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Entry → Current</div><div style='font-size:14px;color:#1E293B;font-weight:700;margin-top:2px;'>{fmt_price(p.get('reference_price'))} → {fmt_price(p.get('current_price'))}</div>".replace('\n',''), unsafe_allow_html=True)
-                with pc3:
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Return</div><div style='font-size:18px;font-weight:800;color:{rc};margin-top:2px;'>{rs}</div>".replace('\n',''), unsafe_allow_html=True)
-                with pc4:
-                    dd = p.get("max_drawdown")
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Max DD</div><div style='font-size:14px;font-weight:700;color:#DC2626;margin-top:2px;'>{dd:.2f}%</div>".replace('\n','') if dd else "<div style='font-size:10px;color:#94A3B8;'>Max DD</div><div>—</div>", unsafe_allow_html=True)
-                with pc5:
-                    call_val = p.get("action_call") or "—"
-                    conv_val = p.get("conviction") or "—"
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Call</div><div style='font-size:14px;font-weight:700;color:#0F172A;margin-top:2px;'>{call_val}</div><div style='font-size:11px;color:#64748B;'>{conv_val}</div>".replace('\n',''), unsafe_allow_html=True)
-                
-                upd = fmt_short(p.get("last_updated"))
-                st.markdown(f"<div style='font-size:10px;color:#94A3B8;margin-top:10px;border-top:1px solid #F1F5F9;padding-top:8px;'>Last updated: {upd}</div>".replace('\n',''), unsafe_allow_html=True)
+            
+            with cols[i % 3]:
+                with st.container(border=True):
+                    st.markdown(f"""
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
+                        <div style='font-size:16px; font-weight:800; color:#0F172A;'>{p.get('ticker','—')}</div>
+                        <div style='font-size:18px; font-weight:800; color:{rc};'>{rs}</div>
+                    </div>
+                    <div style='font-size:11px; color:#64748B; font-weight:600; margin-bottom:12px;'>
+                        {clean_placeholder(p.get('alert_name','—'))} &middot; <span style='color:#0F172A;'>{p.get("action_call") or "—"} ({p.get("conviction") or "—"})</span>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; align-items:center; background:#F8FAFC; padding:8px 12px; border-radius:6px; border:1px solid #E2E8F0; margin-bottom:10px;'>
+                        <div>
+                            <div style='font-size:9px; color:#94A3B8; text-transform:uppercase; font-weight:800;'>Entry</div>
+                            <div style='font-size:13px; font-weight:700; color:#0F172A;'>{fmt_price(p.get('reference_price'))}</div>
+                        </div>
+                        <div style='color:#CBD5E1;'>→</div>
+                        <div style='text-align:right;'>
+                            <div style='font-size:9px; color:#94A3B8; text-transform:uppercase; font-weight:800;'>Current</div>
+                            <div style='font-size:13px; font-weight:700; color:#0F172A;'>{fmt_price(p.get('current_price'))}</div>
+                        </div>
+                    </div>
+                    <div style='display:flex; justify-content:space-between; align-items:center;'>
+                        <div style='font-size:10px; color:#64748B; font-weight:600;'>Max DD: <span style='color:#DC2626;'>{p.get("max_drawdown", 0.0):.2f}%</span></div>
+                        <div style='font-size:9px; color:#94A3B8; font-weight:700;'>UPD: {fmt_ist(p.get('last_updated'))}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
     else:
-        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📊</div><p style='font-size:14px;margin-top:12px;'>No active positions</p></div>".replace('\n',''), unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📊</div><p style='font-size:14px;margin-top:12px;'>No active positions</p></div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
-# ALERT DATABASE (Board View)
+# ALERT DATABASE
 # ═══════════════════════════════════════════════════════════
 elif page == "Alert Database":
     st.markdown("<h1>Alert Database</h1><p style='color:#64748B; font-size:13px; margin-bottom:24px;'>Board-ready view of all approved recommendations</p>", unsafe_allow_html=True)
     
-    f1,f2,f3,f4 = st.columns([1,1,1,1])
-    with f1: ds = st.selectbox("Status", ["APPROVED","All","PENDING","DENIED","REVIEW_LATER"], key="ds")
-    with f2: time_filter = st.selectbox("Timeframe", ["All Time", "Last 24h", "Last 7d", "Last 30d"], key="tf")
-    with f3: dl = st.selectbox("Rows", [50,100,200], key="dl")
-    with f4: view_mode = st.selectbox("View", ["Cards", "Table"], key="vm")
+    f1, f2, f3 = st.columns([1,1,2])
+    with f1: ds = st.selectbox("Status", ["APPROVED", "All", "PENDING", "DENIED"], key="ds", label_visibility="collapsed")
+    with f2: view_mode = st.selectbox("View", ["Cards", "Table"], key="vm", label_visibility="collapsed")
     
-    pm = {"limit": dl}
+    pm = {"limit": 100}
     if ds != "All": pm["status"] = ds
     
     m = api_call('GET', "/api/master", params=pm)
     
     if m and m.get("alerts"):
         als = m["alerts"]
-        
-        if time_filter != "All Time":
-            filtered_als = []
-            current_ts = time.time()
-            for a in als:
-                try:
-                    a_dt = datetime.fromisoformat(str(a.get('received_at')).replace("Z", "+00:00"))
-                    diff_days = (current_ts - a_dt.timestamp()) / 86400.0
-                    if time_filter == "Last 24h" and diff_days <= 1: filtered_als.append(a)
-                    elif time_filter == "Last 7d" and diff_days <= 7: filtered_als.append(a)
-                    elif time_filter == "Last 30d" and diff_days <= 30: filtered_als.append(a)
-                except: filtered_als.append(a)
-            als = filtered_als
-            
-        st.markdown(f"<p style='font-size:12px; color:#94A3B8; margin-bottom:16px;'>Showing {len(als)} alerts</p>", unsafe_allow_html=True)
+        st.markdown(f"<p style='font-size:11px; color:#94A3B8; margin-bottom:16px; font-weight:700;'>Showing {len(als)} records</p>", unsafe_allow_html=True)
         
         if view_mode == "Cards":
-            for a in als:
+            # Standardized 3-Column Grid
+            cols = st.columns(3)
+            for i, a in enumerate(als):
                 act = a.get("action") or {}
-                perf = a.get("performance") or {}
-                rp = perf.get("return_pct")
-                rc = ret_color(rp)
-                rs = f"{rp:+.2f}%" if rp is not None else "—"
-                nm = clean_placeholder(a.get('alert_name','—'))
-                
-                with st.container(border=True):
-                    card = f"""
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;">
-                            <div>
-                                <div style="font-size:18px;font-weight:700;color:#0F172A;margin-bottom:8px;">{nm}</div>
-                                <div>{stat_pill(a.get('status'))}
-                                {f"<span style='margin-left:8px;padding:4px 12px;background:#F1F5F9;border-radius:100px;font-size:11px;font-weight:700;color:#1E293B;border:1px solid #E2E8F0;'>{act.get('call','')}</span>" if act.get('call') else ''}
-                                {f"<span style='margin-left:6px;font-size:12px;color:#64748B;font-weight:500;'>({act.get('conviction','')})</span>" if act.get('conviction') else ''}
-                                </div>
-                            </div>
-                            <div style="text-align:right;">
-                                <div style="font-size:24px;font-weight:800;color:{rc};">{rs}</div>
-                                <div style="font-size:11px;color:#94A3B8;font-weight:500;margin-top:4px;">{fmt_short(a.get('received_at'))}</div>
-                            </div>
+                with cols[i % 3]:
+                    with st.container(border=True):
+                        st.markdown(f"""
+                        <div style='display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;'>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(a.get('alert_name','—'))}</div>
+                            {stat_pill(a.get('status'))}
                         </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Ticker</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{a.get('ticker','—')}</div></div>
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Entry Price</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{fmt_price(a.get('price_at_alert'))}</div></div>
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Current</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{fmt_price(perf.get('current_price'))}</div></div>
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Exchange</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{a.get('exchange','—')}</div></div>
-                        </div>"""
-                    
-                    remarks = act.get("remarks")
-                    if remarks:
-                        card += f"""<div style="background:#F8FAFC;border:1px solid #E2E8F0; border-left:4px solid #3B82F6;padding:12px 16px;border-radius:4px 8px 8px 4px;margin-top:16px;margin-bottom:16px;">
-                            <div style="font-size:10px;color:#3B82F6;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Fund Manager's View</div>
-                            <div style="font-size:13px;color:#334155;line-height:1.6;">{remarks}</div>
-                        </div>"""
-                    st.markdown(card.replace('\n', ''), unsafe_allow_html=True)
-                    
-                    act_col1, act_col2 = st.columns([1, 4])
-                    with act_col1:
-                        if st.button("🗑️ Delete", key=f"del_{a['id']}", use_container_width=True):
-                            api_call('DELETE', f"/api/alerts/{a['id']}")
-                            st.rerun()
-                    with act_col2:
-                        if act.get("has_chart"):
-                            with st.expander("📊 View Attached Chart"):
-                                chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
-                                if chart_data and chart_data.get("chart_image_b64"):
-                                    try:
-                                        img_bytes = base64.b64decode(chart_data["chart_image_b64"])
-                                        st.image(img_bytes, caption=f"Chart for {a.get('ticker','—')}", use_container_width=True)
-                                    except: pass
-        
+                        <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
+                            <div style='font-size:13px; font-weight:700; color:#334155;'>{a.get('ticker','—')}</div>
+                            <div style='font-size:10px; color:#94A3B8; font-weight:700;'>{fmt_ist(a.get('received_at'))}</div>
+                        </div>
+                        <div style='font-size:12px; color:#64748B; font-weight:600; margin-bottom:16px;'>
+                            Price: <span style='color:#0F172A;'>{fmt_price(a.get('price_at_alert'))}</span> &middot; Call: <span style='color:#0F172A;'>{act.get('call','—')}</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Bottom Actions
+                        bc1, bc2 = st.columns([1,1])
+                        with bc1:
+                            if st.button("🗑️ Delete", key=f"del_{a['id']}", use_container_width=True):
+                                api_call('DELETE', f"/api/alerts/{a['id']}")
+                                st.rerun()
         else:
             rows = [{
-                "Date": fmt_short(a.get("received_at")),
+                "Date (IST)": fmt_ist(a.get("received_at")),
                 "Alert": clean_placeholder(a.get("alert_name","—")),
                 "Ticker": a.get("ticker","—"),
                 "Price": fmt_price(a.get("price_at_alert")),
                 "Status": a.get("status","PENDING"),
-                "Call": (a.get("action") or {}).get("call","—"),
-                "Conviction": (a.get("action") or {}).get("conviction","—"),
-                "Return": f"{(a.get('performance') or {}).get('return_pct',0):+.2f}%" if (a.get("performance") or {}).get("return_pct") is not None else "—",
+                "Call": (a.get("action") or {}).get("call","—")
             } for a in als]
             df = pd.DataFrame(rows)
             def cs(v):
-                return {"APPROVED":"background-color:#ECFDF5;color:#059669","DENIED":"background-color:#FEF2F2;color:#DC2626","PENDING":"background-color:#FFFBEB;color:#B45309","REVIEW_LATER":"background-color:#EFF6FF;color:#2563EB"}.get(v,"")
-            st.dataframe(df.style.map(cs, subset=["Status"]), use_container_width=True, hide_index=True, height=600)
+                return {"APPROVED":"background-color:#ECFDF5;color:#059669","DENIED":"background-color:#FEF2F2;color:#DC2626","PENDING":"background-color:#FFFBEB;color:#B45309"}.get(v,"")
+            st.dataframe(df.style.map(cs, subset=["Status"]), use_container_width=True, hide_index=True)
 
     else:
         st.markdown("<div class='empty-state'><div style='font-size:40px;opacity:0.3;'>📁</div><p style='font-size:14px;margin-top:12px;'>No alerts in database</p></div>", unsafe_allow_html=True)
@@ -526,9 +412,8 @@ elif page == "Integrations":
     st.markdown(f"<div style='background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px; font-family:monospace; font-size:13px;'>POST <b>{wh}</b></div>", unsafe_allow_html=True)
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
-    
-    st.markdown("### Webhook JSON Template")
-    st.markdown("<p style='font-size:13px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text.</p>", unsafe_allow_html=True)
+    st.markdown("### Universal Webhook Template")
+    st.markdown("<p style='font-size:12px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text. The system no longer requires you to map signal direction.</p>", unsafe_allow_html=True)
     st.code(json.dumps({
         "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
         "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
