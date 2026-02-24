@@ -23,8 +23,16 @@ st.markdown("""
     .stApp { background: #FAFBFC !important; }
     #MainMenu, footer { display: none !important; }
     
-    /* Hide top header so it looks like a clean app */
-    header[data-testid="stHeader"] { display: none !important; height: 0 !important; }
+    /* Extreme cleanup of Streamlit's native header to prevent 'keyboard_do' text spilling */
+    header[data-testid="stHeader"] { display: none !important; height: 0 !important; visibility: hidden !important; }
+    [data-testid="collapsedControl"], [data-testid="stSidebarCollapseButton"], .st-emotion-cache-1dp5vir { 
+        display: none !important; 
+        visibility: hidden !important; 
+        color: transparent !important; 
+        font-size: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
     
     .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
     
@@ -40,7 +48,6 @@ st.markdown("""
         display: block !important; min-width: 240px !important; width: 240px !important;
         transform: none !important; margin-left: 0 !important;
     }
-    button[data-testid="stSidebarCollapseButton"] { display: none !important; }
     section[data-testid="stSidebar"] * { color: #C8D1DC !important; }
     
     /* Metrics and Cards */
@@ -95,7 +102,6 @@ def fmt_ist(iso_str):
     if not iso_str: return "—"
     try:
         dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
-        # Add 5 hours 30 mins for IST
         ist_dt = dt + timedelta(hours=5, minutes=30)
         return ist_dt.strftime("%d-%b-%y %I:%M %p").lower()
     except: return str(iso_str)[:16]
@@ -132,10 +138,10 @@ def ret_color(v):
 
 def clean_placeholder(text):
     if not text: return ""
-    t = str(text)
-    t = t.replace("{{strategy.order.comment}}", "Manual Alert")
-    t = t.replace("{{alert_name}}", "Manual Alert")
-    t = t.replace("alert_name", "Manual Alert")
+    t = str(text).strip()
+    invalid_names = ["{{strategy.order.comment}}", "{{alert_name}}", "alert_name", "None", "null", ""]
+    if t in invalid_names:
+        return "Manual Alert"
     return t
 
 
@@ -209,9 +215,10 @@ if page == "Command Center":
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    msg = clean_placeholder(al.get("alert_message") or "")
+                    msg = al.get("alert_message") or ""
+                    # Safely wrapping message in a scrolling div in case the webhook dumps raw JSON
                     if msg:
-                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4;'>{msg[:150]}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:80px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;'>{msg}</div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -254,7 +261,7 @@ elif page == "Trade Desk":
                     if approve_key not in st.session_state:
                         st.session_state[approve_key] = False
                     
-                    # Neater, smaller buttons (removed use_container_width=True)
+                    # Stripped down to just 2 buttons (Approve / Reject)
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("✓ Approve", key=f"ab{aid}", type="primary"):
@@ -271,7 +278,7 @@ elif page == "Trade Desk":
                         conv = st.select_slider("Conviction", ["LOW","MEDIUM","HIGH"], value="MEDIUM", key=f"conv{aid}", label_visibility="collapsed")
                         commentary = st.text_area("Remarks", placeholder="Rationale...", key=f"cmt{aid}", height=68, label_visibility="collapsed")
                         
-                        # RESTORED: Chart Upload
+                        # Chart Upload
                         chart_file = st.file_uploader("Attach Chart (Optional)", type=["png","jpg","jpeg"], key=f"ch{aid}", label_visibility="collapsed")
                         cb64 = None
                         if chart_file:
@@ -333,7 +340,7 @@ elif page == "Portfolio Analytics":
     if data and data.get("performance"):
         perf = data["performance"]
         n = len(perf)
-        rets = [p.get("return_pct",0) or 0 for p in perf]
+        rets = [p.get("return_pct", 0.0) or 0.0 for p in perf]
         avg = sum(rets)/max(n,1)
         wins = sum(1 for r in rets if r > 0)
         
@@ -341,7 +348,10 @@ elif page == "Portfolio Analytics":
         m1.metric("Positions", n)
         m2.metric("Avg Return", f"{avg:+.2f}%")
         m3.metric("Win Rate", f"{wins/max(n,1)*100:.0f}%")
-        m4.metric("Best / Worst", f"{max(rets):+.1f}% / {min(rets):+.1f}%")
+        
+        best_ret = max(rets) if rets else 0.0
+        worst_ret = min(rets) if rets else 0.0
+        m4.metric("Best / Worst", f"{best_ret:+.1f}% / {worst_ret:+.1f}%")
         
         st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
         
@@ -351,6 +361,13 @@ elif page == "Portfolio Analytics":
             rp = p.get("return_pct")
             rc = ret_color(rp)
             rs = f"{rp:+.2f}%" if rp is not None else "—"
+            
+            # 🔥 Bulletproof protection against NoneType math crashes
+            dd = p.get("max_drawdown")
+            if dd is not None:
+                dd_html = f"<div style='font-size:13px;font-weight:600;color:#DC2626;'>{float(dd):.2f}%</div>"
+            else:
+                dd_html = "<div style='font-size:13px;font-weight:600;color:#94A3B8;'>—</div>"
             
             with cols[i % 3]:
                 with st.container(border=True):
@@ -374,8 +391,11 @@ elif page == "Portfolio Analytics":
                         </div>
                     </div>
                     <div style='display:flex; justify-content:space-between; align-items:center;'>
-                        <div style='font-size:10px; color:#64748B; font-weight:600;'>Max DD: <span style='color:#DC2626;'>{p.get("max_drawdown", 0.0):.2f}%</span></div>
-                        <div style='font-size:9px; color:#94A3B8; font-weight:700;'>UPD: {fmt_ist(p.get('last_updated'))}</div>
+                        <div>
+                            <div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Max DD</div>
+                            {dd_html}
+                        </div>
+                        <div style='font-size:9px; color:#94A3B8; font-weight:700; text-align:right;'>UPD: {fmt_ist(p.get('last_updated'))}</div>
                     </div>
                     """, unsafe_allow_html=True)
     else:
@@ -422,22 +442,21 @@ elif page == "Alert Database":
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # RESTORED: FM Rationale Display
+                        # FM Rationale Display
                         remarks = act.get("remarks")
                         if remarks:
                             st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; margin-bottom:12px;'><strong>FM View:</strong> {remarks}</div>", unsafe_allow_html=True)
                         
-                        # RESTORED: Chart Thumbnail Display
+                        # Chart Thumbnail Display
                         if act.get("has_chart"):
                             chart_data = api_call('GET', f"/api/alerts/{a['id']}/chart")
                             if chart_data and chart_data.get("chart_image_b64"):
                                 try:
                                     img_bytes = base64.b64decode(chart_data["chart_image_b64"])
-                                    # Clicking this small image automatically opens it fullscreen in Streamlit
                                     st.image(img_bytes, width=100) 
                                 except: pass
                         
-                        # Bottom Actions (Neater button)
+                        # Bottom Actions
                         bc1, bc2 = st.columns([1,2])
                         with bc1:
                             if st.button("🗑️ Delete", key=f"del_{a['id']}"):
@@ -473,7 +492,7 @@ elif page == "Integrations":
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     st.markdown("### Universal Webhook Template")
-    st.markdown("<p style='font-size:12px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text. The system no longer requires you to map signal direction.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size:12px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text.</p>", unsafe_allow_html=True)
     st.code(json.dumps({
         "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
         "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
@@ -484,7 +503,7 @@ elif page == "Integrations":
     }, indent=2), language="json")
     
 # ═══════════════════════════════════════════════════════
-# AUTO-REFRESH (Increased to 5 seconds to reduce flicker)
+# AUTO-REFRESH
 # ═══════════════════════════════════════════════════════
 if _should_auto_refresh:
     time.sleep(5)
