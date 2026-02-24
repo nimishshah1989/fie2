@@ -77,10 +77,18 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
                 "alert_type": "ABSOLUTE",
             }
 
-        try:
-            clean_price = float(parsed.get("price_at_alert") or 0.0)
-        except (ValueError, TypeError):
-            clean_price = 0.0
+        # 🔥 BULLETPROOF NUMERIC PARSER 🔥
+        # This catches literal strings like "null" and "NaN" from TradingView and safely nullifies them.
+        def db_float(val):
+            if val is None: return None
+            if isinstance(val, str):
+                v_clean = val.strip().lower()
+                if v_clean in ("null", "nan", "none", "", "n/a"):
+                    return None
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return None
 
         # Skip AI summary for now (Phase 2)
         ai_summary = parsed.get("signal_summary") or parsed.get("alert_message") or "Signal received"
@@ -101,12 +109,12 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
             ticker=parsed.get("ticker", "UNKNOWN"),
             exchange=parsed.get("exchange"),
             interval=parsed.get("interval"),
-            price_at_alert=clean_price,
-            price_open=parsed.get("price_open"),
-            price_high=parsed.get("price_high"),
-            price_low=parsed.get("price_low"),
-            price_close=parsed.get("price_close"),
-            volume=parsed.get("volume"),
+            price_at_alert=db_float(parsed.get("price_at_alert")),
+            price_open=db_float(parsed.get("price_open")),
+            price_high=db_float(parsed.get("price_high")),
+            price_low=db_float(parsed.get("price_low")),
+            price_close=db_float(parsed.get("price_close")),
+            volume=db_float(parsed.get("volume")),
             time_utc=parsed.get("time_utc"),
             timenow_utc=parsed.get("timenow_utc"),
             alert_name=parsed.get("alert_name") or "System Trigger",
@@ -116,11 +124,11 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
             alert_type=safe_alert_type(parsed.get("alert_type")),
             numerator_ticker=parsed.get("numerator_ticker"),
             denominator_ticker=parsed.get("denominator_ticker"),
-            numerator_price=parsed.get("numerator_price"),
-            denominator_price=parsed.get("denominator_price"),
-            ratio_value=parsed.get("ratio_value"),
+            numerator_price=db_float(parsed.get("numerator_price")),
+            denominator_price=db_float(parsed.get("denominator_price")),
+            ratio_value=db_float(parsed.get("ratio_value")),
             signal_direction=safe_signal_dir(parsed.get("signal_direction")),
-            signal_strength=parsed.get("signal_strength"),
+            signal_strength=db_float(parsed.get("signal_strength")),
             signal_summary=ai_summary,
             sector=parsed.get("sector"),
             asset_class=parsed.get("asset_class"),
@@ -218,10 +226,8 @@ async def get_alert_detail(alert_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Alert not found")
     
     result = _serialize_alert(a, db)
-    # Include chart image for detail view
     if a.action and a.action.chart_image_b64:
         result["action"]["chart_image_b64"] = a.action.chart_image_b64
-    # Include raw payload
     result["raw_payload"] = a.raw_payload
     return result
 
@@ -250,24 +256,20 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     action.primary_ticker = alert.ticker
     action.conviction = req.conviction
 
-    # Map primary_call to enum
     if req.primary_call:
         try:
             action.primary_call = ActionCall(req.primary_call)
         except (ValueError, KeyError):
             action.primary_call = None
     
-    # Store FM remarks — just save as-is (no AI processing needed for MVP)
     if req.fm_rationale_text:
         action.fm_remarks = req.fm_rationale_text
 
-    # Optional target / stop loss
     if req.target_price and req.target_price > 0:
         action.primary_target_price = req.target_price
     if req.stop_loss and req.stop_loss > 0:
         action.primary_stop_loss = req.stop_loss
 
-    # Chart image
     if req.chart_image_b64:
         action.chart_image_b64 = req.chart_image_b64
 
@@ -275,7 +277,6 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
         db.add(action)
     alert.status = decision
 
-    # Create performance tracking for approved alerts
     if decision == AlertStatus.APPROVED:
         existing_perf = db.query(AlertPerformance).filter_by(alert_id=alert.id).first()
         if not existing_perf:
@@ -339,7 +340,6 @@ async def refresh_performance(db: Session = Depends(get_db)):
 
 @app.get("/api/price/{ticker}")
 async def get_price(ticker: str):
-    """Get live price for a single ticker."""
     data = get_live_price(ticker)
     return data
 
@@ -357,7 +357,6 @@ async def get_stats(db: Session = Depends(get_db)):
     review = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.REVIEW_LATER).count()
     avg_return = db.query(func.avg(AlertPerformance.return_pct)).scalar() or 0.0
 
-    # Signal intensity: count of alerts in last hour
     from datetime import timedelta
     recent_cutoff = datetime.now() - timedelta(hours=1)
     recent_count = db.query(TradingViewAlert).filter(
@@ -365,7 +364,6 @@ async def get_stats(db: Session = Depends(get_db)):
         TradingViewAlert.status == AlertStatus.PENDING
     ).count()
     
-    # Bullish vs bearish pending
     bullish_pending = db.query(TradingViewAlert).filter(
         TradingViewAlert.status == AlertStatus.PENDING,
         TradingViewAlert.signal_direction == SignalDirection.BULLISH
@@ -411,7 +409,6 @@ async def get_master_alerts(
 
 @app.get("/api/alerts/{alert_id}/chart")
 async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
-    """Get chart image for an alert."""
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
     if not action or not action.chart_image_b64:
         raise HTTPException(status_code=404, detail="No chart image")
