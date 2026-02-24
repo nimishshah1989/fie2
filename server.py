@@ -319,6 +319,31 @@ async def get_alert_detail(alert_id: int, db: Session = Depends(get_db)):
     }
 
 
+# ─── Delete Alert ─────────────────────────────────────
+
+@app.delete("/api/alerts/{alert_id}")
+async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
+    """Permanently delete an alert and its related action/performance records"""
+    
+    alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    
+    # Delete related performance records
+    db.query(AlertPerformance).filter(AlertPerformance.alert_id == alert_id).delete()
+    
+    # Delete related action record
+    db.query(AlertAction).filter(AlertAction.alert_id == alert_id).delete()
+    
+    # Delete the alert itself
+    db.delete(alert)
+    db.commit()
+    
+    logger.info(f"🗑️ Alert #{alert_id} ({alert.ticker}) deleted permanently")
+    
+    return {"success": True, "alert_id": alert_id, "message": f"Alert #{alert_id} deleted"}
+
+
 # ─── Take Action on Alert ─────────────────────────────
 
 @app.post("/api/alerts/{alert_id}/action")
