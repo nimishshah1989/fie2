@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, text
+from sqlalchemy import desc, func
 from datetime import datetime
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import json
 import os
 import base64
@@ -15,13 +15,11 @@ from models import (
     TradingViewAlert, AlertAction, AlertPerformance, AlertStatus, ActionCall,
     SignalDirection, AlertType
 )
-from webhook_parser import parse_webhook_payload
 from price_service import update_all_performance, get_live_price
-from ai_engine import generate_technical_summary, synthesize_fm_rationale
 
 app = FastAPI(title="JHAVERI FIE Engine")
 
-# Loosened CORS to completely prevent 403 Forbidden rejections
+# Fully open CORS to prevent security rejections
 app.add_middleware(
     CORSMiddleware, 
     allow_origins=["*"], 
@@ -30,132 +28,98 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-
 class ActionRequest(BaseModel):
     alert_id: int
-    decision: str  # APPROVED, DENIED, REVIEW_LATER
+    decision: str 
     primary_call: Optional[str] = None
     conviction: Optional[str] = "MEDIUM"
     fm_rationale_text: Optional[str] = None
-    fm_rationale_audio: Optional[str] = None
     target_price: Optional[float] = None
     stop_loss: Optional[float] = None
     chart_image_b64: Optional[str] = None
-
 
 @app.on_event("startup")
 async def startup():
     init_db()
 
-
 # ═══════════════════════════════════════════════════════
-# AGGRESSIVE WEBHOOK RECEIVER
+# 🔥 INDESTRUCTIBLE WEBHOOK RECEIVER 🔥
 # ═══════════════════════════════════════════════════════
 
-# These 3 decorators guarantee FastAPI catches the webhook no matter how TradingView formats the URL
-@app.post("/webhook/tradingview")
-@app.post("/webhook/tradingview/")
-@app.api_route("/webhook/{path:path}", methods=["POST"])
-async def receive_tradingview_alert(request: Request, db: Session = Depends(get_db)):
+# This route catches EVERYTHING sent to /webhook/..., preventing 403 Forbidden errors.
+@app.api_route("/webhook/{path:path}", methods=["GET", "POST"])
+async def receive_tradingview_alert(request: Request, path: str, db: Session = Depends(get_db)):
     try:
-        content_type = request.headers.get("content-type", "")
-        if "application/json" in content_type:
-            raw_data = await request.json()
-        else:
-            body = (await request.body()).decode("utf-8")
-            try:
-                raw_data = json.loads(body)
-            except json.JSONDecodeError:
-                raw_data = {"message": body}
-
+        # 1. Safely extract body
+        body_bytes = await request.body()
+        body_str = body_bytes.decode("utf-8")
+        
         try:
-            parsed = parse_webhook_payload(raw_data)
-        except Exception as parse_err:
-            parsed = {
-                "ticker": raw_data.get("ticker", raw_data.get("symbol", "UNKNOWN")) if isinstance(raw_data, dict) else "UNKNOWN",
-                "exchange": raw_data.get("exchange") if isinstance(raw_data, dict) else None,
-                "interval": raw_data.get("interval") if isinstance(raw_data, dict) else None,
-                "price_at_alert": None,
-                "alert_name": raw_data.get("alert_name", "System Trigger") if isinstance(raw_data, dict) else "System Trigger",
-                "alert_message": str(raw_data)[:500],
-                "indicator_values": {},
-                "signal_direction": "NEUTRAL",
-                "signal_strength": None,
-                "sector": None,
-                "asset_class": None,
-                "alert_type": "ABSOLUTE",
-            }
+            data = json.loads(body_str)
+        except:
+            data = {"message": body_str}
 
-        # 🔥 BULLETPROOF NUMERIC PARSER 🔥
-        # Safely nullifies TradingView's "null" or "NaN" text strings so they don't crash the database
-        def db_float(val):
-            if val is None: return None
-            if isinstance(val, str):
-                v_clean = val.strip().lower()
-                if v_clean in ("null", "nan", "none", "", "n/a"):
-                    return None
+        # 2. Bulletproof Parsers for TradingView Garbage Data
+        def safe_float(k):
+            v = data.get(k)
+            if v is None: return None
+            v_str = str(v).strip().lower()
+            if v_str in ("null", "nan", "none", "", "n/a") or "{{" in v_str: return None
+            try: return float(v)
+            except: return None
+
+        def safe_date(k):
+            v = data.get(k)
+            if not v: return None
+            v_str = str(v).strip()
+            # If TradingView fails to parse the placeholder, ignore it so DB doesn't crash
+            if "{{" in v_str: return None 
             try:
-                return float(val)
-            except (ValueError, TypeError):
+                from dateutil import parser
+                return parser.parse(v_str)
+            except:
                 return None
+                
+        def clean_str(k, default=""):
+            v = str(data.get(k, default)).strip()
+            if "{{" in v: return default
+            return v
 
-        ai_summary = parsed.get("signal_summary") or parsed.get("alert_message") or "Signal received"
+        signal_dir = SignalDirection.NEUTRAL
+        if data.get("signal") and str(data.get("signal")).upper() in ["BULLISH", "BEARISH", "NEUTRAL"]:
+            signal_dir = SignalDirection(str(data.get("signal")).upper())
 
-        def safe_signal_dir(val):
-            if val is None: return SignalDirection.NEUTRAL
-            if isinstance(val, SignalDirection): return val
-            try: return SignalDirection(str(val).upper())
-            except (ValueError, KeyError): return SignalDirection.NEUTRAL
-
-        def safe_alert_type(val):
-            if val is None: return AlertType.ABSOLUTE
-            if isinstance(val, AlertType): return val
-            try: return AlertType(str(val).upper())
-            except (ValueError, KeyError): return AlertType.ABSOLUTE
-
+        # 3. Construct Alert Safely
         alert = TradingViewAlert(
-            ticker=parsed.get("ticker", "UNKNOWN"),
-            exchange=parsed.get("exchange"),
-            interval=parsed.get("interval"),
-            price_at_alert=db_float(parsed.get("price_at_alert")),
-            price_open=db_float(parsed.get("price_open")),
-            price_high=db_float(parsed.get("price_high")),
-            price_low=db_float(parsed.get("price_low")),
-            price_close=db_float(parsed.get("price_close")),
-            volume=db_float(parsed.get("volume")),
-            time_utc=parsed.get("time_utc"),
-            timenow_utc=parsed.get("timenow_utc"),
-            alert_name=parsed.get("alert_name") or "System Trigger",
-            alert_message=parsed.get("alert_message"),
-            alert_condition=parsed.get("alert_condition"),
-            indicator_values=parsed.get("indicator_values"),
-            alert_type=safe_alert_type(parsed.get("alert_type")),
-            numerator_ticker=parsed.get("numerator_ticker"),
-            denominator_ticker=parsed.get("denominator_ticker"),
-            numerator_price=db_float(parsed.get("numerator_price")),
-            denominator_price=db_float(parsed.get("denominator_price")),
-            ratio_value=db_float(parsed.get("ratio_value")),
-            signal_direction=safe_signal_dir(parsed.get("signal_direction")),
-            signal_strength=db_float(parsed.get("signal_strength")),
-            signal_summary=ai_summary,
-            sector=parsed.get("sector"),
-            asset_class=parsed.get("asset_class"),
-            raw_payload=raw_data,
+            ticker=clean_str("ticker", "UNKNOWN"),
+            exchange=clean_str("exchange", ""),
+            interval=clean_str("interval", ""),
+            price_at_alert=safe_float("close") or safe_float("price"),
+            volume=safe_float("volume"),
+            time_utc=safe_date("time") or safe_date("timenow") or datetime.utcnow(),
+            alert_name=clean_str("alert_name", "Manual Alert"),
+            alert_message=str(data.get("message", body_str))[:500],
+            signal_direction=signal_dir,
+            alert_type=AlertType.ABSOLUTE,
             status=AlertStatus.PENDING,
-            processed=True
+            processed=True,
+            raw_payload=data
         )
+        
         db.add(alert)
         db.commit()
         db.refresh(alert)
         return JSONResponse(status_code=200, content={"success": True, "alert_id": alert.id})
+        
     except Exception as e:
+        db.rollback()
         import traceback
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 # ═══════════════════════════════════════════════════════
-# ALERTS API
+# REST API LOGIC
 # ═══════════════════════════════════════════════════════
 
 def _serialize_alert(a, db=None):
@@ -165,8 +129,6 @@ def _serialize_alert(a, db=None):
             "call": a.action.primary_call.value if a.action.primary_call else None,
             "conviction": a.action.conviction,
             "remarks": a.action.fm_remarks,
-            "target_price": a.action.primary_target_price,
-            "stop_loss": a.action.primary_stop_loss,
             "has_chart": bool(a.action.chart_image_b64),
             "decision_at": a.action.decision_at.isoformat() if a.action.decision_at else None,
         }
@@ -179,9 +141,6 @@ def _serialize_alert(a, db=None):
                 "reference_price": perf.reference_price,
                 "current_price": perf.current_price,
                 "return_pct": perf.return_pct,
-                "return_absolute": perf.return_absolute,
-                "high_since": perf.high_since,
-                "low_since": perf.low_since,
                 "max_drawdown": perf.max_drawdown,
                 "last_updated": perf.snapshot_date.isoformat() if perf.snapshot_date else None,
             }
@@ -190,32 +149,17 @@ def _serialize_alert(a, db=None):
         "id": a.id,
         "ticker": a.ticker or "—",
         "exchange": a.exchange or "—",
-        "interval": a.interval or "—",
         "price_at_alert": a.price_at_alert,
-        "price_open": a.price_open,
-        "price_high": a.price_high,
-        "price_low": a.price_low,
-        "price_close": a.price_close,
         "volume": a.volume,
         "alert_name": a.alert_name or "System Trigger",
         "alert_message": a.alert_message,
-        "alert_condition": a.alert_condition,
         "signal_direction": a.signal_direction.value if a.signal_direction else "NEUTRAL",
-        "signal_strength": a.signal_strength,
-        "signal_summary": a.signal_summary,
         "status": a.status.value if a.status else "PENDING",
         "received_at": a.received_at.isoformat() if a.received_at else None,
-        "sector": a.sector or "—",
         "asset_class": a.asset_class or "—",
-        "alert_type": a.alert_type.value if a.alert_type else "ABSOLUTE",
-        "numerator_ticker": a.numerator_ticker,
-        "denominator_ticker": a.denominator_ticker,
-        "ratio_value": a.ratio_value,
-        "indicator_values": a.indicator_values,
         "action": action_data,
         "performance": perf_data,
     }
-
 
 @app.get("/api/alerts")
 async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db)):
@@ -225,63 +169,28 @@ async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session
     results = [_serialize_alert(a, db) for a in query.limit(limit).all()]
     return {"alerts": results}
 
-
-@app.get("/api/alerts/{alert_id}")
-async def get_alert_detail(alert_id: int, db: Session = Depends(get_db)):
-    a = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    
-    result = _serialize_alert(a, db)
-    if a.action and a.action.chart_image_b64:
-        result["action"]["chart_image_b64"] = a.action.chart_image_b64
-    result["raw_payload"] = a.raw_payload
-    return result
-
-
-# ═══════════════════════════════════════════════════════
-# FUND MANAGER ACTION
-# ═══════════════════════════════════════════════════════
-
 @app.post("/api/alerts/{alert_id}/action")
 async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not alert:
-        raise HTTPException(status_code=404)
+    if not alert: raise HTTPException(status_code=404)
 
-    decision_map = {
-        "APPROVED": AlertStatus.APPROVED,
-        "DENIED": AlertStatus.DENIED,
-        "REVIEW_LATER": AlertStatus.REVIEW_LATER,
-    }
+    decision_map = {"APPROVED": AlertStatus.APPROVED, "DENIED": AlertStatus.DENIED, "REVIEW_LATER": AlertStatus.REVIEW_LATER}
     decision = decision_map.get(req.decision, AlertStatus.DENIED)
 
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first() or AlertAction(alert_id=alert_id)
-
     action.decision = decision
     action.decision_at = datetime.now()
     action.primary_ticker = alert.ticker
     action.conviction = req.conviction
 
     if req.primary_call:
-        try:
-            action.primary_call = ActionCall(req.primary_call)
-        except (ValueError, KeyError):
-            action.primary_call = None
+        try: action.primary_call = ActionCall(req.primary_call)
+        except: action.primary_call = None
     
-    if req.fm_rationale_text:
-        action.fm_remarks = req.fm_rationale_text
+    if req.fm_rationale_text: action.fm_remarks = req.fm_rationale_text
+    if req.chart_image_b64: action.chart_image_b64 = req.chart_image_b64
 
-    if req.target_price and req.target_price > 0:
-        action.primary_target_price = req.target_price
-    if req.stop_loss and req.stop_loss > 0:
-        action.primary_stop_loss = req.stop_loss
-
-    if req.chart_image_b64:
-        action.chart_image_b64 = req.chart_image_b64
-
-    if not action.id:
-        db.add(action)
+    if not action.id: db.add(action)
     alert.status = decision
 
     if decision == AlertStatus.APPROVED:
@@ -295,106 +204,50 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     db.commit()
     return {"success": True}
 
-
 @app.delete("/api/alerts/{alert_id}")
 async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not alert:
-        raise HTTPException(status_code=404)
+    if not alert: raise HTTPException(status_code=404)
     db.query(AlertAction).filter_by(alert_id=alert_id).delete()
     db.query(AlertPerformance).filter_by(alert_id=alert_id).delete()
     db.delete(alert)
     db.commit()
     return {"success": True}
 
-
-# ═══════════════════════════════════════════════════════
-# PERFORMANCE API
-# ═══════════════════════════════════════════════════════
-
 @app.get("/api/performance")
 async def get_performance(db: Session = Depends(get_db)):
     records = db.query(AlertPerformance, TradingViewAlert).join(TradingViewAlert).order_by(desc(AlertPerformance.reference_date)).all()
     return {"performance": [{
-        "id": p.id,
-        "alert_id": p.alert_id,
-        "ticker": p.ticker,
-        "alert_name": a.alert_name,
-        "reference_price": p.reference_price,
-        "current_price": p.current_price,
-        "return_pct": p.return_pct,
-        "return_absolute": p.return_absolute,
-        "high_since": p.high_since,
-        "low_since": p.low_since,
-        "max_drawdown": p.max_drawdown,
-        "approved_at": p.reference_date.isoformat() if p.reference_date else None,
+        "id": p.id, "alert_id": p.alert_id, "ticker": p.ticker, "alert_name": a.alert_name,
+        "reference_price": p.reference_price, "current_price": p.current_price,
+        "return_pct": p.return_pct, "max_drawdown": p.max_drawdown,
         "last_updated": p.snapshot_date.isoformat() if p.snapshot_date else None,
-        "signal_direction": a.signal_direction.value if a.signal_direction else "NEUTRAL",
         "action_call": a.action.primary_call.value if a.action and a.action.primary_call else None,
         "conviction": a.action.conviction if a.action else None,
-        "target_price": a.action.primary_target_price if a.action else None,
-        "stop_loss": a.action.primary_stop_loss if a.action else None,
-        "fm_remarks": a.action.fm_remarks if a.action else None,
-        "has_chart": bool(a.action.chart_image_b64) if a.action else False,
     } for p, a in records]}
-
 
 @app.post("/api/performance/refresh")
 async def refresh_performance(db: Session = Depends(get_db)):
     updated = update_all_performance(db)
     return {"success": True, "updated_count": updated}
 
-
-@app.get("/api/price/{ticker}")
-async def get_price(ticker: str):
-    data = get_live_price(ticker)
-    return data
-
-
-# ═══════════════════════════════════════════════════════
-# STATS & MASTER API
-# ═══════════════════════════════════════════════════════
-
 @app.get("/api/stats")
 async def get_stats(db: Session = Depends(get_db)):
     total = db.query(TradingViewAlert).count()
     pending = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.PENDING).count()
-    approved = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.APPROVED).count()
-    denied = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.DENIED).count()
-    review = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.REVIEW_LATER).count()
-    avg_return = db.query(func.avg(AlertPerformance.return_pct)).scalar() or 0.0
-
-    return {
-        "total_alerts": total,
-        "pending": pending,
-        "approved": approved,
-        "denied": denied,
-        "review_later": review,
-        "avg_return_pct": round(float(avg_return), 2)
-    }
+    return {"total_alerts": total, "pending": pending}
 
 @app.get("/api/master")
-async def get_master_alerts(
-    limit: int = 200, offset: int = 0,
-    status: Optional[str] = None, ticker: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
+async def get_master_alerts(limit: int = 200, status: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
-    if status and status != "All":
-        query = query.filter(TradingViewAlert.status == status)
-    if ticker:
-        query = query.filter(TradingViewAlert.ticker.ilike(f"%{ticker}%"))
-    total = query.count()
-    alerts = query.offset(offset).limit(limit).all()
-    results = [_serialize_alert(a, db) for a in alerts]
-    return {"alerts": results, "total": total, "limit": limit, "offset": offset}
-
+    if status and status != "All": query = query.filter(TradingViewAlert.status == status)
+    results = [_serialize_alert(a, db) for a in query.limit(limit).all()]
+    return {"alerts": results}
 
 @app.get("/api/alerts/{alert_id}/chart")
 async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
-    if not action or not action.chart_image_b64:
-        raise HTTPException(status_code=404, detail="No chart image")
+    if not action or not action.chart_image_b64: raise HTTPException(status_code=404)
     return {"chart_image_b64": action.chart_image_b64}
 
 
@@ -425,22 +278,12 @@ def _start_streamlit():
         "--server.maxUploadSize", "10",
     ]
     _streamlit_proc = subprocess.Popen(cmd)
-    print(f"[proxy] Streamlit started internally on port {STREAMLIT_INTERNAL_PORT}")
 
 @app.on_event("startup")
 async def startup_proxy():
     global _proxy_client
     _proxy_client = httpx.AsyncClient(base_url=STREAMLIT_BASE, timeout=30.0)
     _start_streamlit()
-    for _ in range(30):
-        try:
-            r = await _proxy_client.get("/_stcore/health")
-            if r.status_code == 200:
-                print("[proxy] Streamlit is healthy")
-                break
-        except:
-            pass
-        await asyncio.sleep(1)
 
 @app.on_event("shutdown")
 async def shutdown_proxy():
@@ -460,17 +303,15 @@ async def ws_proxy(websocket: WebSocket):
                     while True:
                         data = await websocket.receive_text()
                         await remote.send(data)
-                except (WebSocketDisconnect, Exception): pass
+                except: pass
             async def streamlit_to_client():
                 try:
                     async for msg in remote:
-                        if isinstance(msg, str):
-                            await websocket.send_text(msg)
-                        else:
-                            await websocket.send_bytes(msg)
-                except (WebSocketDisconnect, Exception): pass
+                        if isinstance(msg, str): await websocket.send_text(msg)
+                        else: await websocket.send_bytes(msg)
+                except: pass
             await asyncio.gather(client_to_streamlit(), streamlit_to_client())
-    except Exception: pass
+    except: pass
     finally:
         try: await websocket.close()
         except: pass
