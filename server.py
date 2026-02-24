@@ -12,7 +12,8 @@ import base64
 
 from models import (
     init_db, get_db, SessionLocal,
-    TradingViewAlert, AlertAction, AlertPerformance, AlertStatus, ActionCall
+    TradingViewAlert, AlertAction, AlertPerformance, AlertStatus, ActionCall,
+    SignalDirection, AlertType
 )
 from webhook_parser import parse_webhook_payload
 from price_service import update_all_performance
@@ -80,6 +81,28 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
             indicators=parsed.get("indicator_values", {}), alert_message=parsed.get("alert_message", "")
         )
         
+        # Safely convert enum values
+        def safe_signal_dir(val):
+            if val is None:
+                return SignalDirection.NEUTRAL
+            if isinstance(val, SignalDirection):
+                return val
+            try:
+                return SignalDirection(str(val).upper())
+            except (ValueError, KeyError):
+                return SignalDirection.NEUTRAL
+
+        def safe_alert_type(val):
+            from models import AlertType
+            if val is None:
+                return AlertType.ABSOLUTE
+            if isinstance(val, AlertType):
+                return val
+            try:
+                return AlertType(str(val).upper())
+            except (ValueError, KeyError):
+                return AlertType.ABSOLUTE
+
         alert = TradingViewAlert(
             ticker=parsed.get("ticker", "UNKNOWN"),
             exchange=parsed.get("exchange"),
@@ -96,13 +119,13 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
             alert_message=parsed.get("alert_message"),
             alert_condition=parsed.get("alert_condition"),
             indicator_values=parsed.get("indicator_values"),
-            alert_type=parsed.get("alert_type"),
+            alert_type=safe_alert_type(parsed.get("alert_type")),
             numerator_ticker=parsed.get("numerator_ticker"),
             denominator_ticker=parsed.get("denominator_ticker"),
             numerator_price=parsed.get("numerator_price"),
             denominator_price=parsed.get("denominator_price"),
             ratio_value=parsed.get("ratio_value"),
-            signal_direction=parsed.get("signal_direction", "NEUTRAL"),
+            signal_direction=safe_signal_dir(parsed.get("signal_direction")),
             signal_strength=parsed.get("signal_strength"),
             signal_summary=ai_summary,
             sector=parsed.get("sector"),
@@ -368,3 +391,108 @@ async def get_master_alerts(
         })
     
     return {"alerts": results, "total": total, "limit": limit, "offset": offset}
+
+
+# ═══════════════════════════════════════════════════════════
+# STREAMLIT REVERSE PROXY — serves dashboard through FastAPI
+# ═══════════════════════════════════════════════════════════
+import httpx
+import subprocess
+import sys
+import asyncio
+from fastapi.responses import Response
+from starlette.websockets import WebSocket, WebSocketDisconnect
+
+STREAMLIT_INTERNAL_PORT = 8501
+STREAMLIT_BASE = f"http://127.0.0.1:{STREAMLIT_INTERNAL_PORT}"
+_streamlit_proc = None
+_proxy_client = None
+
+def _start_streamlit():
+    global _streamlit_proc
+    cmd = [
+        sys.executable, "-m", "streamlit", "run", "dashboard.py",
+        "--server.port", str(STREAMLIT_INTERNAL_PORT),
+        "--server.address", "127.0.0.1",
+        "--server.headless", "true",
+        "--browser.gatherUsageStats", "false",
+        "--server.enableCORS", "false",
+        "--server.enableXsrfProtection", "false",
+    ]
+    _streamlit_proc = subprocess.Popen(cmd)
+    print(f"[proxy] Streamlit started internally on port {STREAMLIT_INTERNAL_PORT}")
+
+@app.on_event("startup")
+async def startup_proxy():
+    global _proxy_client
+    _proxy_client = httpx.AsyncClient(base_url=STREAMLIT_BASE, timeout=30.0)
+    _start_streamlit()
+    # Wait for Streamlit to be healthy
+    for _ in range(30):
+        try:
+            r = await _proxy_client.get("/_stcore/health")
+            if r.status_code == 200:
+                print("[proxy] Streamlit is healthy")
+                break
+        except:
+            pass
+        await asyncio.sleep(1)
+
+@app.on_event("shutdown")
+async def shutdown_proxy():
+    global _streamlit_proc, _proxy_client
+    if _streamlit_proc:
+        _streamlit_proc.terminate()
+    if _proxy_client:
+        await _proxy_client.aclose()
+
+# WebSocket proxy for Streamlit's live updates
+@app.websocket("/_stcore/stream")
+async def ws_proxy(websocket: WebSocket):
+    await websocket.accept()
+    import websockets as ws_lib
+    ws_url = f"ws://127.0.0.1:{STREAMLIT_INTERNAL_PORT}/_stcore/stream"
+    try:
+        async with ws_lib.connect(ws_url) as remote:
+            async def client_to_streamlit():
+                try:
+                    while True:
+                        data = await websocket.receive_text()
+                        await remote.send(data)
+                except (WebSocketDisconnect, Exception):
+                    pass
+            async def streamlit_to_client():
+                try:
+                    async for msg in remote:
+                        if isinstance(msg, str):
+                            await websocket.send_text(msg)
+                        else:
+                            await websocket.send_bytes(msg)
+                except (WebSocketDisconnect, Exception):
+                    pass
+            await asyncio.gather(client_to_streamlit(), streamlit_to_client())
+    except Exception:
+        pass
+    finally:
+        try: await websocket.close()
+        except: pass
+
+# Catch-all HTTP proxy — MUST be last route
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+async def proxy_streamlit(request: Request, path: str = ""):
+    url = f"/{path}"
+    if request.url.query:
+        url += f"?{request.url.query}"
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+    body = await request.body()
+    try:
+        resp = await _proxy_client.request(
+            method=request.method, url=url, headers=headers, content=body,
+        )
+        skip = {"content-encoding", "transfer-encoding", "connection", "content-length"}
+        resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
+        return Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
+    except Exception as e:
+        return Response(content=f"Dashboard loading... ({e})", status_code=502, media_type="text/plain")
