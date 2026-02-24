@@ -15,7 +15,7 @@ import os
 
 # ─── Configuration ─────────────────────────────────────
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
-REFRESH_INTERVAL = 60  # Auto-refresh every 60 seconds
+REFRESH_INTERVAL = 10  # Auto-refresh every 10 seconds
 
 st.set_page_config(
     page_title="FIE — Alert Intelligence",
@@ -340,9 +340,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─── Auto-Refresh via JS ──────────────────────────────
-# This injects a script that reloads the page every REFRESH_INTERVAL seconds.
-# Cost impact: negligible — just lightweight GET calls to your backend API.
+# ─── Auto-Refresh ─────────────────────────────────────
+# Method 1: JS-based reload
 st.markdown(f"""
 <script>
     setTimeout(function(){{
@@ -350,6 +349,9 @@ st.markdown(f"""
     }}, {REFRESH_INTERVAL * 1000});
 </script>
 """, unsafe_allow_html=True)
+
+# Method 2: Meta refresh as fallback (works even if JS is blocked)
+st.markdown(f'<meta http-equiv="refresh" content="{REFRESH_INTERVAL}">', unsafe_allow_html=True)
 
 
 # ─── Helpers ───────────────────────────────────────────
