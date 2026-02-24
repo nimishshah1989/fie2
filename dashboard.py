@@ -180,10 +180,8 @@ with st.sidebar:
     st.markdown(f"<div style='font-size:10px; color:#475569; margin-top:8px;'><span class='refresh-dot'></span>Live &middot; {datetime.now().strftime('%H:%M:%S')}</div>", unsafe_allow_html=True)
 
 
-# ─── Auto-refresh (only on read-only pages) ──────────────
-if st.session_state.get("auto_refresh", True) and page in ["Command Center", "Portfolio Analytics"]:
-    time.sleep(3)
-    st.rerun()
+# ─── Auto-refresh flag (applied at END of script) ───────
+_should_auto_refresh = st.session_state.get("auto_refresh", True) and page in ["Command Center", "Portfolio Analytics"]
 
 
 # ═══════════════════════════════════════════════════════
@@ -350,3 +348,10 @@ elif page == "Integrations":
             if r and r.get("success"): st.success(f"Received (ID: {r.get('alert_id','—')})")
             else: st.error(f"Failed: {r}")
         except: st.error("Invalid JSON")
+
+# ═══════════════════════════════════════════════════════
+# AUTO-REFRESH — runs AFTER all content is rendered
+# ═══════════════════════════════════════════════════════
+if _should_auto_refresh:
+    time.sleep(3)
+    st.rerun()
