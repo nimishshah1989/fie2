@@ -15,8 +15,7 @@ if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
 # ─── CSS ─────────────────────────────────────────────────
-# All dangerous header/sidebar hiding CSS has been removed. 
-# Streamlit will handle its native navigation safely.
+# ALL dangerous header-hiding CSS has been removed to fix the text glitch.
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -188,7 +187,6 @@ if page == "Command Center":
                     
                     msg = al.get("alert_message") or ""
                     if msg:
-                        # Safely replace HTML tags so literal JSON doesn't break the layout
                         safe_msg = str(msg).replace('<', '&lt;').replace('>', '&gt;')
                         st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:80px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;'>{safe_msg}</div>", unsafe_allow_html=True)
 
