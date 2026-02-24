@@ -558,7 +558,18 @@ if page == "📊 Live Alerts":
                     st.caption(f"Alert #{alert['id']}")
                 with c2:
                     if st.button("✅ Approve", key=f"qa_{alert['id']}"):
-                        st.session_state[f"approve_{alert['id']}"] = True
+                        result = api_post(f"/api/alerts/{alert['id']}/action", {
+                            "alert_id": alert["id"],
+                            "decision": "APPROVED",
+                            "primary_call": "BUY" if sig == "BULLISH" else "SELL" if sig == "BEARISH" else "WATCH",
+                            "conviction": "MEDIUM",
+                        })
+                        if result and result.get("success"):
+                            st.success("✅ Approved!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        else:
+                            st.error("Failed to approve. Use Action Center for detailed approval.")
                 with c3:
                     if st.button("✖ Deny", key=f"qd_{alert['id']}"):
                         api_post(f"/api/alerts/{alert['id']}/action", {"alert_id": alert["id"], "decision": "DENIED"})
