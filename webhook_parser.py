@@ -149,12 +149,23 @@ def _extract_indicators(data: dict, result: dict):
     for key in indicator_keys:
         if key in data:
             try:
-                indicators[key] = float(data[key]) if _is_numeric(data[key]) else data[key]
+                val = data[key]
+                if _is_numeric(val):
+                    indicators[key] = float(val)
+                else:
+                    indicators[key] = val
             except (ValueError, TypeError):
                 indicators[key] = data[key]
     
     if "indicators" in data and isinstance(data["indicators"], dict):
-        indicators.update(data["indicators"])
+        for k, v in data["indicators"].items():
+            if _is_numeric(v):
+                try:
+                    indicators[k] = float(v)
+                except (ValueError, TypeError):
+                    indicators[k] = v
+            else:
+                indicators[k] = v
     
     if "data" in data and isinstance(data["data"], dict):
         for k, v in data["data"].items():
@@ -290,41 +301,60 @@ def _interpret_signal(data: dict, result: dict):
 
 
 def _generate_summary(result: dict):
-    parts = []
-    ticker = result.get("ticker") or "Unknown"
-    direction = result.get("signal_direction")
-    alert_type = result.get("alert_type")
-    
-    if alert_type == AlertType.RELATIVE:
-        num = result.get("numerator_ticker", "?")
-        den = result.get("denominator_ticker", "?")
-        ratio = result.get("ratio_value")
-        parts.append(f"Relative Alert: {num} vs {den}")
-        if ratio:
-            parts.append(f"Current Ratio: {ratio:.4f}")
-    else:
-        parts.append(f"Alert on {ticker}")
-        if result.get("price_at_alert"):
-            parts.append(f"Price: ₹{result['price_at_alert']:,.2f}")
-    
-    if direction:
-        parts.append(f"Signal: {direction.value}")
-    
-    indicators = result.get("indicator_values") or {}
-    if "rsi" in indicators:
-        rsi = indicators["rsi"]
-        rsi_status = "Overbought" if rsi > 70 else "Oversold" if rsi < 30 else "Neutral"
-        parts.append(f"RSI: {rsi:.1f} ({rsi_status})")
-    if "macd" in indicators:
-        parts.append(f"MACD: {indicators['macd']}")
-    
-    if result.get("alert_condition"):
-        parts.append(f"Condition: {result['alert_condition']}")
-    elif result.get("alert_message"):
-        msg = result["alert_message"][:150]
-        parts.append(f"Message: {msg}")
-    
-    result["signal_summary"] = " | ".join(parts)
+    """Generate human-readable signal summary — NEVER raises exceptions"""
+    try:
+        parts = []
+        ticker = result.get("ticker") or "Unknown"
+        direction = result.get("signal_direction")
+        alert_type = result.get("alert_type")
+        
+        if alert_type == AlertType.RELATIVE:
+            num = result.get("numerator_ticker", "?")
+            den = result.get("denominator_ticker", "?")
+            ratio = result.get("ratio_value")
+            parts.append(f"Relative Alert: {num} vs {den}")
+            if ratio:
+                try:
+                    parts.append(f"Current Ratio: {float(ratio):.4f}")
+                except (ValueError, TypeError):
+                    parts.append(f"Current Ratio: {ratio}")
+        else:
+            parts.append(f"Alert on {ticker}")
+            if result.get("price_at_alert"):
+                try:
+                    parts.append(f"Price: ₹{float(result['price_at_alert']):,.2f}")
+                except (ValueError, TypeError):
+                    parts.append(f"Price: {result['price_at_alert']}")
+        
+        if direction:
+            dir_val = direction.value if hasattr(direction, 'value') else str(direction)
+            parts.append(f"Signal: {dir_val}")
+        
+        indicators = result.get("indicator_values") or {}
+        if "rsi" in indicators:
+            try:
+                rsi = float(indicators["rsi"])
+                rsi_status = "Overbought" if rsi > 70 else "Oversold" if rsi < 30 else "Neutral"
+                parts.append(f"RSI: {rsi:.1f} ({rsi_status})")
+            except (ValueError, TypeError):
+                parts.append(f"RSI: {indicators['rsi']}")
+        if "macd" in indicators:
+            try:
+                macd_val = float(indicators["macd"])
+                parts.append(f"MACD: {macd_val:.2f}")
+            except (ValueError, TypeError):
+                parts.append(f"MACD: {indicators['macd']}")
+        
+        if result.get("alert_condition"):
+            parts.append(f"Condition: {result['alert_condition']}")
+        elif result.get("alert_message"):
+            msg = str(result["alert_message"])[:150]
+            parts.append(f"Message: {msg}")
+        
+        result["signal_summary"] = " | ".join(parts) if parts else "Signal received"
+    except Exception as e:
+        # Absolute fallback — never let summary generation crash the webhook
+        result["signal_summary"] = f"Alert on {result.get('ticker', 'Unknown')} — processing error: {str(e)[:80]}"
 
 
 def _safe_float(val) -> Optional[float]:
