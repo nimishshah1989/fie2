@@ -12,3 +12,4 @@ aiosqlite
 python-dateutil
 httpx
 apscheduler
+psycopg2-binary
