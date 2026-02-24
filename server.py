@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
@@ -8,10 +8,9 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 import os
-import base64
 
 from models import (
-    init_db, get_db, SessionLocal,
+    init_db, get_db,
     TradingViewAlert, AlertAction, AlertPerformance, AlertStatus, ActionCall,
     SignalDirection, AlertType
 )
@@ -19,7 +18,7 @@ from price_service import update_all_performance, get_live_price
 
 app = FastAPI(title="JHAVERI FIE Engine")
 
-# Fully open CORS to prevent security rejections
+# Fully open CORS to prevent any 403 security rejections
 app.add_middleware(
     CORSMiddleware, 
     allow_origins=["*"], 
@@ -43,14 +42,13 @@ async def startup():
     init_db()
 
 # ═══════════════════════════════════════════════════════
-# 🔥 INDESTRUCTIBLE WEBHOOK RECEIVER 🔥
+# 🔥 FIXED WEBHOOK RECEIVER 🔥
+# Exact route matching to completely prevent 403 errors
 # ═══════════════════════════════════════════════════════
-
-# This route catches EVERYTHING sent to /webhook/..., preventing 403 Forbidden errors.
-@app.api_route("/webhook/{path:path}", methods=["GET", "POST"])
-async def receive_tradingview_alert(request: Request, path: str, db: Session = Depends(get_db)):
+@app.post("/webhook/tradingview")
+@app.post("/webhook/tradingview/")
+async def receive_tradingview_alert(request: Request, db: Session = Depends(get_db)):
     try:
-        # 1. Safely extract body
         body_bytes = await request.body()
         body_str = body_bytes.decode("utf-8")
         
@@ -59,7 +57,7 @@ async def receive_tradingview_alert(request: Request, path: str, db: Session = D
         except:
             data = {"message": body_str}
 
-        # 2. Bulletproof Parsers for TradingView Garbage Data
+        # Bulletproof Parsers for TradingView Garbage Data
         def safe_float(k):
             v = data.get(k)
             if v is None: return None
@@ -72,7 +70,6 @@ async def receive_tradingview_alert(request: Request, path: str, db: Session = D
             v = data.get(k)
             if not v: return None
             v_str = str(v).strip()
-            # If TradingView fails to parse the placeholder, ignore it so DB doesn't crash
             if "{{" in v_str: return None 
             try:
                 from dateutil import parser
@@ -89,7 +86,6 @@ async def receive_tradingview_alert(request: Request, path: str, db: Session = D
         if data.get("signal") and str(data.get("signal")).upper() in ["BULLISH", "BEARISH", "NEUTRAL"]:
             signal_dir = SignalDirection(str(data.get("signal")).upper())
 
-        # 3. Construct Alert Safely
         alert = TradingViewAlert(
             ticker=clean_str("ticker", "UNKNOWN"),
             exchange=clean_str("exchange", ""),
@@ -121,7 +117,6 @@ async def receive_tradingview_alert(request: Request, path: str, db: Session = D
 # ═══════════════════════════════════════════════════════
 # REST API LOGIC
 # ═══════════════════════════════════════════════════════
-
 def _serialize_alert(a, db=None):
     action_data = None
     if a.action:
@@ -275,7 +270,6 @@ def _start_streamlit():
         "--browser.gatherUsageStats", "false",
         "--server.enableCORS", "false",
         "--server.enableXsrfProtection", "false",
-        "--server.maxUploadSize", "10",
     ]
     _streamlit_proc = subprocess.Popen(cmd)
 
@@ -329,5 +323,5 @@ async def proxy_streamlit(request: Request, path: str = ""):
         skip = {"content-encoding", "transfer-encoding", "connection", "content-length"}
         resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
         return Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
-    except Exception as e:
-        return Response(content=f"Dashboard loading... ({e})", status_code=502, media_type="text/plain")
+    except:
+        return Response(content="Dashboard loading...", status_code=502)
