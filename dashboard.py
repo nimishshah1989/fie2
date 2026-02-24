@@ -57,6 +57,7 @@ st.markdown("""
     }
     h1 { color: #0F172A !important; font-size: 22px !important; font-weight: 700 !important; margin-bottom: 2px !important; }
     h3 { color: #1E293B !important; font-size: 15px !important; font-weight: 600 !important; }
+    h4 { color: #0F172A !important; font-weight: 700 !important; margin: 0 !important; }
     .pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .pill-bullish { background: #ECFDF5; color: #059669; }
     .pill-bearish { background: #FEF2F2; color: #DC2626; }
@@ -263,13 +264,13 @@ elif page == "Trade Desk":
             with st.container(border=True):
                 nm = clean_placeholder(al.get('alert_name','Signal'))
                 
-                # Native Streamlit components to prevent HTML DOM ghosting
+                # Wrapped text in specific span/div styling to prevent Streamlit dark mode text invisibility
                 header_col1, header_col2 = st.columns([3, 1])
                 with header_col1:
-                    st.markdown(f"#### {nm}")
+                    st.markdown(f"<div style='color:#0F172A; font-size:18px; font-weight:700; margin-bottom:4px;'>{nm}</div>", unsafe_allow_html=True)
                     st.caption(f"{al.get('ticker','—')} · {al.get('exchange','—')} · {al.get('interval','—')}")
                 with header_col2:
-                    st.markdown(f"<div style='text-align:right;'><h4>{fmt_price(al.get('price_at_alert'))}</h4><span style='font-size:12px; color:#64748B;'>Vol: {fmt_vol(al.get('volume'))}</span></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align:right;'><div style='color:#0F172A; font-size:18px; font-weight:700;'>{fmt_price(al.get('price_at_alert'))}</div><span style='font-size:12px; color:#64748B;'>Vol: {fmt_vol(al.get('volume'))}</span></div>", unsafe_allow_html=True)
                 
                 msg = clean_placeholder(al.get("alert_message"))
                 if msg:
@@ -336,17 +337,17 @@ elif page == "Trade Desk":
             act = a.get("action") or {}
             nm = clean_placeholder(a.get('alert_name', a.get('ticker','—')))
             
-            # Using 100% native Streamlit components to permanently kill the ghosting bug
             with st.container(border=True):
                 rc1, rc2 = st.columns([3, 1])
                 with rc1:
                     status_emoji = "✅" if a.get('status') == 'APPROVED' else "❌" if a.get('status') == 'DENIED' else "⏳"
-                    st.markdown(f"**{nm}** &nbsp;|&nbsp; {status_emoji} `{a.get('status')}` &nbsp;|&nbsp; **{act.get('call','—')}** ({act.get('conviction','')})")
+                    # Wrapped text elements in specific styling to protect from dark mode visibility issues
+                    st.markdown(f"<span style='color:#0F172A;'><strong>{nm}</strong> &nbsp;|&nbsp; {status_emoji} <code>{a.get('status')}</code> &nbsp;|&nbsp; <strong>{act.get('call','—')}</strong> ({act.get('conviction','')})</span>", unsafe_allow_html=True)
                     if act.get('remarks'):
                         st.caption(act.get('remarks')[:100])
                 with rc2:
-                    st.markdown(f"**{a.get('ticker','—')}**")
-                    st.caption(f"{fmt_short(act.get('decision_at') or a.get('received_at'))}")
+                    st.markdown(f"<div style='text-align:right; color:#0F172A;'><strong>{a.get('ticker','—')}</strong></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align:right; font-size:12px; color:#64748B;'>{fmt_short(act.get('decision_at') or a.get('received_at'))}</div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
