@@ -49,7 +49,26 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
             except json.JSONDecodeError:
                 raw_data = {"message": body}
         
-        parsed = parse_webhook_payload(raw_data)
+        try:
+            parsed = parse_webhook_payload(raw_data)
+        except Exception as parse_err:
+            # If parser crashes, still save a minimal alert
+            import traceback
+            traceback.print_exc()
+            parsed = {
+                "ticker": raw_data.get("ticker", raw_data.get("symbol", "UNKNOWN")) if isinstance(raw_data, dict) else "UNKNOWN",
+                "exchange": raw_data.get("exchange") if isinstance(raw_data, dict) else None,
+                "interval": raw_data.get("interval") if isinstance(raw_data, dict) else None,
+                "price_at_alert": None,
+                "alert_name": raw_data.get("alert_name", "System Trigger") if isinstance(raw_data, dict) else "System Trigger",
+                "alert_message": str(raw_data)[:500],
+                "indicator_values": {},
+                "signal_direction": "NEUTRAL",
+                "signal_strength": None,
+                "sector": None,
+                "asset_class": None,
+                "alert_type": "ABSOLUTE",
+            }
         
         try:
             clean_price = float(parsed.get("price_at_alert") or 0.0)
