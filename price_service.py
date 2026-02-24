@@ -5,80 +5,52 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Map standard Indian tickers to Yahoo Finance tickers
+# The Translation Dictionary for Indian Indices
 NSE_TICKER_MAP = {
     "NIFTY": "^NSEI",
     "BANKNIFTY": "^NSEBANK",
     "NIFTYIT": "^CNXIT",
-    "NIFTYAUTO": "^CNXAUTO",
-    "NIFTYFMCG": "^CNXFMCG",
-    "NIFTYPHARMA": "^CNXPHARMA",
-    "NIFTYMETAL": "^CNXMETAL",
-    "NIFTYENERGY": "^CNXENERGY",
-    "NIFTYINFRA": "^CNXINFRA",
-    "NIFTYMIDCAP": "^NSEMDCP50",
-    "SENSEX": "^BSESN"
+    "SENSEX": "^BSESN",
+    "FINNIFTY": "^NSEFIN",
+    "MIDCPNIFTY": "^NSEMDCP50"
 }
 
-def normalize_ticker_for_yfinance(ticker: str) -> str:
-    """Converts local tickers to yfinance compatible tickers."""
+def normalize_ticker(ticker: str) -> str:
     if not ticker: return ""
-    clean_ticker = ticker.upper().strip()
-    
-    # Check if it's a known index
-    if clean_ticker in NSE_TICKER_MAP:
-        return NSE_TICKER_MAP[clean_ticker]
-    
-    # If it's a stock (e.g., RELIANCE) and doesn't have an extension, add .NS
-    if not clean_ticker.startswith("^") and not clean_ticker.endswith(".NS") and not clean_ticker.endswith(".BO"):
-        return f"{clean_ticker}.NS"
-        
-    return clean_ticker
+    clean = ticker.upper().strip()
+    # Map indices
+    if clean in NSE_TICKER_MAP:
+        return NSE_TICKER_MAP[clean]
+    # Map stocks (add .NS for National Stock Exchange)
+    if not clean.startswith("^") and not clean.endswith(".NS") and not clean.endswith(".BO"):
+        return f"{clean}.NS"
+    return clean
 
 def get_live_price(ticker: str) -> dict:
     """Fetches the absolute latest live/EOD price from market data."""
-    yf_ticker = normalize_ticker_for_yfinance(ticker)
-    
+    yf_ticker = normalize_ticker(ticker)
     try:
         data = yf.Ticker(yf_ticker)
-        # Fast fetch for the last 1 day
         hist = data.history(period="1d")
-        
         if hist.empty:
-            return {"current_price": None, "error": "No data found"}
-            
-        current_price = float(hist["Close"].iloc[-1])
-        return {
-            "current_price": current_price,
-            "timestamp": datetime.now().isoformat()
-        }
+            return {"current_price": None, "error": "No market data"}
+        return {"current_price": float(hist["Close"].iloc[-1])}
     except Exception as e:
-        logger.error(f"Failed to fetch price for {yf_ticker}: {e}")
         return {"current_price": None, "error": str(e)}
 
 def update_all_performance(db: Session) -> int:
-    """Called by the 'Sync Live Market Prices' button on the dashboard."""
     from models import AlertPerformance
-    
-    active_records = db.query(AlertPerformance).all()
-    updated_count = 0
-    
-    for perf in active_records:
+    records = db.query(AlertPerformance).all()
+    updated = 0
+    for perf in records:
         if not perf.ticker: continue
-        
         price_data = get_live_price(perf.ticker)
         curr_price = price_data.get("current_price")
         
-        if curr_price and perf.reference_price:
+        if curr_price and perf.reference_price and perf.reference_price > 0:
             perf.current_price = curr_price
-            
-            # Calculate Return %
-            if perf.is_primary:
-                # If we bought (default assumption for absolute), price goes up = positive return
-                perf.return_pct = ((curr_price - perf.reference_price) / perf.reference_price) * 100
-                
+            perf.return_pct = ((curr_price - perf.reference_price) / perf.reference_price) * 100
             perf.snapshot_date = datetime.now()
-            updated_count += 1
-            
+            updated += 1
     db.commit()
-    return updated_count
+    return updated
