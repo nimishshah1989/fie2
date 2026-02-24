@@ -1,49 +1,32 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, Query
+from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, and_, or_, text
+from sqlalchemy import desc, func, text
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
 import json
-import logging
 import os
 
 from models import (
     init_db, get_db, SessionLocal,
-    TradingViewAlert, AlertAction, AlertPerformance, InstrumentMap,
-    AlertStatus, AlertType, SignalDirection
+    TradingViewAlert, AlertAction, AlertPerformance, AlertStatus
 )
-from webhook_parser import parse_webhook_payload, get_recommended_alert_template
-from price_service import get_live_price, update_all_performance
+from webhook_parser import parse_webhook_payload
+from price_service import update_all_performance
 from ai_engine import generate_technical_summary, synthesize_fm_rationale
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-app = FastAPI(title="JHAVERI FIE Engine", version="2.1.0")
-
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
-)
+app = FastAPI(title="JHAVERI FIE Engine")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 class ActionRequest(BaseModel):
     alert_id: int
     decision: str                           
     primary_call: Optional[str] = None      
-    primary_notes: Optional[str] = None
-    primary_target_price: Optional[float] = None
-    primary_stop_loss: Optional[float] = None
-    secondary_call: Optional[str] = None    
-    secondary_notes: Optional[str] = None
-    secondary_target_price: Optional[float] = None
-    secondary_stop_loss: Optional[float] = None
     conviction: Optional[str] = "MEDIUM"    
-    fm_remarks: Optional[str] = None
     fm_rationale_text: Optional[str] = None
     fm_rationale_audio: Optional[str] = None
-    chart_image_b64: Optional[str] = None  
 
 @app.on_event("startup")
 async def startup():
@@ -68,19 +51,23 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
         
         parsed = parse_webhook_payload(raw_data)
         
+        # FIX: Force Price to Float to prevent NoneType errors
+        try:
+            clean_price = float(parsed.get("price_at_alert", 0.0))
+        except (ValueError, TypeError):
+            clean_price = 0.0
+
         ai_summary = generate_technical_summary(
-            ticker=parsed.get("ticker", "Unknown"),
-            price=parsed.get("price_at_alert", 0.0),
-            indicators=parsed.get("indicator_values", {}),
-            alert_message=parsed.get("alert_message", "")
+            ticker=parsed.get("ticker", "Unknown"), price=clean_price,
+            indicators=parsed.get("indicator_values", {}), alert_message=parsed.get("alert_message", "")
         )
         
         alert = TradingViewAlert(
-            ticker=parsed["ticker"], exchange=parsed["exchange"], interval=parsed["interval"],
-            price_at_alert=parsed["price_at_alert"], alert_name=parsed["alert_name"] or "System Trigger",
-            alert_message=parsed["alert_message"], indicator_values=parsed["indicator_values"],
-            alert_type=parsed["alert_type"], signal_direction=parsed["signal_direction"],
-            signal_summary=ai_summary, sector=parsed["sector"], status=AlertStatus.PENDING, processed=True
+            ticker=parsed.get("ticker", "UNKNOWN"), exchange=parsed.get("exchange"), interval=parsed.get("interval"),
+            price_at_alert=clean_price, alert_name=parsed.get("alert_name", "System Trigger"),
+            alert_message=parsed.get("alert_message"), indicator_values=parsed.get("indicator_values"),
+            signal_direction=parsed.get("signal_direction", "NEUTRAL"), signal_summary=ai_summary, 
+            sector=parsed.get("sector"), status=AlertStatus.PENDING, processed=True
         )
         db.add(alert)
         db.commit()
@@ -89,19 +76,25 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.get("/api/alerts")
-async def get_alerts(status: Optional[str] = None, limit: int = 200, db: Session = Depends(get_db)):
+async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db)):
     query = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
     if status and status != "All": query = query.filter(TradingViewAlert.status == status)
     
-    alerts = query.limit(limit).all()
     results = []
-    for a in alerts:
+    for a in query.limit(limit).all():
+        action_data = None
+        if a.action:
+            action_data = {
+                "call": a.action.primary_call.value if a.action.primary_call else None,
+                "conviction": a.action.conviction,
+                "remarks": a.action.fm_remarks
+            }
         results.append({
             "id": a.id, "ticker": a.ticker, "price_at_alert": a.price_at_alert,
-            "alert_name": a.alert_name, "signal_direction": a.signal_direction.value if a.signal_direction else None,
-            "signal_summary": a.signal_summary, "status": a.status.value if a.status else None,
+            "alert_name": a.alert_name, "signal_direction": a.signal_direction.value if a.signal_direction else "NEUTRAL",
+            "signal_summary": a.signal_summary, "status": a.status.value if a.status else "PENDING",
             "received_at": a.received_at.isoformat() if a.received_at else None,
-            "interval": a.interval, "sector": a.sector
+            "interval": a.interval, "action": action_data
         })
     return {"alerts": results}
 
@@ -111,21 +104,21 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     if not alert: raise HTTPException(status_code=404)
     
     decision = AlertStatus.APPROVED if req.decision == "APPROVED" else AlertStatus.DENIED
-    
-    # Safe fallback for non-enum values
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first() or AlertAction(alert_id=alert_id)
+    
     action.decision = decision
     action.decision_at = datetime.now()
     action.primary_ticker = alert.ticker
     action.conviction = req.conviction
     
-    # Store raw strings instead of forcing enums to prevent crashes
+    # Store Raw Strings Safely
     action.primary_notes = req.primary_call 
     
+    # AI Voice/Text Processing
     action.fm_remarks = synthesize_fm_rationale(
         ticker=alert.ticker, call=req.primary_call or "ACTION",
         text_note=req.fm_rationale_text, audio_b64=req.fm_rationale_audio
-    ) if (req.fm_rationale_text or req.fm_rationale_audio) else req.fm_remarks
+    ) if (req.fm_rationale_text or req.fm_rationale_audio) else None
     
     if not action.id: db.add(action)
     alert.status = decision
@@ -136,15 +129,9 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     db.commit()
     return {"success": True}
 
-@app.delete("/api/alerts/{alert_id}")
-async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
-    db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).delete()
-    db.commit()
-    return {"success": True}
-
 @app.get("/api/performance")
 async def get_performance(db: Session = Depends(get_db)):
-    records = db.query(AlertPerformance, TradingViewAlert).join(TradingViewAlert).all()
+    records = db.query(AlertPerformance, TradingViewAlert).join(TradingViewAlert).order_by(desc(AlertPerformance.reference_date)).all()
     return {"performance": [{"ticker": p.ticker, "reference_price": p.reference_price, "current_price": p.current_price, "return_pct": p.return_pct, "approved_at": p.reference_date.isoformat()} for p, a in records]}
 
 @app.post("/api/performance/refresh")
@@ -157,5 +144,5 @@ async def get_stats(db: Session = Depends(get_db)):
     return {
         "total_alerts": db.query(TradingViewAlert).count(),
         "pending": db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.PENDING).count(),
-        "avg_return_pct": db.query(func.avg(AlertPerformance.return_pct)).scalar() or 0
+        "avg_return_pct": db.query(func.avg(AlertPerformance.return_pct)).scalar() or 0.0
     }
