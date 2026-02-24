@@ -6,6 +6,7 @@ import time
 import os
 import base64
 import json
+import re
 
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 
@@ -15,7 +16,8 @@ if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
 # ─── CSS ─────────────────────────────────────────────────
-# ALL dangerous header-hiding CSS has been removed to fix the text glitch.
+# All dangerous header/sidebar hiding CSS has been removed. 
+# Streamlit will handle its native navigation safely.
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -111,11 +113,21 @@ def ret_color(v):
     return "#059669" if v > 0 else "#DC2626" if v < 0 else "#64748B"
 
 def clean_placeholder(text):
+    """Clean alert names — strip HTML, remove TradingView unresolved template vars."""
     if not text: return ""
     t = str(text).strip()
-    invalid_names = ["{{strategy.order.comment}}", "{{alert_name}}", "alert_name", "None", "null", ""]
-    if t in invalid_names:
+    # Strip any HTML tags (TradingView sometimes sends HTML in alert_name)
+    t = re.sub(r'<[^>]+>', '', t).strip()
+    # Remove unresolved TradingView template placeholders
+    invalid_names = [
+        "{{strategy.order.comment}}", "{{alert_name}}", "{{ticker}}",
+        "alert_name", "None", "null", "", "undefined"
+    ]
+    if t in invalid_names or t.startswith("{{") and t.endswith("}}"):
         return "Manual Alert"
+    # Truncate very long strings (e.g. if full HTML blob slipped through)
+    if len(t) > 80:
+        t = t[:77] + "…"
     return t
 
 
@@ -187,8 +199,13 @@ if page == "Command Center":
                     
                     msg = al.get("alert_message") or ""
                     if msg:
-                        safe_msg = str(msg).replace('<', '&lt;').replace('>', '&gt;')
-                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:80px; overflow-y:auto; white-space:pre-wrap; font-family:monospace;'>{safe_msg}</div>", unsafe_allow_html=True)
+                        import re
+                        # Strip HTML tags — TradingView sometimes sends HTML-formatted messages
+                        clean_msg = re.sub(r'<[^>]+>', '', str(msg)).strip()
+                        # Remove unresolved template placeholders
+                        clean_msg = re.sub(r'\{\{[^}]+\}\}', '', clean_msg).strip()
+                        if clean_msg:
+                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:7px 10px; background:#F8FAFC; border-radius:6px; border:1px solid #E2E8F0; line-height:1.4; max-height:60px; overflow-y:auto; white-space:pre-wrap;'>{clean_msg}</div>", unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -202,34 +219,33 @@ elif page == "Trade Desk":
     pending = pending_data.get("alerts", []) if pending_data else []
     
     if not pending:
-        st.markdown("<div style='background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:20px; text-align:center;'><span style='color:#166534; font-weight:600;'>✓ Queue is clear</span></div>", unsafe_allow_html=True)
+        st.markdown("<div style='background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:16px; text-align:center;'><span style='color:#166534; font-weight:600;'>✓ Queue is clear</span></div>", unsafe_allow_html=True)
     else:
         cols = st.columns(3)
         for i, al in enumerate(pending):
             aid = al["id"]
             with cols[i % 3]:
                 with st.container(border=True):
+                    # Compact header row
                     st.markdown(f"""
-                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;'>
-                        {asset_pill(al.get('asset_class'))}
-                        <div style='font-size:11px; color:#64748B; font-weight:700;'>{fmt_ist(al.get('received_at'))}</div>
-                    </div>
-                    <div style='display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:14px;'>
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;'>
                         <div>
-                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{clean_placeholder(al.get('alert_name','Signal'))}</div>
-                            <div style='font-size:12px; font-weight:600; color:#475569;'>{al.get('ticker','—')} &middot; Vol: {fmt_vol(al.get('volume'))}</div>
+                            <div style='font-size:15px; font-weight:800; color:#0F172A; line-height:1.2;'>{clean_placeholder(al.get('alert_name','Signal'))}</div>
+                            <div style='font-size:11px; font-weight:600; color:#64748B; margin-top:2px;'>{al.get('ticker','—')} &middot; {al.get('exchange','—')} &middot; Vol {fmt_vol(al.get('volume'))}</div>
                         </div>
                         <div style='text-align:right;'>
-                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get('price_at_alert'))}</div>
+                            <div style='font-size:15px; font-weight:800; color:#0F172A;'>{fmt_price(al.get('price_at_alert'))}</div>
+                            <div style='font-size:10px; color:#94A3B8; font-weight:600; margin-top:2px;'>{fmt_ist(al.get('received_at'))}</div>
                         </div>
                     </div>
+                    <div style='margin-bottom:8px;'>{asset_pill(al.get('asset_class'))}</div>
                     """, unsafe_allow_html=True)
                     
                     approve_key = f"approve_{aid}"
                     if approve_key not in st.session_state:
                         st.session_state[approve_key] = False
                     
-                    b1, b2 = st.columns(2)
+                    b1, b2, b3 = st.columns(3)
                     with b1:
                         if st.button("✓ Approve", key=f"ab{aid}", type="primary"):
                             st.session_state[approve_key] = True
@@ -237,22 +253,25 @@ elif page == "Trade Desk":
                         if st.button("✗ Reject", key=f"db{aid}"):
                             api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"DENIED"})
                             st.rerun()
+                    with b3:
+                        if st.button("⏱ Later", key=f"lt{aid}"):
+                            pass  # keep in queue
                     
                     if st.session_state.get(approve_key, False):
                         st.divider()
                         call = st.selectbox("Call", ["BUY","SELL","HOLD","STRONG_BUY","STRONG_SELL"], key=f"call{aid}", label_visibility="collapsed")
                         conv = st.select_slider("Conviction", ["LOW","MEDIUM","HIGH"], value="MEDIUM", key=f"conv{aid}", label_visibility="collapsed")
-                        commentary = st.text_area("Remarks", placeholder="Rationale...", key=f"cmt{aid}", height=68, label_visibility="collapsed")
+                        commentary = st.text_area("Rationale / notes for the board...", key=f"cmt{aid}", height=60, label_visibility="collapsed")
                         
-                        chart_file = st.file_uploader("Attach Chart (Optional)", type=["png","jpg","jpeg"], key=f"ch{aid}", label_visibility="collapsed")
+                        chart_file = st.file_uploader("Attach Chart (PNG/JPG)", type=["png","jpg","jpeg"], key=f"ch{aid}", label_visibility="collapsed")
                         cb64 = None
                         if chart_file:
                             cb64 = base64.b64encode(chart_file.read()).decode('utf-8')
-                            st.image(chart_file, caption="Preview", width=150)
+                            st.image(chart_file, width=140)
                         
                         sc1, sc2 = st.columns(2)
                         with sc1:
-                            if st.button("Submit", key=f"sub{aid}", type="primary"):
+                            if st.button("✓ Submit", key=f"sub{aid}", type="primary"):
                                 api_call('POST', f"/api/alerts/{aid}/action", {
                                     "alert_id": aid, "decision": "APPROVED",
                                     "primary_call": call, "conviction": conv,
@@ -275,17 +294,22 @@ elif page == "Trade Desk":
         
         for i, a in enumerate(rc_list):
             act = a.get("action") or {}
+            raw_remarks = act.get("remarks") or act.get("fm_rationale_text") or ""
+            # Strip HTML tags from any stored remarks
+            safe_remarks = re.sub(r'<[^>]+>', '', str(raw_remarks)).strip() if raw_remarks else ""
+            
             with r_cols[i % 3]:
                 with st.container(border=True):
                     st.markdown(f"""
-                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;'>
                         <div style='font-size:14px; font-weight:800; color:#0F172A;'>{clean_placeholder(a.get('alert_name','—'))}</div>
                         {stat_pill(a.get('status'))}
                     </div>
-                    <div style='display:flex; justify-content:space-between; align-items:center;'>
-                        <div style='font-size:12px; font-weight:600; color:#334155;'>{a.get('ticker','—')} &middot; <span style='color:#0F172A;'>{act.get('call','—')}</span></div>
-                        <div style='font-size:10px; color:#94A3B8; font-weight:700;'>{fmt_ist(act.get('decision_at') or a.get('received_at'))}</div>
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;'>
+                        <div style='font-size:12px; font-weight:600; color:#334155;'>{a.get('ticker','—')} &middot; <span style='color:#0F172A; font-weight:700;'>{act.get('call','—')}</span> <span style='color:#94A3B8;'>({act.get('conviction','—')})</span></div>
+                        <div style='font-size:10px; color:#94A3B8; font-weight:600;'>{fmt_ist(act.get('decision_at') or a.get('received_at'))}</div>
                     </div>
+                    {f"<div style='font-size:11px; color:#475569; background:#F8FAFC; border-radius:5px; padding:6px 8px; border:1px solid #E2E8F0; margin-top:4px;'>{safe_remarks}</div>" if safe_remarks else ""}
                     """, unsafe_allow_html=True)
 
 
@@ -456,14 +480,25 @@ elif page == "Integrations":
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     st.markdown("### Universal Webhook Template")
-    st.markdown("<p style='font-size:12px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text.</p>", unsafe_allow_html=True)
+    st.markdown("""<div style='background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:12px 14px; font-size:12px; color:#92400E; margin-bottom:12px; line-height:1.6;'>
+    ⚠️ <strong>Important:</strong> TradingView does not pass the Alert Name into the message automatically. 
+    You must manually type your alert name as the value of <code>alert_name</code> below (e.g. <code>"GOLD CFD BUY Signal"</code>).
+    The <code>description</code> field gets the full instrument name (e.g. "CFDs on Gold (US$/OZ)").
+    </div>""", unsafe_allow_html=True)
     st.code(json.dumps({
-        "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
-        "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
-        "close": "{{close}}", "volume": "{{volume}}", "time": "{{time}}",
+        "ticker": "{{ticker}}",
+        "exchange": "{{exchange}}",
+        "interval": "{{interval}}",
+        "open": "{{open}}",
+        "high": "{{high}}",
+        "low": "{{low}}",
+        "close": "{{close}}",
+        "volume": "{{volume}}",
+        "time": "{{time}}",
         "timenow": "{{timenow}}",
-        "alert_name": "Your Custom Alert Name",
-        "message": "Write what happened here (e.g. Price broke resistance)"
+        "alert_name": "GOLD CFD BUY Signal",
+        "description": "{{syminfo.description}}",
+        "message": "Write your thesis here (e.g. Break of key resistance at 5100)"
     }, indent=2), language="json")
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
