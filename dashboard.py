@@ -341,17 +341,9 @@ st.markdown("""
 
 
 # ─── Auto-Refresh ─────────────────────────────────────
-# Method 1: JS-based reload
-st.markdown(f"""
-<script>
-    setTimeout(function(){{
-        window.location.reload();
-    }}, {REFRESH_INTERVAL * 1000});
-</script>
-""", unsafe_allow_html=True)
-
-# Method 2: Meta refresh as fallback (works even if JS is blocked)
-st.markdown(f'<meta http-equiv="refresh" content="{REFRESH_INTERVAL}">', unsafe_allow_html=True)
+# We use st.fragment with run_every to refresh data in the background
+# without reloading the page or disrupting user interaction.
+# (No JS/meta refresh — those cause full page reloads)
 
 
 # ─── Helpers ───────────────────────────────────────────
@@ -439,27 +431,7 @@ page = st.radio(
 
 if page == "📊 Live Alerts":
 
-    # ── Stats Row ──
-    stats = api_get("/api/stats")
-    if stats:
-        c1, c2, c3, c4, c5, c6 = st.columns(6)
-        for col, val, lbl, clr in [
-            (c1, stats.get('total_alerts', 0), "Total Alerts", "#2563EB"),
-            (c2, stats.get('pending', 0), "Pending", "#F59E0B"),
-            (c3, stats.get('today_alerts', 0), "Today", "#0891B2"),
-            (c4, stats.get('bullish_count', 0), "Bullish", "#10B981"),
-            (c5, stats.get('bearish_count', 0), "Bearish", "#EF4444"),
-        ]:
-            with col:
-                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{clr};">{val}</div><div class="stat-label">{lbl}</div></div>', unsafe_allow_html=True)
-        with c6:
-            ar = stats.get('avg_return_pct', 0) or 0
-            rc = "#10B981" if ar >= 0 else "#EF4444"
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{rc};">{ar:+.1f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
-
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-
-    # ── Inline Filter Bar ──
+    # ── Inline Filter Bar (static — does NOT refresh) ──
     st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
     fc1, fc2, fc3, fc4, fc5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.5])
 
@@ -486,137 +458,163 @@ if page == "📊 Live Alerts":
     if filter_sector != "All": fp["sector"] = filter_sector
     if filter_search: fp["search"] = filter_search
 
-    # ── Alert List ──
-    alerts_data = api_get("/api/alerts", params=fp)
+    # ── Auto-refreshing data section ──
+    @st.fragment(run_every=REFRESH_INTERVAL)
+    def live_alerts_data():
+        # ── Stats Row ──
+        stats = api_get("/api/stats")
+        if stats:
+            c1, c2, c3, c4, c5, c6 = st.columns(6)
+            for col, val, lbl, clr in [
+                (c1, stats.get('total_alerts', 0), "Total Alerts", "#2563EB"),
+                (c2, stats.get('pending', 0), "Pending", "#F59E0B"),
+                (c3, stats.get('today_alerts', 0), "Today", "#0891B2"),
+                (c4, stats.get('bullish_count', 0), "Bullish", "#10B981"),
+                (c5, stats.get('bearish_count', 0), "Bearish", "#EF4444"),
+            ]:
+                with col:
+                    st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{clr};">{val}</div><div class="stat-label">{lbl}</div></div>', unsafe_allow_html=True)
+            with c6:
+                ar = stats.get('avg_return_pct', 0) or 0
+                rc = "#10B981" if ar >= 0 else "#EF4444"
+                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{rc};">{ar:+.1f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
 
-    if alerts_data and alerts_data.get("alerts"):
-        alerts = alerts_data["alerts"]
-        st.markdown(f"""
-        <div style="margin-bottom:16px;">
-            <span style="font-size:14px; color:#6B7280;">{alerts_data.get('total', len(alerts))} alerts matching filters</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
 
-        for alert in alerts:
-            sig = alert.get("signal_direction", "NEUTRAL")
-            sig_class = sig.lower() if sig else "neutral"
-            status = alert.get("status", "PENDING")
-            pend_class = " pending" if status == "PENDING" else ""
+        # ── Alert List ──
+        alerts_data = api_get("/api/alerts", params=fp)
 
-            # Ticker display
-            ticker_d = alert.get("ticker") or "Unknown"
-            type_badge = ""
-            if alert.get("alert_type") == "RELATIVE":
-                num = alert.get("numerator_ticker", "?")
-                den = alert.get("denominator_ticker", "?")
-                if num and den:
-                    ticker_d = f"{num} / {den}"
-                type_badge = '<span class="relative-badge">RELATIVE</span>'
-
-            # Indicators
-            ind_html = ""
-            if alert.get("indicator_values"):
-                for k, v in alert["indicator_values"].items():
-                    vf = f"{v:.1f}" if isinstance(v, (int, float)) else str(v)
-                    ind_html += f'<span class="indicator-chip">{k.upper()}: {vf}</span>'
-
-            # Time
-            received = alert.get("received_at", "")
-            try:
-                dt = datetime.fromisoformat(received)
-                time_str = dt.strftime("%d %b %Y, %H:%M")
-            except:
-                time_str = received
-
-            # Sector & Price
-            sec_html = f'<span class="sector-tag">{alert["sector"]}</span>' if alert.get("sector") else ""
-
-            if alert.get("alert_type") == "RELATIVE":
-                price = f"Ratio: {(alert.get('ratio_value') or alert.get('price_at_alert') or 0):.4f}"
-            else:
-                price_val = alert.get('price_at_alert')
-                price = f"₹{price_val if price_val is not None else 0:,.2f}"
-
+        if alerts_data and alerts_data.get("alerts"):
+            alerts = alerts_data["alerts"]
             st.markdown(f"""
-            <div class="alert-card {sig_class}{pend_class}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
-                    <div>
-                        <span class="alert-ticker">{signal_emoji(sig)} {ticker_d}</span>{type_badge} {sec_html}
-                    </div>
-                    <div style="text-align:right;">
-                        {status_badge(status)}<br>
-                        <span class="alert-time">{time_str} · {time_ago(received)}</span>
-                    </div>
-                </div>
-                <div class="alert-meta">
-                    <span>📊 {alert.get('interval', '—')}</span>
-                    <span>💰 {price}</span>
-                    <span>📈 {alert.get('exchange', '—')}</span>
-                </div>
-                <div class="alert-body">
-                    <strong>{alert.get('alert_name', '')}</strong><br>
-                    {alert.get('signal_summary', alert.get('alert_message', 'No details'))}
-                </div>
-                {f'<div style="margin-top:10px;">{ind_html}</div>' if ind_html else ''}
+            <div style="margin-bottom:16px;">
+                <span style="font-size:14px; color:#6B7280;">{alerts_data.get('total', len(alerts))} alerts matching filters</span>
             </div>
             """, unsafe_allow_html=True)
 
-            # Quick actions for pending alerts
-            if status == "PENDING":
-                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
-                with c1:
-                    st.caption(f"Alert #{alert['id']}")
-                with c2:
-                    if st.button("✅ Approve", key=f"qa_{alert['id']}"):
-                        result = api_post(f"/api/alerts/{alert['id']}/action", {
-                            "alert_id": alert["id"],
-                            "decision": "APPROVED",
-                            "primary_call": "BUY" if sig == "BULLISH" else "SELL" if sig == "BEARISH" else "WATCH",
-                            "conviction": "MEDIUM",
-                        })
-                        if result and result.get("success"):
-                            st.success("✅ Approved!")
-                            time.sleep(0.5)
+            for alert in alerts:
+                sig = alert.get("signal_direction", "NEUTRAL")
+                sig_class = sig.lower() if sig else "neutral"
+                status = alert.get("status", "PENDING")
+                pend_class = " pending" if status == "PENDING" else ""
+
+                # Ticker display
+                ticker_d = alert.get("ticker") or "Unknown"
+                type_badge = ""
+                if alert.get("alert_type") == "RELATIVE":
+                    num = alert.get("numerator_ticker", "?")
+                    den = alert.get("denominator_ticker", "?")
+                    if num and den:
+                        ticker_d = f"{num} / {den}"
+                    type_badge = '<span class="relative-badge">RELATIVE</span>'
+
+                # Indicators
+                ind_html = ""
+                if alert.get("indicator_values"):
+                    for k, v in alert["indicator_values"].items():
+                        vf = f"{v:.1f}" if isinstance(v, (int, float)) else str(v)
+                        ind_html += f'<span class="indicator-chip">{k.upper()}: {vf}</span>'
+
+                # Time
+                received = alert.get("received_at", "")
+                try:
+                    dt = datetime.fromisoformat(received)
+                    time_str = dt.strftime("%d %b %Y, %H:%M")
+                except:
+                    time_str = received
+
+                # Sector & Price
+                sec_html = f'<span class="sector-tag">{alert["sector"]}</span>' if alert.get("sector") else ""
+
+                if alert.get("alert_type") == "RELATIVE":
+                    price = f"Ratio: {(alert.get('ratio_value') or alert.get('price_at_alert') or 0):.4f}"
+                else:
+                    price_val = alert.get('price_at_alert')
+                    price = f"₹{price_val if price_val is not None else 0:,.2f}"
+
+                st.markdown(f"""
+                <div class="alert-card {sig_class}{pend_class}">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+                        <div>
+                            <span class="alert-ticker">{signal_emoji(sig)} {ticker_d}</span>{type_badge} {sec_html}
+                        </div>
+                        <div style="text-align:right;">
+                            {status_badge(status)}<br>
+                            <span class="alert-time">{time_str} · {time_ago(received)}</span>
+                        </div>
+                    </div>
+                    <div class="alert-meta">
+                        <span>📊 {alert.get('interval', '—')}</span>
+                        <span>💰 {price}</span>
+                        <span>📈 {alert.get('exchange', '—')}</span>
+                    </div>
+                    <div class="alert-body">
+                        <strong>{alert.get('alert_name', '')}</strong><br>
+                        {alert.get('signal_summary', alert.get('alert_message', 'No details'))}
+                    </div>
+                    {f'<div style="margin-top:10px;">{ind_html}</div>' if ind_html else ''}
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Quick actions for pending alerts
+                if status == "PENDING":
+                    c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
+                    with c1:
+                        st.caption(f"Alert #{alert['id']}")
+                    with c2:
+                        if st.button("✅ Approve", key=f"qa_{alert['id']}"):
+                            result = api_post(f"/api/alerts/{alert['id']}/action", {
+                                "alert_id": alert["id"],
+                                "decision": "APPROVED",
+                                "primary_call": "BUY" if sig == "BULLISH" else "SELL" if sig == "BEARISH" else "WATCH",
+                                "conviction": "MEDIUM",
+                            })
+                            if result and result.get("success"):
+                                st.success("✅ Approved!")
+                                time.sleep(0.5)
+                                st.rerun()
+                            else:
+                                st.error("Failed to approve. Use Action Center for detailed approval.")
+                    with c3:
+                        if st.button("✖ Deny", key=f"qd_{alert['id']}"):
+                            api_post(f"/api/alerts/{alert['id']}/action", {"alert_id": alert["id"], "decision": "DENIED"})
                             st.rerun()
-                        else:
-                            st.error("Failed to approve. Use Action Center for detailed approval.")
-                with c3:
-                    if st.button("✖ Deny", key=f"qd_{alert['id']}"):
-                        api_post(f"/api/alerts/{alert['id']}/action", {"alert_id": alert["id"], "decision": "DENIED"})
-                        st.rerun()
-                with c4:
-                    if st.button("🗑️ Delete", key=f"del_{alert['id']}"):
-                        result = api_delete(f"/api/alerts/{alert['id']}")
-                        if result and result.get("success"):
-                            st.rerun()
-                        else:
-                            st.error("Delete failed.")
-            else:
-                # Non-pending alerts still get a delete option
-                c1, c2 = st.columns([5, 1])
-                with c1:
-                    if status == "APPROVED" and alert.get("action"):
-                        a = alert["action"]
-                        parts = []
-                        if a.get("primary_call"): parts.append(f"**{a.get('primary_ticker','?')}**: {a['primary_call']}")
-                        if a.get("secondary_call"): parts.append(f"**{a.get('secondary_ticker','?')}**: {a['secondary_call']}")
-                        if parts:
-                            st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
-                with c2:
-                    if st.button("🗑️", key=f"del_{alert['id']}", help="Delete this alert permanently"):
-                        result = api_delete(f"/api/alerts/{alert['id']}")
-                        if result and result.get("success"):
-                            st.rerun()
-                        else:
-                            st.error("Delete failed.")
-    else:
-        st.markdown("""
-        <div style="text-align:center; padding:60px 40px; color:#9CA3AF;">
-            <div style="font-size:3rem; margin-bottom:16px;">📭</div>
-            <div style="font-size:1rem; font-weight:600; color:#6B7280;">No alerts yet</div>
-            <div style="font-size:0.85rem; margin-top:6px;">Configure your TradingView webhook or load test alerts from Settings.</div>
-        </div>
-        """, unsafe_allow_html=True)
+                    with c4:
+                        if st.button("🗑️ Delete", key=f"del_{alert['id']}"):
+                            result = api_delete(f"/api/alerts/{alert['id']}")
+                            if result and result.get("success"):
+                                st.rerun()
+                            else:
+                                st.error("Delete failed.")
+                else:
+                    # Non-pending alerts still get a delete option
+                    c1, c2 = st.columns([5, 1])
+                    with c1:
+                        if status == "APPROVED" and alert.get("action"):
+                            a = alert["action"]
+                            parts = []
+                            if a.get("primary_call"): parts.append(f"**{a.get('primary_ticker','?')}**: {a['primary_call']}")
+                            if a.get("secondary_call"): parts.append(f"**{a.get('secondary_ticker','?')}**: {a['secondary_call']}")
+                            if parts:
+                                st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
+                    with c2:
+                        if st.button("🗑️", key=f"del_{alert['id']}", help="Delete this alert permanently"):
+                            result = api_delete(f"/api/alerts/{alert['id']}")
+                            if result and result.get("success"):
+                                st.rerun()
+                            else:
+                                st.error("Delete failed.")
+        else:
+            st.markdown("""
+            <div style="text-align:center; padding:60px 40px; color:#9CA3AF;">
+                <div style="font-size:3rem; margin-bottom:16px;">📭</div>
+                <div style="font-size:1rem; font-weight:600; color:#6B7280;">No alerts yet</div>
+                <div style="font-size:0.85rem; margin-top:6px;">Configure your TradingView webhook or load test alerts from Settings.</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Call the fragment
+    live_alerts_data()
 
 
 # ═══════════════════════════════════════════════════════
@@ -740,8 +738,10 @@ elif page == "📈 Performance":
     </div>
     """, unsafe_allow_html=True)
 
-    perf_data = api_get("/api/performance", params={"limit": 100})
-    stats = api_get("/api/stats")
+    @st.fragment(run_every=REFRESH_INTERVAL)
+    def performance_data():
+        perf_data = api_get("/api/performance", params={"limit": 100})
+        stats = api_get("/api/stats")
 
     if stats:
         mc1, mc2, mc3, mc4 = st.columns(4)
@@ -879,6 +879,9 @@ elif page == "📈 Performance":
             <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">Approve alerts first — tracking begins automatically via TradingView Heartbeats.</div>
         </div>
         """, unsafe_allow_html=True)
+
+    # Call the fragment
+    performance_data()
 
 
 # ═══════════════════════════════════════════════════════
