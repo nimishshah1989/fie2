@@ -372,6 +372,14 @@ def api_post(endpoint, data=None):
     except Exception as e:
         return None
 
+def api_delete(endpoint):
+    try:
+        r = requests.delete(f"{API_BASE}{endpoint}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        return None
+
 def fmt(val, prefix="", decimals=2):
     if val is None: return "—"
     if isinstance(val, (int, float)):
@@ -553,9 +561,9 @@ if page == "📊 Live Alerts":
             </div>
             """, unsafe_allow_html=True)
 
-            # Quick approve/deny for pending
+            # Quick actions for pending alerts
             if status == "PENDING":
-                c1, c2, c3 = st.columns([3, 1, 1])
+                c1, c2, c3, c4 = st.columns([2.5, 1, 1, 1])
                 with c1:
                     st.caption(f"Alert #{alert['id']}")
                 with c2:
@@ -576,13 +584,31 @@ if page == "📊 Live Alerts":
                     if st.button("✖ Deny", key=f"qd_{alert['id']}"):
                         api_post(f"/api/alerts/{alert['id']}/action", {"alert_id": alert["id"], "decision": "DENIED"})
                         st.rerun()
-            elif status == "APPROVED" and alert.get("action"):
-                a = alert["action"]
-                parts = []
-                if a.get("primary_call"): parts.append(f"**{a.get('primary_ticker','?')}**: {a['primary_call']}")
-                if a.get("secondary_call"): parts.append(f"**{a.get('secondary_ticker','?')}**: {a['secondary_call']}")
-                if parts:
-                    st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
+                with c4:
+                    if st.button("🗑️ Delete", key=f"del_{alert['id']}"):
+                        result = api_delete(f"/api/alerts/{alert['id']}")
+                        if result and result.get("success"):
+                            st.rerun()
+                        else:
+                            st.error("Delete failed.")
+            else:
+                # Non-pending alerts still get a delete option
+                c1, c2 = st.columns([5, 1])
+                with c1:
+                    if status == "APPROVED" and alert.get("action"):
+                        a = alert["action"]
+                        parts = []
+                        if a.get("primary_call"): parts.append(f"**{a.get('primary_ticker','?')}**: {a['primary_call']}")
+                        if a.get("secondary_call"): parts.append(f"**{a.get('secondary_ticker','?')}**: {a['secondary_call']}")
+                        if parts:
+                            st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
+                with c2:
+                    if st.button("🗑️", key=f"del_{alert['id']}", help="Delete this alert permanently"):
+                        result = api_delete(f"/api/alerts/{alert['id']}")
+                        if result and result.get("success"):
+                            st.rerun()
+                        else:
+                            st.error("Delete failed.")
     else:
         st.markdown("""
         <div style="text-align:center; padding:60px 40px; color:#9CA3AF;">
