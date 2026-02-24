@@ -1,6 +1,6 @@
 """
 FIE Phase 1 — Fund Manager Alert Intelligence Dashboard
-Streamlit Frontend
+Streamlit Frontend — v2 Professional White Theme
 """
 
 import streamlit as st
@@ -15,43 +15,340 @@ import os
 
 # ─── Configuration ─────────────────────────────────────
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
+REFRESH_INTERVAL = 60  # Auto-refresh every 60 seconds
 
-st.set_page_config(page_title="FIE — Alert Intelligence", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="FIE — Alert Intelligence",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
-# ─── Custom CSS ────────────────────────────────────────
+# ─── Custom CSS — Professional White Theme ─────────────
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap');
-    .stApp { background: #0a0e17; }
-    section[data-testid="stSidebar"] { background: #111827; border-right: 1px solid #1e2d3d; }
-    .stApp header { background: transparent !important; }
-    #MainMenu, footer, .stDeployButton { visibility: hidden; }
-    h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 { font-family: 'Outfit', sans-serif !important; color: #f8fafc !important; }
-    p, span, div, .stMarkdown p { font-family: 'Outfit', sans-serif; }
-    .stat-card { background: linear-gradient(135deg, #111827, #1a2332); border: 1px solid #1e2d3d; border-radius: 12px; padding: 20px; text-align: center; }
-    .stat-value { font-size: 32px; font-weight: 800; font-family: 'Outfit'; }
-    .stat-label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 2px; font-family: 'JetBrains Mono'; margin-top: 4px; }
-    .alert-card { background: #111827; border: 1px solid #1e2d3d; border-radius: 14px; padding: 20px; margin-bottom: 12px; border-left: 4px solid transparent; }
-    .alert-card.bullish { border-left-color: #10b981; }
-    .alert-card.bearish { border-left-color: #ef4444; }
-    .alert-card.neutral { border-left-color: #f59e0b; }
-    .alert-card.pending { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2); }
-    .alert-ticker { font-size: 20px; font-weight: 700; color: #f8fafc; font-family: 'Outfit'; }
-    .alert-time { font-size: 11px; color: #64748b; font-family: 'JetBrains Mono'; }
-    .badge { padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; font-family: 'JetBrains Mono'; letter-spacing: 1px; }
-    .badge-pending { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-    .badge-approved { background: rgba(16, 185, 129, 0.15); color: #10b981; }
-    .badge-denied { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
-    .indicator-chip { display: inline-block; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 4px 10px; margin: 2px; font-size: 12px; font-family: 'JetBrains Mono'; color: #94a3b8; }
-    .sector-tag { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-family: 'JetBrains Mono'; background: rgba(59, 130, 246, 0.15); color: #3b82f6; letter-spacing: 1px; }
-    .relative-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-family: 'JetBrains Mono'; background: rgba(139, 92, 246, 0.15); color: #8b5cf6; letter-spacing: 1px; margin-left: 8px; }
-    .fie-header { background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(6, 182, 212, 0.05)); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 16px; padding: 24px 30px; margin-bottom: 24px; }
-    .fie-title { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, #e2e8f0, #3b82f6, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-family: 'Outfit'; }
-    .fie-subtitle { font-size: 13px; color: #64748b; font-family: 'JetBrains Mono'; letter-spacing: 2px; }
-    .stTabs [data-baseweb="tab-list"] { gap: 4px; background: #111827; border-radius: 12px; padding: 4px; }
-    .stTabs [data-baseweb="tab"] { border-radius: 8px; font-family: 'Outfit'; }
-    .stTabs [aria-selected="true"] { background: #3b82f6 !important; color: white !important; }
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@300;400;500;600&display=swap');
+
+    /* ── Global ── */
+    .stApp { background: #F8F9FB !important; }
+    .main .block-container {
+        padding: 1.2rem 2rem 2rem 2rem !important;
+        max-width: 1440px !important;
+    }
+    * { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif !important; }
+
+    /* ── Hide Streamlit UI ── */
+    #MainMenu, footer, .stDeployButton { display: none !important; }
+    header[data-testid="stHeader"] { background: transparent !important; }
+    div[data-testid="stToolbar"] { display: none !important; }
+    div[data-testid="stDecoration"] { display: none !important; }
+    div[data-testid="stStatusWidget"] { display: none !important; }
+
+    /* ── Sidebar ── */
+    section[data-testid="stSidebar"] {
+        background: #FFFFFF !important;
+        border-right: 1px solid #E5E7EB !important;
+    }
+    section[data-testid="stSidebar"] .stRadio label { color: #374151 !important; }
+    section[data-testid="stSidebar"] .stMarkdown { color: #1F2937 !important; }
+
+    /* ── Typography ── */
+    h1, h2, h3, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+        font-family: 'DM Sans', sans-serif !important;
+        color: #111827 !important;
+        font-weight: 700 !important;
+    }
+    p, span, div, .stMarkdown p { color: #374151; }
+
+    /* ── Stat Cards ── */
+    .stat-card {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 14px;
+        padding: 22px 20px;
+        text-align: center;
+        transition: all 0.2s ease;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .stat-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.06); transform: translateY(-1px); }
+    .stat-value {
+        font-size: 30px;
+        font-weight: 700;
+        font-family: 'DM Sans', sans-serif !important;
+    }
+    .stat-label {
+        font-size: 11px;
+        color: #9CA3AF;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-family: 'JetBrains Mono', monospace !important;
+        margin-top: 6px;
+        font-weight: 500;
+    }
+
+    /* ── Alert Cards ── */
+    .alert-card {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 14px;
+        padding: 22px 26px;
+        margin-bottom: 14px;
+        border-left: 4px solid transparent;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        transition: all 0.2s ease;
+    }
+    .alert-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+    .alert-card.bullish { border-left-color: #10B981; }
+    .alert-card.bearish { border-left-color: #EF4444; }
+    .alert-card.neutral { border-left-color: #F59E0B; }
+    .alert-card.pending { box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.15); }
+
+    .alert-ticker {
+        font-size: 18px;
+        font-weight: 700;
+        color: #111827;
+        font-family: 'DM Sans', sans-serif !important;
+    }
+    .alert-time {
+        font-size: 11px;
+        color: #9CA3AF;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+    .alert-meta {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        color: #6B7280;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+    .alert-body {
+        font-size: 14px;
+        color: #4B5563;
+        line-height: 1.6;
+    }
+
+    /* ── Badges ── */
+    .badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace !important;
+        letter-spacing: 0.5px;
+    }
+    .badge-pending { background: #FEF3C7; color: #92400E; }
+    .badge-approved { background: #D1FAE5; color: #065F46; }
+    .badge-denied { background: #FEE2E2; color: #991B1B; }
+
+    .indicator-chip {
+        display: inline-block;
+        background: #F3F4F6;
+        border: 1px solid #E5E7EB;
+        border-radius: 8px;
+        padding: 4px 12px;
+        margin: 2px 4px 2px 0;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace !important;
+        color: #4B5563;
+    }
+    .sector-tag {
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-family: 'DM Sans', sans-serif !important;
+        font-weight: 600;
+        background: #EFF6FF;
+        color: #2563EB;
+        letter-spacing: 0.3px;
+    }
+    .relative-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-family: 'DM Sans', sans-serif !important;
+        font-weight: 600;
+        background: #F3E8FF;
+        color: #7C3AED;
+        letter-spacing: 0.3px;
+        margin-left: 8px;
+    }
+
+    /* ── Header ── */
+    .fie-header {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 16px;
+        padding: 28px 32px;
+        margin-bottom: 24px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .fie-title {
+        font-size: 26px;
+        font-weight: 800;
+        color: #111827;
+        font-family: 'DM Sans', sans-serif !important;
+    }
+    .fie-subtitle {
+        font-size: 12px;
+        color: #9CA3AF;
+        font-family: 'JetBrains Mono', monospace !important;
+        letter-spacing: 2px;
+        margin-bottom: 2px;
+    }
+
+    /* ── Filter Bar ── */
+    .filter-bar {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 14px;
+        padding: 16px 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    /* ── Tabs ── */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+        background: #F3F4F6;
+        border-radius: 12px;
+        padding: 4px;
+        border: 1px solid #E5E7EB;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 9px;
+        font-family: 'DM Sans', sans-serif !important;
+        font-weight: 500;
+        font-size: 14px;
+        color: #6B7280;
+        padding: 8px 20px;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #111827 !important;
+        color: #FFFFFF !important;
+        font-weight: 600;
+    }
+    .stTabs [data-baseweb="tab-highlight"] { display: none; }
+    .stTabs [data-baseweb="tab-border"] { display: none; }
+
+    /* ── Buttons ── */
+    .stButton > button {
+        border-radius: 10px !important;
+        font-family: 'DM Sans', sans-serif !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        padding: 0.5rem 1.4rem !important;
+        border: 1px solid #E5E7EB !important;
+        background: #FFFFFF !important;
+        color: #374151 !important;
+        transition: all 0.15s ease !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+    }
+    .stButton > button:hover {
+        background: #F9FAFB !important;
+        border-color: #D1D5DB !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: #111827 !important;
+        color: #FFFFFF !important;
+        border-color: #111827 !important;
+    }
+    .stButton > button[kind="primary"]:hover {
+        background: #1F2937 !important;
+    }
+
+    /* ── Select / Input ── */
+    div[data-testid="stSelectbox"] > div > div,
+    div[data-testid="stMultiSelect"] > div > div {
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 10px !important;
+        color: #374151 !important;
+    }
+    .stTextInput > div > div > input {
+        border-radius: 10px !important;
+        border: 1px solid #E5E7EB !important;
+        background: #FFFFFF !important;
+    }
+    .stNumberInput > div > div > input {
+        border-radius: 10px !important;
+        border: 1px solid #E5E7EB !important;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+
+    /* ── Expander ── */
+    .streamlit-expanderHeader {
+        font-family: 'DM Sans', sans-serif !important;
+        font-weight: 600 !important;
+        background: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 12px !important;
+    }
+
+    /* ── Metrics ── */
+    div[data-testid="stMetric"] {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 12px;
+        padding: 16px 18px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    div[data-testid="stMetric"] label {
+        color: #9CA3AF !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.05em !important;
+        text-transform: uppercase !important;
+    }
+    div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+        color: #111827 !important;
+        font-family: 'JetBrains Mono', monospace !important;
+    }
+
+    /* ── Dataframes ── */
+    .stDataFrame { border: 1px solid #E5E7EB !important; border-radius: 12px !important; overflow: hidden; }
+
+    /* ── Dividers ── */
+    hr { border-color: #F3F4F6 !important; }
+
+    /* ── Live dot ── */
+    .live-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background: #10B981;
+        border-radius: 50%;
+        margin-right: 6px;
+        animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+        50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+
+    /* ── Info / Success / Warning boxes ── */
+    .stAlert { border-radius: 12px !important; border: 1px solid #E5E7EB !important; }
 </style>
+""", unsafe_allow_html=True)
+
+
+# ─── Auto-Refresh via JS ──────────────────────────────
+# This injects a script that reloads the page every REFRESH_INTERVAL seconds.
+# Cost impact: negligible — just lightweight GET calls to your backend API.
+st.markdown(f"""
+<script>
+    setTimeout(function(){{
+        window.location.reload();
+    }}, {REFRESH_INTERVAL * 1000});
+</script>
 """, unsafe_allow_html=True)
 
 
@@ -98,50 +395,32 @@ def time_ago(dt_str):
     except: return ""
 
 
-# ─── Sidebar ───────────────────────────────────────────
+# ─── Top Navigation ───────────────────────────────────
 
-with st.sidebar:
+nav_left, nav_right = st.columns([3, 1])
+with nav_left:
     st.markdown("""
-    <div style="text-align: center; padding: 10px 0 20px;">
-        <div style="font-size: 24px; font-weight: 800; font-family: 'Outfit'; color: #f8fafc;">⚡ FIE</div>
-        <div style="font-size: 11px; color: #3b82f6; font-family: 'JetBrains Mono'; letter-spacing: 3px;">ALERT INTELLIGENCE</div>
+    <div style="display:flex; align-items:center; gap:12px; padding:4px 0 16px;">
+        <span style="font-size:22px; font-weight:800; color:#111827; font-family:'DM Sans';">⚡ FIE</span>
+        <span style="font-size:11px; color:#9CA3AF; font-family:'JetBrains Mono'; letter-spacing:2px; padding-top:3px;">JHAVERI SECURITIES</span>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown("---")
-    
-    page = st.radio("Navigation", ["📊 Live Alerts", "✅ Action Center", "📈 Performance", "⚙️ Settings"], label_visibility="collapsed")
-    
-    st.markdown("---")
-    st.markdown("**Filters**")
-    filter_status = st.selectbox("Status", ["All", "PENDING", "APPROVED", "DENIED"])
-    filter_signal = st.selectbox("Signal", ["All", "BULLISH", "BEARISH", "NEUTRAL"])
-    filter_type = st.selectbox("Alert Type", ["All", "ABSOLUTE", "RELATIVE"])
-    
-    sectors_data = api_get("/api/sectors")
-    sector_list = ["All"] + (sectors_data.get("sectors", []) if sectors_data else [])
-    filter_sector = st.selectbox("Sector", sector_list)
-    filter_search = st.text_input("🔍 Search", "")
-    
-    st.markdown("---")
-    st.markdown("**Quick Actions**")
-    if st.button("🔄 Refresh", use_container_width=True):
-        st.rerun()
-    if st.button("📥 Load Test Alerts", use_container_width=True):
-        result = api_post("/api/test-alert")
-        if result and result.get("success"):
-            st.success(f"✅ {result['count']} test alerts created!")
-            time.sleep(1)
-            st.rerun()
+with nav_right:
+    st.markdown(f"""
+    <div style="text-align:right; padding:8px 0 16px;">
+        <span class="live-dot"></span>
+        <span style="font-size:12px; color:#6B7280; font-family:'JetBrains Mono';">
+            Live · Refreshes every {REFRESH_INTERVAL}s
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("<br><div style='text-align:center; font-size:11px; color:#64748b; font-family:\"JetBrains Mono\";'>Performance is auto-updated via TradingView Heartbeats</div>", unsafe_allow_html=True)
-
-# Build filter params
-fp = {}
-if filter_status != "All": fp["status"] = filter_status
-if filter_signal != "All": fp["signal_direction"] = filter_signal
-if filter_type != "All": fp["alert_type"] = filter_type
-if filter_sector != "All": fp["sector"] = filter_sector
-if filter_search: fp["search"] = filter_search
+page = st.radio(
+    "nav",
+    ["📊 Live Alerts", "✅ Action Center", "📈 Performance", "⚙️ Settings"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
 
 
 # ═══════════════════════════════════════════════════════
@@ -149,45 +428,72 @@ if filter_search: fp["search"] = filter_search
 # ═══════════════════════════════════════════════════════
 
 if page == "📊 Live Alerts":
-    st.markdown("""
-    <div class="fie-header">
-        <div class="fie-subtitle">JHAVERI SECURITIES — FINANCIAL INTELLIGENCE ENGINE</div>
-        <div class="fie-title">Live Alert Monitor</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
+
+    # ── Stats Row ──
     stats = api_get("/api/stats")
     if stats:
         c1, c2, c3, c4, c5, c6 = st.columns(6)
         for col, val, lbl, clr in [
-            (c1, stats['total_alerts'], "Total Alerts", "#3b82f6"),
-            (c2, stats['pending'], "Pending", "#f59e0b"),
-            (c3, stats['today_alerts'], "Today", "#06b6d4"),
-            (c4, stats['bullish_count'], "Bullish", "#10b981"),
-            (c5, stats['bearish_count'], "Bearish", "#ef4444"),
+            (c1, stats.get('total_alerts', 0), "Total Alerts", "#2563EB"),
+            (c2, stats.get('pending', 0), "Pending", "#F59E0B"),
+            (c3, stats.get('today_alerts', 0), "Today", "#0891B2"),
+            (c4, stats.get('bullish_count', 0), "Bullish", "#10B981"),
+            (c5, stats.get('bearish_count', 0), "Bearish", "#EF4444"),
         ]:
             with col:
                 st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{clr};">{val}</div><div class="stat-label">{lbl}</div></div>', unsafe_allow_html=True)
         with c6:
-            ar = stats.get('avg_return_pct', 0)
-            rc = "#10b981" if ar >= 0 else "#ef4444"
+            ar = stats.get('avg_return_pct', 0) or 0
+            rc = "#10B981" if ar >= 0 else "#EF4444"
             st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{rc};">{ar:+.1f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
+    # ── Inline Filter Bar ──
+    st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
+    fc1, fc2, fc3, fc4, fc5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.5])
+
+    sectors_data = api_get("/api/sectors")
+    sector_list = ["All"] + (sectors_data.get("sectors", []) if sectors_data else [])
+
+    with fc1:
+        filter_status = st.selectbox("Status", ["All", "PENDING", "APPROVED", "DENIED"], key="f_status")
+    with fc2:
+        filter_signal = st.selectbox("Signal", ["All", "BULLISH", "BEARISH", "NEUTRAL"], key="f_signal")
+    with fc3:
+        filter_type = st.selectbox("Alert Type", ["All", "ABSOLUTE", "RELATIVE"], key="f_type")
+    with fc4:
+        filter_sector = st.selectbox("Sector", sector_list, key="f_sector")
+    with fc5:
+        filter_search = st.text_input("🔍 Search ticker or message", "", key="f_search")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Build filter params
+    fp = {}
+    if filter_status != "All": fp["status"] = filter_status
+    if filter_signal != "All": fp["signal_direction"] = filter_signal
+    if filter_type != "All": fp["alert_type"] = filter_type
+    if filter_sector != "All": fp["sector"] = filter_sector
+    if filter_search: fp["search"] = filter_search
+
+    # ── Alert List ──
     alerts_data = api_get("/api/alerts", params=fp)
-    
+
     if alerts_data and alerts_data.get("alerts"):
         alerts = alerts_data["alerts"]
-        st.markdown(f"**{alerts_data['total']} alerts** matching filters")
-        
+        st.markdown(f"""
+        <div style="margin-bottom:16px;">
+            <span style="font-size:14px; color:#6B7280;">{alerts_data.get('total', len(alerts))} alerts matching filters</span>
+        </div>
+        """, unsafe_allow_html=True)
+
         for alert in alerts:
             sig = alert.get("signal_direction", "NEUTRAL")
             sig_class = sig.lower() if sig else "neutral"
             status = alert.get("status", "PENDING")
             pend_class = " pending" if status == "PENDING" else ""
-            
-            # Ticker
+
+            # Ticker display
             ticker_d = alert.get("ticker") or "Unknown"
             type_badge = ""
             if alert.get("alert_type") == "RELATIVE":
@@ -195,15 +501,15 @@ if page == "📊 Live Alerts":
                 den = alert.get("denominator_ticker", "?")
                 if num and den:
                     ticker_d = f"{num} / {den}"
-                type_badge = '<span class="relative-badge">RELATIVE RATIO</span>'
-            
+                type_badge = '<span class="relative-badge">RELATIVE</span>'
+
             # Indicators
             ind_html = ""
             if alert.get("indicator_values"):
                 for k, v in alert["indicator_values"].items():
                     vf = f"{v:.1f}" if isinstance(v, (int, float)) else str(v)
                     ind_html += f'<span class="indicator-chip">{k.upper()}: {vf}</span>'
-            
+
             # Time
             received = alert.get("received_at", "")
             try:
@@ -211,36 +517,41 @@ if page == "📊 Live Alerts":
                 time_str = dt.strftime("%d %b %Y, %H:%M")
             except:
                 time_str = received
-            
+
             # Sector & Price
             sec_html = f'<span class="sector-tag">{alert["sector"]}</span>' if alert.get("sector") else ""
-            
-            # For ratio trades, show the ratio value instead of currency
+
             if alert.get("alert_type") == "RELATIVE":
-                price = f"Ratio: {alert.get('ratio_value', alert.get('price_at_alert', 0)):.4f}"
+                price = f"Ratio: {(alert.get('ratio_value') or alert.get('price_at_alert') or 0):.4f}"
             else:
                 price_val = alert.get('price_at_alert')
-                price = f"Rs.{price_val if price_val is not None else 0:.2f}"
-            
+                price = f"₹{price_val if price_val is not None else 0:,.2f}"
+
             st.markdown(f"""
             <div class="alert-card {sig_class}{pend_class}">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <div><span class="alert-ticker">{signal_emoji(sig)} {ticker_d}</span>{type_badge} {sec_html}</div>
-                    <div style="text-align:right;">{status_badge(status)}<br><span class="alert-time">{time_str} · {time_ago(received)}</span></div>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+                    <div>
+                        <span class="alert-ticker">{signal_emoji(sig)} {ticker_d}</span>{type_badge} {sec_html}
+                    </div>
+                    <div style="text-align:right;">
+                        {status_badge(status)}<br>
+                        <span class="alert-time">{time_str} · {time_ago(received)}</span>
+                    </div>
                 </div>
-                <div style="display:flex; gap:16px; margin-bottom:8px; font-size:12px; color:#64748b; font-family:'JetBrains Mono';">
+                <div class="alert-meta">
                     <span>📊 {alert.get('interval', '—')}</span>
                     <span>💰 {price}</span>
                     <span>📈 {alert.get('exchange', '—')}</span>
                 </div>
-                <div style="font-size:14px; color:#cbd5e1; line-height:1.5;">
+                <div class="alert-body">
                     <strong>{alert.get('alert_name', '')}</strong><br>
                     {alert.get('signal_summary', alert.get('alert_message', 'No details'))}
                 </div>
-                {f'<div style="margin-top:8px;">{ind_html}</div>' if ind_html else ''}
+                {f'<div style="margin-top:10px;">{ind_html}</div>' if ind_html else ''}
             </div>
             """, unsafe_allow_html=True)
-            
+
+            # Quick approve/deny for pending
             if status == "PENDING":
                 c1, c2, c3 = st.columns([3, 1, 1])
                 with c1:
@@ -249,7 +560,7 @@ if page == "📊 Live Alerts":
                     if st.button("✅ Approve", key=f"qa_{alert['id']}"):
                         st.session_state[f"approve_{alert['id']}"] = True
                 with c3:
-                    if st.button("❌ Deny", key=f"qd_{alert['id']}"):
+                    if st.button("✖ Deny", key=f"qd_{alert['id']}"):
                         api_post(f"/api/alerts/{alert['id']}/action", {"alert_id": alert["id"], "decision": "DENIED"})
                         st.rerun()
             elif status == "APPROVED" and alert.get("action"):
@@ -259,9 +570,14 @@ if page == "📊 Live Alerts":
                 if a.get("secondary_call"): parts.append(f"**{a.get('secondary_ticker','?')}**: {a['secondary_call']}")
                 if parts:
                     st.caption(f"FM: {' | '.join(parts)} · {a.get('conviction', '—')}")
-            st.markdown("---")
     else:
-        st.info("📭 No alerts yet. Configure your TradingView webhook or click **Load Test Alerts**.")
+        st.markdown("""
+        <div style="text-align:center; padding:60px 40px; color:#9CA3AF;">
+            <div style="font-size:3rem; margin-bottom:16px;">📭</div>
+            <div style="font-size:1rem; font-weight:600; color:#6B7280;">No alerts yet</div>
+            <div style="font-size:0.85rem; margin-top:6px;">Configure your TradingView webhook or load test alerts from Settings.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════
@@ -275,16 +591,16 @@ elif page == "✅ Action Center":
         <div class="fie-title">Action Center</div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     pending_data = api_get("/api/alerts", params={"status": "PENDING", "limit": 100})
-    
+
     if pending_data and pending_data.get("alerts"):
         pending = pending_data["alerts"]
         st.markdown(f"### ⏳ {len(pending)} Alerts Awaiting Decision")
-        
+
         for alert in pending:
             is_rel = alert.get("alert_type") == "RELATIVE"
-            
+
             with st.expander(
                 f"{signal_emoji(alert.get('signal_direction'))} "
                 f"{'[R] ' if is_rel else ''}"
@@ -292,77 +608,85 @@ elif page == "✅ Action Center":
                 expanded=True
             ):
                 col_info, col_act = st.columns([3, 2])
-                
+
                 with col_info:
                     st.info(alert.get("signal_summary", "No summary"))
                     if alert.get("alert_message"):
                         st.markdown(f"**Message:** {alert['alert_message']}")
-                    
+
                     mc = st.columns(4)
                     for i, (lbl, key) in enumerate([("Price", "price_at_alert"), ("Open", "price_open"), ("High", "price_high"), ("Low", "price_low")]):
                         with mc[i]:
                             if is_rel:
                                 st.metric(lbl, fmt(alert.get(key), decimals=4))
                             else:
-                                st.metric(lbl, fmt(alert.get(key), prefix="Rs."))
-                    
+                                st.metric(lbl, fmt(alert.get(key), prefix="₹"))
+
                     if alert.get("indicator_values"):
                         st.markdown("**Indicators:**")
                         st.dataframe(pd.DataFrame([alert["indicator_values"]]), use_container_width=True)
-                    
+
                     if is_rel:
                         st.markdown("**Relative Alert Details:**")
                         rc = st.columns(3)
-                        with rc[0]: st.metric(f"Num: {alert.get('numerator_ticker','?')}", fmt(alert.get("numerator_price"), prefix="Rs."))
-                        with rc[1]: st.metric(f"Den: {alert.get('denominator_ticker','?')}", fmt(alert.get("denominator_price"), prefix="Rs."))
+                        with rc[0]: st.metric(f"Num: {alert.get('numerator_ticker','?')}", fmt(alert.get("numerator_price"), prefix="₹"))
+                        with rc[1]: st.metric(f"Den: {alert.get('denominator_ticker','?')}", fmt(alert.get("denominator_price"), prefix="₹"))
                         with rc[2]: st.metric("Ratio", fmt(alert.get("ratio_value"), decimals=4))
-                
+
                 with col_act:
                     st.markdown("### 🎯 Take Action")
                     decision = st.radio("Decision", ["APPROVED", "DENIED"], horizontal=True, key=f"dec_{alert['id']}")
-                    
+
                     payload = {"alert_id": alert["id"], "decision": decision}
-                    
+
                     if decision == "APPROVED":
                         actions = ["BUY", "SELL", "HOLD", "STRONG_BUY", "STRONG_SELL", "OVERBOUGHT", "OVERSOLD", "EXIT", "ACCUMULATE", "REDUCE", "WATCH"]
-                        
-                        # We map the primary action directly to the charted ticker (ratio or absolute)
+
                         ptk = alert.get("ticker", "?")
                         st.markdown(f"**📌 {ptk}:**")
                         pc = st.selectbox("Action on Instrument", actions, key=f"pc_{alert['id']}", label_visibility="collapsed")
                         pn = st.text_input("Notes", key=f"pn_{alert['id']}", placeholder="Optional...")
-                        
+
                         pc1, pc2 = st.columns(2)
                         with pc1: pt = st.number_input("Target Level", value=0.0, key=f"pt_{alert['id']}", format="%.4f")
                         with pc2: ps = st.number_input("Stop Loss", value=0.0, key=f"ps_{alert['id']}", format="%.4f")
-                        
+
                         payload.update({"primary_call": pc, "primary_notes": pn or None, "primary_target_price": pt if pt > 0 else None, "primary_stop_loss": ps if ps > 0 else None})
-                        
+
                         st.markdown("---")
                         conv = st.select_slider("Conviction", ["LOW", "MEDIUM", "HIGH"], value="MEDIUM", key=f"cv_{alert['id']}")
                         remarks = st.text_area("Remarks", key=f"rm_{alert['id']}", placeholder="Reasoning...", height=60)
                         payload.update({"conviction": conv, "fm_remarks": remarks or None})
-                    
-                    btn = "✅ Approve & Submit" if decision == "APPROVED" else "❌ Deny Alert"
-                    if st.button(btn, key=f"sub_{alert['id']}", type="primary" if decision == "APPROVED" else "secondary", use_container_width=True):
+
+                    btn_label = "✅ Approve & Submit" if decision == "APPROVED" else "❌ Deny Alert"
+                    if st.button(btn_label, key=f"sub_{alert['id']}", type="primary" if decision == "APPROVED" else "secondary", use_container_width=True):
                         result = api_post(f"/api/alerts/{alert['id']}/action", payload)
                         if result and result.get("success"):
                             st.success(f"✅ {decision}")
                             time.sleep(0.5)
                             st.rerun()
     else:
-        st.success("🎉 No pending alerts! All caught up.")
-    
+        st.markdown("""
+        <div style="text-align:center; padding:60px 40px;">
+            <div style="font-size:3rem; margin-bottom:16px;">🎉</div>
+            <div style="font-size:1.1rem; font-weight:600; color:#111827;">All caught up!</div>
+            <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">No pending alerts. New alerts will appear here automatically.</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # Recently actioned
     st.markdown("---")
     st.markdown("### 📋 Recently Actioned")
     recent = api_get("/api/alerts", params={"limit": 20})
     if recent and recent.get("alerts"):
         actioned = [a for a in recent["alerts"] if a.get("status") != "PENDING"][:10]
-        for a in actioned:
-            act = a.get("action") or {}
-            call = act.get("primary_call", "—")
-            st.markdown(f"{signal_emoji(a.get('signal_direction'))} **{a.get('ticker','?')}** — {status_badge(a.get('status'))} → {call} ({act.get('conviction', '—')})", unsafe_allow_html=True)
+        if actioned:
+            for a in actioned:
+                act = a.get("action") or {}
+                call = act.get("primary_call", "—")
+                st.markdown(f"{signal_emoji(a.get('signal_direction'))} **{a.get('ticker','?')}** — {status_badge(a.get('status'))} → {call} ({act.get('conviction', '—')})", unsafe_allow_html=True)
+        else:
+            st.caption("No actioned alerts yet.")
 
 
 # ═══════════════════════════════════════════════════════
@@ -376,50 +700,47 @@ elif page == "📈 Performance":
         <div class="fie-title">Performance Tracker</div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     perf_data = api_get("/api/performance", params={"limit": 100})
     stats = api_get("/api/stats")
-    
+
     if stats:
         mc1, mc2, mc3, mc4 = st.columns(4)
         with mc1:
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10b981;">{stats.get("approved",0)}</div><div class="stat-label">Approved Calls</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10B981;">{stats.get("approved",0)}</div><div class="stat-label">Approved Calls</div></div>', unsafe_allow_html=True)
         with mc2:
-            ar = stats.get("avg_return_pct", 0)
-            rc = "#10b981" if ar >= 0 else "#ef4444"
+            ar = stats.get("avg_return_pct", 0) or 0
+            rc = "#10B981" if ar >= 0 else "#EF4444"
             st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{rc};">{ar:+.1f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
         with mc3:
-            wr = stats.get("win_rate", 0)
-            wc = "#10b981" if wr >= 50 else "#ef4444"
+            wr = stats.get("win_rate", 0) or 0
+            wc = "#10B981" if wr >= 50 else "#EF4444"
             st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{wc};">{wr:.0f}%</div><div class="stat-label">Win Rate</div></div>', unsafe_allow_html=True)
         with mc4:
             tp = stats.get("top_performer", {}).get("return_pct", 0) or 0
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10b981;">{tp:+.1f}%</div><div class="stat-label">Best Return</div></div>', unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
+            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:#10B981;">{tp:+.1f}%</div><div class="stat-label">Best Return</div></div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+
     if perf_data and perf_data.get("performance"):
         perfs = perf_data["performance"]
-        
-        # Performance table
         df = pd.DataFrame(perfs)
-        
+
         if not df.empty:
             tab1, tab2, tab3 = st.tabs(["📊 Performance Table", "📈 Returns Chart", "🏆 Sector Analysis"])
-            
+
             with tab1:
                 display_cols = ["ticker", "call", "conviction", "reference_price", "current_price", "return_pct", "approved_at"]
                 avail_cols = [c for c in display_cols if c in df.columns]
                 display_df = df[avail_cols].copy()
-                
+
                 col_names = {
                     "ticker": "Ticker/Ratio", "call": "Call", "conviction": "Conv.",
                     "reference_price": "Entry Level", "current_price": "Current Level",
                     "return_pct": "Net Return %", "approved_at": "Approved Date"
                 }
                 display_df = display_df.rename(columns={k: v for k, v in col_names.items() if k in display_df.columns})
-                
-                # Format datetimes
+
                 if "Approved Date" in display_df.columns:
                     display_df["Approved Date"] = pd.to_datetime(display_df["Approved Date"]).dt.strftime('%Y-%m-%d %H:%M')
 
@@ -433,14 +754,14 @@ elif page == "📈 Performance":
                         "Current Level": st.column_config.NumberColumn(format="%.4f"),
                     }
                 )
-            
+
             with tab2:
                 if "return_pct" in df.columns and "ticker" in df.columns:
                     chart_df = df[["ticker", "return_pct", "call"]].dropna(subset=["return_pct"]).sort_values("return_pct", ascending=True)
-                    
+
                     if not chart_df.empty:
-                        colors = ["#10b981" if x >= 0 else "#ef4444" for x in chart_df["return_pct"]]
-                        
+                        colors = ["#10B981" if x >= 0 else "#EF4444" for x in chart_df["return_pct"]]
+
                         fig = go.Figure(go.Bar(
                             y=chart_df["ticker"],
                             x=chart_df["return_pct"],
@@ -450,22 +771,23 @@ elif page == "📈 Performance":
                             textposition="outside",
                             hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<extra></extra>",
                         ))
-                        
+
                         fig.update_layout(
                             title="Returns by Alert (Total since Approval)",
-                            template="plotly_dark",
-                            paper_bgcolor="#0a0e17",
-                            plot_bgcolor="#111827",
-                            font=dict(family="Outfit", color="#e2e8f0"),
+                            paper_bgcolor="#FFFFFF",
+                            plot_bgcolor="#FAFBFC",
+                            font=dict(family="DM Sans", color="#374151"),
                             height=max(400, len(chart_df) * 35),
                             xaxis_title="Return %",
                             yaxis_title="",
                             showlegend=False,
-                            margin=dict(l=120),
+                            margin=dict(l=120, r=60, t=50, b=40),
+                            xaxis=dict(gridcolor="#F3F4F6", zerolinecolor="#E5E7EB"),
+                            yaxis=dict(gridcolor="#F3F4F6"),
                         )
-                        
+
                         st.plotly_chart(fig, use_container_width=True)
-            
+
             with tab3:
                 if "sector" in df.columns:
                     sector_df = df.groupby("sector").agg(
@@ -474,41 +796,50 @@ elif page == "📈 Performance":
                         max_return=("return_pct", "max"),
                         min_return=("return_pct", "min"),
                     ).reset_index()
-                    
+
                     if not sector_df.empty:
+                        colors_map = {
+                            "Banking": "#2563EB", "Information Technology": "#0891B2",
+                            "Broad Market": "#7C3AED", "Pharma & Healthcare": "#10B981",
+                            "FMCG": "#F59E0B", "Automobile": "#EF4444"
+                        }
+
                         fig2 = go.Figure()
-                        
-                        colors_map = {"Banking": "#3b82f6", "Information Technology": "#06b6d4", "Broad Market": "#8b5cf6", "Pharma & Healthcare": "#10b981", "FMCG": "#f59e0b", "Automobile": "#ef4444"}
-                        
                         fig2.add_trace(go.Bar(
                             x=sector_df["sector"],
                             y=sector_df["avg_return"],
                             name="Avg Return",
-                            marker_color=[colors_map.get(s, "#64748b") for s in sector_df["sector"]],
+                            marker_color=[colors_map.get(s, "#6B7280") for s in sector_df["sector"]],
                             text=[f"{x:.1f}%" for x in sector_df["avg_return"]],
                             textposition="outside",
                         ))
-                        
+
                         fig2.update_layout(
                             title="Average Return by Sector",
-                            template="plotly_dark",
-                            paper_bgcolor="#0a0e17",
-                            plot_bgcolor="#111827",
-                            font=dict(family="Outfit", color="#e2e8f0"),
+                            paper_bgcolor="#FFFFFF",
+                            plot_bgcolor="#FAFBFC",
+                            font=dict(family="DM Sans", color="#374151"),
                             height=450,
                             yaxis_title="Return %",
+                            margin=dict(l=60, r=40, t=50, b=40),
+                            xaxis=dict(gridcolor="#F3F4F6"),
+                            yaxis=dict(gridcolor="#F3F4F6", zerolinecolor="#E5E7EB"),
                         )
-                        
+
                         st.plotly_chart(fig2, use_container_width=True)
-                        
+
                         st.dataframe(sector_df.rename(columns={
                             "sector": "Sector", "count": "Alerts", "avg_return": "Avg %",
                             "max_return": "Best %", "min_return": "Worst %"
                         }), use_container_width=True)
-        else:
-            st.info("No performance data yet. Approve some alerts to begin tracking.")
     else:
-        st.info("📊 No performance data. Approve alerts first, tracking handles automatically via Heartbeats.")
+        st.markdown("""
+        <div style="text-align:center; padding:60px 40px;">
+            <div style="font-size:3rem; margin-bottom:16px;">📊</div>
+            <div style="font-size:1rem; font-weight:600; color:#111827;">No performance data yet</div>
+            <div style="font-size:0.85rem; margin-top:6px; color:#9CA3AF;">Approve alerts first — tracking begins automatically via TradingView Heartbeats.</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════
@@ -522,7 +853,41 @@ elif page == "⚙️ Settings":
         <div class="fie-title">Settings & Webhook Setup</div>
     </div>
     """, unsafe_allow_html=True)
-    
+
+    # System status
+    health = api_get("/health")
+    if health:
+        st.markdown(f"""
+        <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:14px 20px; margin-bottom:24px; display:flex; align-items:center; gap:10px;">
+            <span class="live-dot"></span>
+            <span style="font-size:14px; color:#166534; font-weight:600;">Backend Online</span>
+            <span style="font-size:12px; color:#6B7280; margin-left:auto; font-family:'JetBrains Mono';">{health.get('timestamp', '')}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.error("❌ Backend not reachable. Make sure the server is running.")
+
+    # Quick actions
+    col_qa1, col_qa2, col_qa3 = st.columns(3)
+    with col_qa1:
+        if st.button("🔄 Force Refresh", use_container_width=True):
+            st.rerun()
+    with col_qa2:
+        if st.button("📥 Load Test Alerts", use_container_width=True):
+            result = api_post("/api/test-alert")
+            if result and result.get("success"):
+                st.success(f"✅ {result['count']} test alerts created!")
+                time.sleep(1)
+                st.rerun()
+    with col_qa3:
+        st.markdown(f"""
+        <div style="background:#F3F4F6; border-radius:10px; padding:10px 16px; text-align:center;">
+            <span style="font-size:12px; color:#6B7280;">Auto-refresh: <strong>{REFRESH_INTERVAL}s</strong></span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
     st.markdown("### 🔗 Webhook Configuration")
     st.markdown(f"""
     **Your TradingView Webhook URL:**
@@ -530,12 +895,12 @@ elif page == "⚙️ Settings":
     {API_BASE}/webhook/tradingview
     ```
     """)
-    
+
     st.markdown("---")
-    st.markdown("### 📝 Recommended Alert Message Templates")
-    
-    tab_abs, tab_rel, tab_hb = st.tabs(["Single Asset Alert", "Relative Ratio Alert", "💓 Daily Heartbeat (Performance)"])
-    
+    st.markdown("### 📝 Alert Message Templates")
+
+    tab_abs, tab_rel, tab_hb = st.tabs(["Single Asset Alert", "Relative Ratio Alert", "💓 Daily Heartbeat"])
+
     with tab_abs:
         st.markdown("Use this for **single ticker** alerts (Nifty, Stocks):")
         st.code("""{
@@ -548,9 +913,9 @@ elif page == "⚙️ Settings":
     "signal": "BULLISH",
     "message": "YOUR_CUSTOM_MESSAGE"
 }""", language="json")
-    
+
     with tab_rel:
-        st.markdown("Use this for **relative ratio** charts (e.g. charted directly as GOLD/SENSEX):")
+        st.markdown("Use this for **relative ratio** charts (e.g. GOLD/SENSEX):")
         st.code("""{
     "ticker": "{{ticker}}",
     "exchange": "{{exchange}}",
@@ -565,8 +930,8 @@ elif page == "⚙️ Settings":
 
     with tab_hb:
         st.markdown("""
-        **Crucial for Performance Tracking:** Set up a daily alert on the Daily Timeframe 
-        (Trigger: 'Once Per Bar Close') for every asset and ratio you monitor. 
+        **Crucial for Performance Tracking:** Set up a daily alert on the Daily Timeframe
+        (Trigger: 'Once Per Bar Close') for every asset and ratio you monitor.
         This acts as the daily price feed instead of relying on external APIs.
         """)
         st.code("""{
@@ -575,27 +940,19 @@ elif page == "⚙️ Settings":
     "close": "{{close}}",
     "time": "{{timenow}}"
 }""", language="json")
-    
+
     st.markdown("---")
     st.markdown("### 🏗️ TradingView Setup Guide")
     st.markdown("""
     **Step 1:** Open your TradingView chart with the index/ratio.
-    
+
     **Step 2:** Click the alert icon (🔔) or press `Alt + A`.
-    
+
     **Step 3:** Set your condition (e.g., RSI crosses above 70).
-    
-    **Step 4:** In the **Alert Actions** section, check **Webhook URL** and paste your webhook link.
-    
-    **Step 5:** In the **Message** field, paste the correct JSON template from above. Replace placeholder values like `YOUR_ALERT_NAME`.
-    
+
+    **Step 4:** In **Alert Actions**, check **Webhook URL** and paste your webhook link.
+
+    **Step 5:** In the **Message** field, paste the correct JSON template. Replace placeholder values.
+
     **Step 6:** Click **Create** — the alert will now send data to your FIE dashboard!
     """)
-    
-    st.markdown("---")
-    st.markdown("### 🔧 System Status")
-    health = api_get("/health")
-    if health:
-        st.success(f"✅ Backend: {health.get('status', 'unknown')} — {health.get('timestamp', '')}")
-    else:
-        st.error("❌ Backend not reachable. Make sure the server is running.")
