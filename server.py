@@ -18,7 +18,7 @@ from price_service import update_all_performance, get_live_price
 
 app = FastAPI(title="JHAVERI FIE Engine")
 
-# Fully open CORS to prevent any 403 security rejections
+# Fully open CORS to prevent security rejections
 app.add_middleware(
     CORSMiddleware, 
     allow_origins=["*"], 
@@ -42,12 +42,10 @@ async def startup():
     init_db()
 
 # ═══════════════════════════════════════════════════════
-# 🔥 FIXED WEBHOOK RECEIVER 🔥
-# Exact route matching to completely prevent 403 errors
+# 🔥 MASTER WEBHOOK PROCESSOR 🔥
+# Safely scrubs TradingView data and writes to DB
 # ═══════════════════════════════════════════════════════
-@app.post("/webhook/tradingview")
-@app.post("/webhook/tradingview/")
-async def receive_tradingview_alert(request: Request, db: Session = Depends(get_db)):
+async def process_webhook(request: Request, db: Session):
     try:
         body_bytes = await request.body()
         body_str = body_bytes.decode("utf-8")
@@ -57,7 +55,6 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
         except:
             data = {"message": body_str}
 
-        # Bulletproof Parsers for TradingView Garbage Data
         def safe_float(k):
             v = data.get(k)
             if v is None: return None
@@ -109,10 +106,13 @@ async def receive_tradingview_alert(request: Request, db: Session = Depends(get_
         
     except Exception as e:
         db.rollback()
-        import traceback
-        traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+
+@app.post("/webhook/tradingview")
+@app.post("/webhook/tradingview/")
+async def explicit_webhook(request: Request, db: Session = Depends(get_db)):
+    return await process_webhook(request, db)
 
 # ═══════════════════════════════════════════════════════
 # REST API LOGIC
@@ -247,7 +247,7 @@ async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
 
 
 # ═══════════════════════════════════════════════════════
-# STREAMLIT REVERSE PROXY
+# 🔥 STREAMLIT REVERSE PROXY (INTERCEPTS ALL WEBHOOKS) 🔥
 # ═══════════════════════════════════════════════════════
 import httpx
 import subprocess
@@ -311,7 +311,13 @@ async def ws_proxy(websocket: WebSocket):
         except: pass
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
-async def proxy_streamlit(request: Request, path: str = ""):
+async def proxy_streamlit(request: Request, path: str = "", db: Session = Depends(get_db)):
+    # 🚨 CRITICAL INTERCEPT 🚨
+    # If the URL contains "webhook" anywhere, forcefully route it to the database!
+    # It is physically impossible for Streamlit to block it now.
+    if "webhook" in path.lower():
+        return await process_webhook(request, db)
+
     url = f"/{path}"
     if request.url.query: url += f"?{request.url.query}"
     headers = dict(request.headers)
