@@ -10,19 +10,6 @@ from typing import Optional
 from models import AlertType, SignalDirection
 
 
-TV_PLACEHOLDERS = {
-    "ticker": "ticker",
-    "exchange": "exchange",
-    "open": "price_open",
-    "high": "price_high",
-    "low": "price_low",
-    "close": "price_close",
-    "volume": "volume",
-    "time": "time_utc",
-    "timenow": "timenow_utc",
-    "interval": "interval",
-}
-
 SECTOR_KEYWORDS = {
     "BANK": "Banking", "NIFTYBANK": "Banking", "BANKNIFTY": "Banking",
     "PSUBANK": "Banking", "PVTBANK": "Banking", "FINNIFTY": "Financial Services",
@@ -38,12 +25,16 @@ SECTOR_KEYWORDS = {
     "MIDCAP": "Broad Market", "SMALLCAP": "Broad Market",
     "NIFTY50": "Broad Market", "NIFTY": "Broad Market", "NIFTY500": "Broad Market",
     "GOLD": "Commodities", "SILVER": "Commodities", "CRUDE": "Commodities",
-    "USDINR": "Currency",
+    "CRUDEOIL": "Commodities", "NATURALGAS": "Commodities",
+    "USDINR": "Currency", "EURINR": "Currency", "GBPINR": "Currency",
+    "SENSEX": "Broad Market",
 }
 
 ASSET_CLASS_KEYWORDS = {
     "NIFTY": "INDEX", "BANK": "INDEX", "SENSEX": "INDEX",
+    "FINNIFTY": "INDEX", "MIDCAP": "INDEX",
     "GOLD": "COMMODITY", "SILVER": "COMMODITY", "CRUDE": "COMMODITY",
+    "CRUDEOIL": "COMMODITY", "NATURALGAS": "COMMODITY",
     "USDINR": "CURRENCY", "EURINR": "CURRENCY", "GBPINR": "CURRENCY",
 }
 
@@ -75,23 +66,23 @@ def parse_webhook_payload(raw_data: dict | str) -> dict:
         "signal_direction": None, "signal_strength": None, "signal_summary": None,
         "sector": None, "asset_class": None,
     }
-    
+
     if isinstance(raw_data, str):
         try:
             parsed = json.loads(raw_data)
             raw_data = parsed
         except json.JSONDecodeError:
             raw_data = {"message": raw_data}
-    
+
     result["raw_payload"] = raw_data
-    
+
     _extract_standard_fields(raw_data, result)
     _extract_indicators(raw_data, result)
     _detect_relative_alert(raw_data, result)
     _classify_instrument(result)
     _interpret_signal(raw_data, result)
     _generate_summary(result)
-    
+
     return result
 
 
@@ -105,11 +96,10 @@ def _extract_standard_fields(data: dict, result: dict):
         "price": "price_at_alert", "last_price": "price_at_alert",
         "volume": "volume",
         "time": "time_utc", "timenow": "timenow_utc",
-        "alert_name": "alert_name", "name": "alert_name",
         "alert_message": "alert_message", "message": "alert_message",
         "condition": "alert_condition", "alert_condition": "alert_condition",
     }
-    
+
     for src_key, dest_key in field_map.items():
         if src_key in data and data[src_key] is not None:
             value = data[src_key]
@@ -120,9 +110,38 @@ def _extract_standard_fields(data: dict, result: dict):
                     pass
             if result[dest_key] is None:
                 result[dest_key] = value
-    
+
     if result["price_at_alert"] is None and result["price_close"] is not None:
         result["price_at_alert"] = result["price_close"]
+
+    # ─── Alert Name Resolution (priority order) ───
+    # Handles {{strategy.order.comment}}, direct alert_name, nested strategy objects
+    PLACEHOLDER_JUNK = {"YOUR_ALERT_NAME", "YOUR_ALERT_NAME_HERE", "YOUR_NAME", "null", "None", ""}
+    
+    alert_name_candidates = [
+        data.get("alert_name"),
+        data.get("strategy.order.comment"),  # flat key from TV
+        # nested strategy object (some setups send it this way)
+        data.get("strategy", {}).get("order", {}).get("comment") if isinstance(data.get("strategy"), dict) else None,
+        data.get("name"),
+        data.get("comment"),
+    ]
+    
+    for candidate in alert_name_candidates:
+        if candidate and str(candidate).strip() and str(candidate).strip() not in PLACEHOLDER_JUNK:
+            result["alert_name"] = str(candidate).strip()
+            break
+    
+    # Auto-generate if still empty
+    if not result["alert_name"]:
+        ticker = result.get("ticker") or data.get("ticker") or data.get("symbol") or "Unknown"
+        msg = str(data.get("message", data.get("alert_message", ""))).lower()
+        if any(w in msg for w in BULLISH_WORDS[:5]):
+            result["alert_name"] = f"{ticker} Bullish Signal"
+        elif any(w in msg for w in BEARISH_WORDS[:5]):
+            result["alert_name"] = f"{ticker} Bearish Signal"
+        else:
+            result["alert_name"] = f"{ticker} Alert"
 
 
 def _extract_indicators(data: dict, result: dict):
@@ -142,10 +161,10 @@ def _extract_indicators(data: dict, result: dict):
         "ratio", "spread", "relative_strength",
         "custom_1", "custom_2", "custom_3",
         "indicator_name", "indicator_value",
+        "plot_0", "plot_1", "plot_2", "plot_3", "plot_4",
     ]
-    
+
     indicators = {}
-    
     for key in indicator_keys:
         if key in data:
             try:
@@ -156,26 +175,24 @@ def _extract_indicators(data: dict, result: dict):
                     indicators[key] = val
             except (ValueError, TypeError):
                 indicators[key] = data[key]
-    
+
     if "indicators" in data and isinstance(data["indicators"], dict):
         for k, v in data["indicators"].items():
             if _is_numeric(v):
-                try:
-                    indicators[k] = float(v)
-                except (ValueError, TypeError):
-                    indicators[k] = v
+                try: indicators[k] = float(v)
+                except (ValueError, TypeError): indicators[k] = v
             else:
                 indicators[k] = v
-    
+
     if "data" in data and isinstance(data["data"], dict):
         for k, v in data["data"].items():
             if k not in ("ticker", "exchange", "interval"):
                 indicators[k] = v
-    
+
     if result.get("alert_message"):
         msg_indicators = _parse_indicators_from_text(result["alert_message"])
         indicators.update(msg_indicators)
-    
+
     result["indicator_values"] = indicators if indicators else None
 
 
@@ -224,7 +241,7 @@ def _detect_relative_alert(data: dict, result: dict):
         result["denominator_price"] = _safe_float(data.get("denominator_price"))
         result["ratio_value"] = _safe_float(data.get("ratio", data.get("ratio_value")))
         return
-    
+
     ticker = result.get("ticker", "") or ""
     if "/" in ticker and ticker.count("/") == 1:
         parts = ticker.split("/")
@@ -232,7 +249,7 @@ def _detect_relative_alert(data: dict, result: dict):
         result["numerator_ticker"] = parts[0].strip()
         result["denominator_ticker"] = parts[1].strip()
         return
-    
+
     text_to_check = f"{data.get('alert_name', '')} {data.get('message', '')} {data.get('alert_message', '')}"
     ratio_patterns = [
         r"(\w+)\s*(?:vs\.?|versus|/|÷)\s*(\w+)",
@@ -250,7 +267,7 @@ def _detect_relative_alert(data: dict, result: dict):
                     result["numerator_ticker"] = num
                     result["denominator_ticker"] = den
                     break
-    
+
     if result["alert_type"] == AlertType.ABSOLUTE:
         result["numerator_ticker"] = result.get("ticker")
         result["numerator_price"] = result.get("price_at_alert")
@@ -280,15 +297,15 @@ def _interpret_signal(data: dict, result: dict):
         else:
             result["signal_direction"] = SignalDirection.NEUTRAL
         return
-    
+
     text = " ".join([
         str(data.get("message", "")), str(data.get("alert_message", "")),
         str(data.get("alert_name", "")), str(data.get("condition", "")),
     ]).lower()
-    
+
     bull_score = sum(1 for w in BULLISH_WORDS if w in text)
     bear_score = sum(1 for w in BEARISH_WORDS if w in text)
-    
+
     if bull_score > bear_score:
         result["signal_direction"] = SignalDirection.BULLISH
         result["signal_strength"] = min(100, bull_score * 25)
@@ -301,60 +318,50 @@ def _interpret_signal(data: dict, result: dict):
 
 
 def _generate_summary(result: dict):
-    """Generate human-readable signal summary — NEVER raises exceptions"""
     try:
         parts = []
         ticker = result.get("ticker") or "Unknown"
         direction = result.get("signal_direction")
         alert_type = result.get("alert_type")
-        
+
         if alert_type == AlertType.RELATIVE:
             num = result.get("numerator_ticker", "?")
             den = result.get("denominator_ticker", "?")
             ratio = result.get("ratio_value")
             parts.append(f"Relative Alert: {num} vs {den}")
             if ratio:
-                try:
-                    parts.append(f"Current Ratio: {float(ratio):.4f}")
-                except (ValueError, TypeError):
-                    parts.append(f"Current Ratio: {ratio}")
+                try: parts.append(f"Current Ratio: {float(ratio):.4f}")
+                except (ValueError, TypeError): parts.append(f"Current Ratio: {ratio}")
         else:
             parts.append(f"Alert on {ticker}")
             if result.get("price_at_alert"):
-                try:
-                    parts.append(f"Price: ₹{float(result['price_at_alert']):,.2f}")
-                except (ValueError, TypeError):
-                    parts.append(f"Price: {result['price_at_alert']}")
-        
+                try: parts.append(f"Price: ₹{float(result['price_at_alert']):,.2f}")
+                except (ValueError, TypeError): parts.append(f"Price: {result['price_at_alert']}")
+
         if direction:
             dir_val = direction.value if hasattr(direction, 'value') else str(direction)
             parts.append(f"Signal: {dir_val}")
-        
+
         indicators = result.get("indicator_values") or {}
         if "rsi" in indicators:
             try:
                 rsi = float(indicators["rsi"])
                 rsi_status = "Overbought" if rsi > 70 else "Oversold" if rsi < 30 else "Neutral"
                 parts.append(f"RSI: {rsi:.1f} ({rsi_status})")
-            except (ValueError, TypeError):
-                parts.append(f"RSI: {indicators['rsi']}")
+            except (ValueError, TypeError): pass
         if "macd" in indicators:
-            try:
-                macd_val = float(indicators["macd"])
-                parts.append(f"MACD: {macd_val:.2f}")
-            except (ValueError, TypeError):
-                parts.append(f"MACD: {indicators['macd']}")
-        
+            try: parts.append(f"MACD: {float(indicators['macd']):.2f}")
+            except (ValueError, TypeError): pass
+
         if result.get("alert_condition"):
             parts.append(f"Condition: {result['alert_condition']}")
         elif result.get("alert_message"):
             msg = str(result["alert_message"])[:150]
             parts.append(f"Message: {msg}")
-        
+
         result["signal_summary"] = " | ".join(parts) if parts else "Signal received"
     except Exception as e:
-        # Absolute fallback — never let summary generation crash the webhook
-        result["signal_summary"] = f"Alert on {result.get('ticker', 'Unknown')} — processing error: {str(e)[:80]}"
+        result["signal_summary"] = f"Alert on {result.get('ticker', 'Unknown')}"
 
 
 def _safe_float(val) -> Optional[float]:
@@ -371,21 +378,23 @@ def _is_numeric(val) -> bool:
 def get_recommended_alert_template() -> dict:
     return {
         "note": "Paste this into your TradingView Alert Message field.",
-        "template": json.dumps({
+        "strategy_template": json.dumps({
             "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
             "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
             "close": "{{close}}", "volume": "{{volume}}", "time": "{{time}}",
-            "timenow": "{{timenow}}", "alert_name": "YOUR_ALERT_NAME_HERE",
-            "signal": "BULLISH_or_BEARISH",
-            "indicators": {"rsi": "INDICATOR_VALUE", "macd": "INDICATOR_VALUE", "ema_200": "INDICATOR_VALUE"},
-            "message": "YOUR_CUSTOM_MESSAGE"
+            "timenow": "{{timenow}}",
+            "alert_name": "{{strategy.order.comment}}",
+            "signal": "{{strategy.order.action}}",
+            "message": "{{strategy.order.comment}} on {{ticker}}"
         }, indent=2),
-        "template_relative": json.dumps({
+        "indicator_template": json.dumps({
             "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
-            "close": "{{close}}", "time": "{{timenow}}",
-            "alert_name": "YOUR_RATIO_ALERT_NAME",
-            "numerator": "NIFTYIT", "denominator": "NIFTY",
-            "numerator_price": "NUMERATOR_PRICE", "denominator_price": "DENOMINATOR_PRICE",
-            "ratio": "RATIO_VALUE", "signal": "BULLISH_or_BEARISH", "message": "YOUR_CUSTOM_MESSAGE"
-        }, indent=2)
+            "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
+            "close": "{{close}}", "volume": "{{volume}}", "time": "{{time}}",
+            "timenow": "{{timenow}}",
+            "alert_name": "Your Alert Name Here",
+            "signal": "BULLISH",
+            "indicators": {"rsi": "{{plot_0}}", "macd": "{{plot_1}}", "ema_200": "{{plot_2}}"},
+            "message": "Your custom context"
+        }, indent=2),
     }
