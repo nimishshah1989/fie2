@@ -57,11 +57,7 @@ st.markdown("""
     }
     h1 { color: #0F172A !important; font-size: 22px !important; font-weight: 700 !important; margin-bottom: 2px !important; }
     h3 { color: #1E293B !important; font-size: 15px !important; font-weight: 600 !important; }
-    h4 { color: #0F172A !important; font-weight: 700 !important; margin: 0 !important; }
     .pill { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 100px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .pill-bullish { background: #ECFDF5; color: #059669; }
-    .pill-bearish { background: #FEF2F2; color: #DC2626; }
-    .pill-neutral { background: #FFF7ED; color: #C2410C; }
     .pill-pending { background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; }
     .pill-approved { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }
     .pill-denied { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
@@ -71,16 +67,16 @@ st.markdown("""
     .refresh-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #22C55E; margin-right: 6px; animation: pulse 2s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     .alert-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
-    .alert-card { background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all 0.15s ease; }
+    .alert-card { background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 12px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); transition: all 0.15s ease; border-left: 4px solid #3B82F6; }
     .alert-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.08); transform: translateY(-1px); }
     .ac-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-    .ac-title { font-size: 14px; font-weight: 700; color: #0F172A; }
+    .ac-title { font-size: 15px; font-weight: 700; color: #0F172A; }
     .ac-time { font-size: 10px; color: #94A3B8; }
     .ac-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 10px 0; }
     .ac-lbl { font-size: 9px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
     .ac-val { font-size: 13px; color: #1E293B; font-weight: 600; }
-    .ac-msg { font-size: 11px; color: #64748B; padding: 6px 10px; background: #F8FAFC; border-radius: 6px; margin-top: 8px; line-height: 1.5; }
-    .db-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    .ac-msg { font-size: 12px; color: #475569; padding: 8px 12px; background: #F8FAFC; border-radius: 6px; margin-top: 8px; line-height: 1.5; border: 1px solid #E2E8F0; }
+    .db-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); border-left: 4px solid #3B82F6; }
     .db-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
     [data-testid="stDataFrame"] { border-radius: 10px; overflow: hidden; border: 1px solid #E8ECF1; }
 </style>
@@ -104,13 +100,6 @@ def fmt_price(val):
     try: return f"₹{float(val):,.2f}"
     except: return "—"
 
-def fmt_time(iso_str):
-    if not iso_str: return "—"
-    try:
-        dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
-        return dt.strftime("%d %b %Y, %H:%M")
-    except: return str(iso_str)[:16]
-
 def fmt_short(iso_str):
     if not iso_str: return "—"
     try:
@@ -129,11 +118,6 @@ def fmt_vol(val):
         return f"{v:,.0f}"
     except: return "—"
 
-def dir_pill(d):
-    d = str(d or "NEUTRAL").upper()
-    c = "pill-bullish" if d == "BULLISH" else "pill-bearish" if d == "BEARISH" else "pill-neutral"
-    return f"<span class='pill {c}'>{d}</span>"
-
 def stat_pill(s):
     s = str(s or "PENDING").upper()
     cm = {"PENDING":"pill-pending","APPROVED":"pill-approved","DENIED":"pill-denied","REVIEW_LATER":"pill-review"}
@@ -147,13 +131,11 @@ def ret_color(v):
     return "#059669" if v > 0 else "#DC2626" if v < 0 else "#64748B"
 
 def clean_placeholder(text):
-    """Fallback to remove ugly literal placeholders from the UI"""
     if not text: return ""
     t = str(text)
     t = t.replace("{{strategy.order.comment}}", "Manual Alert")
     t = t.replace("{{alert_name}}", "Manual Alert")
     t = t.replace("alert_name", "Manual Alert")
-    t = t.replace("{{strategy.order.action}}", "NEUTRAL")
     return t
 
 
@@ -182,15 +164,12 @@ if page == "Command Center":
     st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed · Pending alerts requiring action</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     pending_ct = stats.get("pending", 0) + stats.get("review_later", 0)
-    bull_p = stats.get("bullish_pending", 0)
-    bear_p = stats.get("bearish_pending", 0)
     
-    # Signal Intensity removed, now 3 clean columns
-    c1, c2, c3 = st.columns(3)
+    # Cleaned up metrics
+    c1, c2 = st.columns(2)
     c1.metric("Pending Alerts", pending_ct)
-    c2.metric("Bullish / Bearish", f"{bull_p} / {bear_p}")
     now = datetime.now()
-    c3.metric("Market", "OPEN" if (now.weekday() < 5 and 9 <= now.hour < 16) else "CLOSED")
+    c2.metric("Market Status", "OPEN" if (now.weekday() < 5 and 9 <= now.hour < 16) else "CLOSED")
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     fc1, _, _, _ = st.columns([1, 1, 1, 2])
@@ -208,7 +187,6 @@ if page == "Command Center":
             nm = clean_placeholder(al.get("alert_name") or "System Trigger")
             tk = al.get("ticker") or "—"
             pr = al.get("price_at_alert")
-            dr = al.get("signal_direction", "NEUTRAL")
             sv = al.get("status", "PENDING")
             iv = al.get("interval") or "—"
             sec = al.get("sector") or "—"
@@ -223,12 +201,11 @@ if page == "Command Center":
             for k, v in list(inds.items())[:4]:
                 try: vv = f"{float(v):.1f}"
                 except: vv = str(v)[:12]
-                ichips += f"<span style='display:inline-block;padding:2px 7px;background:#F1F5F9;border-radius:4px;font-size:9px;color:#475569;margin-right:3px;margin-bottom:3px;font-weight:600;'>{k.upper()}: {vv}</span>"
+                ichips += f"<span style='display:inline-block;padding:3px 8px;background:#F1F5F9;border-radius:4px;font-size:10px;color:#334155;margin-right:4px;margin-bottom:4px;font-weight:600;border:1px solid #E2E8F0;'>{k.upper()}: {vv}</span>"
             
-            bc = "#10B981" if dr == "BULLISH" else "#EF4444" if dr == "BEARISH" else "#F59E0B"
-            html += f"""<div class="alert-card" style="border-left:3px solid {bc};">
+            html += f"""<div class="alert-card">
                 <div class="ac-header">
-                    <div><div class="ac-title">{nm}</div><div style="margin-top:4px;">{dir_pill(dr)} {stat_pill(sv)}</div></div>
+                    <div><div class="ac-title">{nm}</div><div style="margin-top:6px;">{stat_pill(sv)}</div></div>
                     <div class="ac-time">{rcv}</div>
                 </div>
                 <div class="ac-grid">
@@ -239,7 +216,7 @@ if page == "Command Center":
                     <div><div class="ac-lbl">Volume</div><div class="ac-val">{fmt_vol(vol)}</div></div>
                     <div><div class="ac-lbl">Asset</div><div class="ac-val">{asset}</div></div>
                 </div>
-                {f'<div style="margin-bottom:6px;">{ichips}</div>' if ichips else ''}
+                {f'<div style="margin-bottom:8px;margin-top:6px;">{ichips}</div>' if ichips else ''}
                 {f'<div class="ac-msg">{msg[:180]}</div>' if msg else ''}
             </div>"""
         html += "</div>"
@@ -263,20 +240,35 @@ elif page == "Trade Desk":
             aid = al["id"]
             with st.container(border=True):
                 nm = clean_placeholder(al.get('alert_name','Signal'))
+                tk = al.get('ticker','—')
+                pr = fmt_price(al.get('price_at_alert'))
+                exch = al.get('exchange','—')
+                iv = al.get('interval','—')
+                sec = al.get('sector','—')
+                vol = fmt_vol(al.get('volume'))
+                msg = clean_placeholder(al.get("alert_message", ""))
                 
-                # Wrapped text in specific span/div styling to prevent Streamlit dark mode text invisibility
-                header_col1, header_col2 = st.columns([3, 1])
-                with header_col1:
-                    st.markdown(f"<div style='color:#0F172A; font-size:18px; font-weight:700; margin-bottom:4px;'>{nm}</div>", unsafe_allow_html=True)
-                    st.caption(f"{al.get('ticker','—')} · {al.get('exchange','—')} · {al.get('interval','—')}")
-                with header_col2:
-                    st.markdown(f"<div style='text-align:right;'><div style='color:#0F172A; font-size:18px; font-weight:700;'>{fmt_price(al.get('price_at_alert'))}</div><span style='font-size:12px; color:#64748B;'>Vol: {fmt_vol(al.get('volume'))}</span></div>", unsafe_allow_html=True)
-                
-                msg = clean_placeholder(al.get("alert_message"))
+                # Single, bulletproof HTML block for the data display (fixes invisibility bug)
+                td_html = f"""
+                <div style="margin-bottom:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
+                        <div>
+                            <div style="font-size:18px;font-weight:700;color:#0F172A;margin-bottom:4px;">{nm}</div>
+                            <div style="font-size:12px;color:#64748B;font-weight:500;">{tk} &nbsp;&bull;&nbsp; {exch} &nbsp;&bull;&nbsp; {iv} &nbsp;&bull;&nbsp; {sec}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:20px;font-weight:700;color:#0F172A;">{pr}</div>
+                            <div style="font-size:11px;color:#64748B;font-weight:500;margin-top:2px;">Vol: {vol} &nbsp;&bull;&nbsp; {fmt_short(al.get('received_at'))}</div>
+                        </div>
+                    </div>
+                """
                 if msg:
-                    st.info(msg[:250], icon="💬")
+                    td_html += f"<div style='background:#F8FAFC; border:1px solid #E2E8F0; padding:12px 16px; border-radius:8px; font-size:13px; color:#334155; line-height:1.5;'>{msg[:250]}</div>"
+                td_html += "</div>"
                 
-                # ─── Action Buttons ───
+                st.markdown(td_html.replace('\n', ''), unsafe_allow_html=True)
+                
+                # Action Buttons
                 approve_key = f"approve_{aid}"
                 if approve_key not in st.session_state:
                     st.session_state[approve_key] = False
@@ -294,10 +286,9 @@ elif page == "Trade Desk":
                         api_call('POST', f"/api/alerts/{aid}/action", {"alert_id":aid,"decision":"REVIEW_LATER"})
                         st.rerun()
                 
-                # ─── Condensed Approval Form ───
+                # Condensed Approval Form
                 if st.session_state.get(approve_key, False):
                     st.divider()
-                    
                     ac1, ac2 = st.columns(2)
                     with ac1:
                         call = st.selectbox("Action Call", ["BUY","SELL","HOLD","STRONG_BUY","STRONG_SELL","ACCUMULATE","REDUCE","EXIT","WATCH"], key=f"call{aid}")
@@ -336,18 +327,29 @@ elif page == "Trade Desk":
         for a in [x for x in hist["alerts"] if x.get("status") in ("APPROVED","DENIED","REVIEW_LATER")][:10]:
             act = a.get("action") or {}
             nm = clean_placeholder(a.get('alert_name', a.get('ticker','—')))
+            remarks = act.get('remarks')
             
-            with st.container(border=True):
-                rc1, rc2 = st.columns([3, 1])
-                with rc1:
-                    status_emoji = "✅" if a.get('status') == 'APPROVED' else "❌" if a.get('status') == 'DENIED' else "⏳"
-                    # Wrapped text elements in specific styling to protect from dark mode visibility issues
-                    st.markdown(f"<span style='color:#0F172A;'><strong>{nm}</strong> &nbsp;|&nbsp; {status_emoji} <code>{a.get('status')}</code> &nbsp;|&nbsp; <strong>{act.get('call','—')}</strong> ({act.get('conviction','')})</span>", unsafe_allow_html=True)
-                    if act.get('remarks'):
-                        st.caption(act.get('remarks')[:100])
-                with rc2:
-                    st.markdown(f"<div style='text-align:right; color:#0F172A;'><strong>{a.get('ticker','—')}</strong></div>", unsafe_allow_html=True)
-                    st.markdown(f"<div style='text-align:right; font-size:12px; color:#64748B;'>{fmt_short(act.get('decision_at') or a.get('received_at'))}</div>", unsafe_allow_html=True)
+            # Bulletproof HTML block to prevent ghosting and visibility issues
+            rd_html = f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:10px; padding:16px; margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <div style="font-size:15px; font-weight:700; color:#0F172A; margin-bottom:6px;">{nm}</div>
+                        <div>
+                            {stat_pill(a.get('status'))}
+                            <span style="margin-left:10px; font-size:13px; color:#1E293B; font-weight:700;">{act.get('call','—')}</span>
+                            <span style="margin-left:6px; font-size:12px; color:#64748B;">({act.get('conviction','')})</span>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:15px; font-weight:700; color:#0F172A; margin-bottom:4px;">{a.get('ticker','—')}</div>
+                        <div style="font-size:11px; color:#94A3B8; font-weight:500;">{fmt_short(act.get('decision_at') or a.get('received_at'))}</div>
+                    </div>
+                </div>
+                {f"<div style='margin-top:12px; padding-top:10px; border-top:1px solid #F1F5F9; font-size:13px; color:#475569; line-height:1.5;'>{remarks}</div>" if remarks else ""}
+            </div>
+            """
+            st.markdown(rd_html.replace('\n', ''), unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -386,21 +388,21 @@ elif page == "Portfolio Analytics":
                 pc1, pc2, pc3, pc4, pc5 = st.columns([2.5,1.5,1.5,1.5,1])
                 with pc1:
                     nm = clean_placeholder(p.get('alert_name','—'))
-                    st.markdown(f"<div style='font-weight:700;font-size:15px;color:#0F172A;'>{p.get('ticker','—')}</div><div style='font-size:11px;color:#64748B;'>{nm} · {dir_pill(p.get('signal_direction','NEUTRAL'))}</div>".replace('\n',''), unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-weight:700;font-size:16px;color:#0F172A;'>{p.get('ticker','—')}</div><div style='font-size:12px;color:#64748B;margin-top:2px;'>{nm}</div>".replace('\n',''), unsafe_allow_html=True)
                 with pc2:
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Entry → Current</div><div style='font-size:13px;color:#1E293B;font-weight:600;'>{fmt_price(p.get('reference_price'))} → {fmt_price(p.get('current_price'))}</div>".replace('\n',''), unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Entry → Current</div><div style='font-size:14px;color:#1E293B;font-weight:700;margin-top:2px;'>{fmt_price(p.get('reference_price'))} → {fmt_price(p.get('current_price'))}</div>".replace('\n',''), unsafe_allow_html=True)
                 with pc3:
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Return</div><div style='font-size:18px;font-weight:700;color:{rc};'>{rs}</div>".replace('\n',''), unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Return</div><div style='font-size:18px;font-weight:800;color:{rc};margin-top:2px;'>{rs}</div>".replace('\n',''), unsafe_allow_html=True)
                 with pc4:
                     dd = p.get("max_drawdown")
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Max DD</div><div style='font-size:13px;font-weight:600;color:#DC2626;'>{dd:.2f}%</div>".replace('\n','') if dd else "<div style='font-size:10px;color:#94A3B8;'>Max DD</div><div>—</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Max DD</div><div style='font-size:14px;font-weight:700;color:#DC2626;margin-top:2px;'>{dd:.2f}%</div>".replace('\n','') if dd else "<div style='font-size:10px;color:#94A3B8;'>Max DD</div><div>—</div>", unsafe_allow_html=True)
                 with pc5:
                     call_val = p.get("action_call") or "—"
                     conv_val = p.get("conviction") or "—"
-                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Call</div><div style='font-size:13px;font-weight:600;color:#0F172A;'>{call_val}</div><div style='font-size:10px;color:#64748B;'>{conv_val}</div>".replace('\n',''), unsafe_allow_html=True)
+                    st.markdown(f"<div style='font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'>Call</div><div style='font-size:14px;font-weight:700;color:#0F172A;margin-top:2px;'>{call_val}</div><div style='font-size:11px;color:#64748B;'>{conv_val}</div>".replace('\n',''), unsafe_allow_html=True)
                 
                 upd = fmt_short(p.get("last_updated"))
-                st.markdown(f"<div style='font-size:9px;color:#B0B8C4;margin-top:4px;'>Last updated: {upd}</div>".replace('\n',''), unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:10px;color:#94A3B8;margin-top:10px;border-top:1px solid #F1F5F9;padding-top:8px;'>Last updated: {upd}</div>".replace('\n',''), unsafe_allow_html=True)
     else:
         st.markdown("<div class='empty-state'><div style='font-size:40px; opacity:0.3;'>📊</div><p style='font-size:14px;margin-top:12px;'>No active positions</p></div>".replace('\n',''), unsafe_allow_html=True)
 
@@ -413,10 +415,7 @@ elif page == "Alert Database":
     
     f1,f2,f3,f4 = st.columns([1,1,1,1])
     with f1: ds = st.selectbox("Status", ["APPROVED","All","PENDING","DENIED","REVIEW_LATER"], key="ds")
-    
-    # Replaced Text Filter with Time Filter
     with f2: time_filter = st.selectbox("Timeframe", ["All Time", "Last 24h", "Last 7d", "Last 30d"], key="tf")
-    
     with f3: dl = st.selectbox("Rows", [50,100,200], key="dl")
     with f4: view_mode = st.selectbox("View", ["Cards", "Table"], key="vm")
     
@@ -428,25 +427,17 @@ elif page == "Alert Database":
     if m and m.get("alerts"):
         als = m["alerts"]
         
-        # Apply the timeframe filter locally based on the received timestamps
         if time_filter != "All Time":
             filtered_als = []
             current_ts = time.time()
             for a in als:
                 try:
-                    # Parse ISO format datetime safely
                     a_dt = datetime.fromisoformat(str(a.get('received_at')).replace("Z", "+00:00"))
                     diff_days = (current_ts - a_dt.timestamp()) / 86400.0
-                    
-                    if time_filter == "Last 24h" and diff_days <= 1:
-                        filtered_als.append(a)
-                    elif time_filter == "Last 7d" and diff_days <= 7:
-                        filtered_als.append(a)
-                    elif time_filter == "Last 30d" and diff_days <= 30:
-                        filtered_als.append(a)
-                except:
-                    # If date parsing fails, leave the alert in to be safe
-                    filtered_als.append(a)
+                    if time_filter == "Last 24h" and diff_days <= 1: filtered_als.append(a)
+                    elif time_filter == "Last 7d" and diff_days <= 7: filtered_als.append(a)
+                    elif time_filter == "Last 30d" and diff_days <= 30: filtered_als.append(a)
+                except: filtered_als.append(a)
             als = filtered_als
             
         st.markdown(f"<p style='font-size:12px; color:#94A3B8; margin-bottom:16px;'>Showing {len(als)} alerts</p>", unsafe_allow_html=True)
@@ -461,37 +452,35 @@ elif page == "Alert Database":
                 nm = clean_placeholder(a.get('alert_name','—'))
                 
                 with st.container(border=True):
-                    # Top section HTML
                     card = f"""
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #F1F5F9;">
                             <div>
-                                <div style="font-size:16px;font-weight:700;color:#0F172A;margin-bottom:4px;">{nm}</div>
-                                <div>{dir_pill(a.get('signal_direction'))} {stat_pill(a.get('status'))}
-                                {f"<span style='margin-left:8px;padding:3px 10px;background:#F1F5F9;border-radius:100px;font-size:10px;font-weight:700;color:#334155;'>{act.get('call','')}</span>" if act.get('call') else ''}
-                                {f"<span style='margin-left:4px;font-size:10px;color:#64748B;'>({act.get('conviction','')})</span>" if act.get('conviction') else ''}
+                                <div style="font-size:18px;font-weight:700;color:#0F172A;margin-bottom:8px;">{nm}</div>
+                                <div>{stat_pill(a.get('status'))}
+                                {f"<span style='margin-left:8px;padding:4px 12px;background:#F1F5F9;border-radius:100px;font-size:11px;font-weight:700;color:#1E293B;border:1px solid #E2E8F0;'>{act.get('call','')}</span>" if act.get('call') else ''}
+                                {f"<span style='margin-left:6px;font-size:12px;color:#64748B;font-weight:500;'>({act.get('conviction','')})</span>" if act.get('conviction') else ''}
                                 </div>
                             </div>
                             <div style="text-align:right;">
-                                <div style="font-size:22px;font-weight:700;color:{rc};">{rs}</div>
-                                <div style="font-size:10px;color:#94A3B8;">{fmt_short(a.get('received_at'))}</div>
+                                <div style="font-size:24px;font-weight:800;color:{rc};">{rs}</div>
+                                <div style="font-size:11px;color:#94A3B8;font-weight:500;margin-top:4px;">{fmt_short(a.get('received_at'))}</div>
                             </div>
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Ticker</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{a.get('ticker','—')}</div></div>
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Entry Price</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{fmt_price(a.get('price_at_alert'))}</div></div>
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Current</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{fmt_price(perf.get('current_price'))}</div></div>
-                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;">Exchange</div><div style="font-size:14px;color:#0F172A;font-weight:700;">{a.get('exchange','—')}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Ticker</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{a.get('ticker','—')}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Entry Price</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{fmt_price(a.get('price_at_alert'))}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Current</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{fmt_price(perf.get('current_price'))}</div></div>
+                            <div><div style="font-size:10px;color:#94A3B8;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Exchange</div><div style="font-size:15px;color:#0F172A;font-weight:700;">{a.get('exchange','—')}</div></div>
                         </div>"""
                     
                     remarks = act.get("remarks")
                     if remarks:
-                        card += f"""<div style="background:#F8FAFC;border-left:3px solid #3B82F6;padding:12px 16px;border-radius:0 8px 8px 0;margin-top:10px;margin-bottom:14px;">
-                            <div style="font-size:10px;color:#3B82F6;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px;">Fund Manager's View</div>
+                        card += f"""<div style="background:#F8FAFC;border:1px solid #E2E8F0; border-left:4px solid #3B82F6;padding:12px 16px;border-radius:4px 8px 8px 4px;margin-top:16px;margin-bottom:16px;">
+                            <div style="font-size:10px;color:#3B82F6;font-weight:800;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Fund Manager's View</div>
                             <div style="font-size:13px;color:#334155;line-height:1.6;">{remarks}</div>
                         </div>"""
                     st.markdown(card.replace('\n', ''), unsafe_allow_html=True)
                     
-                    # Native Streamlit actions at the bottom of the card
                     act_col1, act_col2 = st.columns([1, 4])
                     with act_col1:
                         if st.button("🗑️ Delete", key=f"del_{a['id']}", use_container_width=True):
@@ -512,7 +501,6 @@ elif page == "Alert Database":
                 "Date": fmt_short(a.get("received_at")),
                 "Alert": clean_placeholder(a.get("alert_name","—")),
                 "Ticker": a.get("ticker","—"),
-                "Direction": a.get("signal_direction","—"),
                 "Price": fmt_price(a.get("price_at_alert")),
                 "Status": a.get("status","PENDING"),
                 "Call": (a.get("action") or {}).get("call","—"),
@@ -539,29 +527,15 @@ elif page == "Integrations":
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     
-    st.markdown("### Strategy Alert Template")
-    st.markdown("<p style='font-size:12px;color:#64748B;'>Use this for <b>Pine Script strategy alerts ONLY</b>. <code>{{strategy.order.comment}}</code> will break if pasted into a manual price/indicator alert.</p>", unsafe_allow_html=True)
+    st.markdown("### Webhook JSON Template")
+    st.markdown("<p style='font-size:13px;color:#64748B;'>Paste this directly into your TradingView alert message. Manually replace <code>\"Your Custom Alert Name\"</code> and the <code>message</code> text.</p>", unsafe_allow_html=True)
     st.code(json.dumps({
         "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
         "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
         "close": "{{close}}", "volume": "{{volume}}", "time": "{{time}}",
         "timenow": "{{timenow}}",
-        "alert_name": "{{strategy.order.comment}}",
-        "signal": "{{strategy.order.action}}",
-        "message": "{{strategy.order.comment}} on {{ticker}}"
-    }, indent=2), language="json")
-    
-    st.markdown("### Manual / Indicator Alert Template")
-    st.markdown("<p style='font-size:12px;color:#64748B;'>Use this for <b>manual indicator or line cross alerts</b>. You must manually type your alert name into the JSON below.</p>", unsafe_allow_html=True)
-    st.code(json.dumps({
-        "ticker": "{{ticker}}", "exchange": "{{exchange}}", "interval": "{{interval}}",
-        "open": "{{open}}", "high": "{{high}}", "low": "{{low}}",
-        "close": "{{close}}", "volume": "{{volume}}", "time": "{{time}}",
-        "timenow": "{{timenow}}",
-        "alert_name": "TYPE_YOUR_ALERT_NAME_HERE",
-        "signal": "BULLISH",
-        "indicators": {"rsi": "{{plot_0}}", "macd": "{{plot_1}}"},
-        "message": "TYPE_YOUR_CUSTOM_MESSAGE_HERE"
+        "alert_name": "Your Custom Alert Name",
+        "message": "Write what happened here (e.g. Price broke resistance)"
     }, indent=2), language="json")
     
 # ═══════════════════════════════════════════════════════
