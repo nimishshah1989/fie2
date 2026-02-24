@@ -1,200 +1,114 @@
-# ⚡ FIE Phase 1 — TradingView Alert Intelligence Dashboard
+# Jhaveri Intelligence Platform — FIE Phase 2
 
-**Jhaveri Securities — Financial Intelligence Engine**
+## What Changed (Complete Changelog)
 
-## Overview
+### A. Fixed: None/Zero/Div issues on cards
+- **Root cause**: The webhook parser was storing `None` for fields not present in the payload, and the dashboard was rendering them as-is.
+- **Fix**: All display functions now have `fmt_price()` and `fmt_time()` formatters that convert `None`/`0` to `"—"` gracefully.
+- **Card titles** now show the **alert_name** (not ticker + strategy placeholder).
+- Removed childish emoji icons — replaced with clean typographic pills and structured layout.
 
-Phase 1 of the FIE system: A real-time TradingView alert ingestion and fund manager decision dashboard. 
+### B. Fixed: NLP Commentary not showing
+- **Root cause**: The `signal_summary` field was being populated by the webhook parser's basic `_generate_summary()`, but the AI-generated summary from Gemini was only called with the `alert_message` string. If `GEMINI_API_KEY` wasn't set, it fell back to raw message text.
+- **Fix**: The server now properly passes all data to `generate_technical_summary()` and stores the result. The dashboard consistently shows the AI analysis in a styled blue-bordered box on every card.
 
-### Three Core Modules:
+### C. Fixed: Inconsistent green text on some cards
+- **Root cause**: The historical executions section was rendering `fm_remarks` inline with green color only when remarks existed, creating visual inconsistency.
+- **Fix**: All cards now use standardized pill components and consistent formatting. Remarks display uniformly with a subtle left-border quote style.
 
-1. **🔌 Alert Ingestion Engine** — Webhook endpoint that receives TradingView alerts, captures all available data (price, indicators, signal, volume, etc.), and stores them in a structured database.
+### D. Fixed: Poor formatting of values
+- All prices now formatted with `₹` symbol, commas, and 2 decimal places via `fmt_price()`.
+- Percentages use `+/-` prefix and color-coded (green for gains, red for losses).
+- Timestamps formatted to `DD Mon YYYY, HH:MM` via `fmt_time()`.
+- Bold values where appropriate, proper spacing throughout.
 
-2. **📊 Live Alert Dashboard + Action Center** — Real-time display of incoming alerts with full context. Fund manager can approve/deny alerts and assign actionable calls (Buy, Sell, Hold, etc.) on both the numerator and denominator for relative alerts.
+### E. Trade Desk (Action Center) overhaul
+- Removed OHLC fields (no intraday trading — only the trigger price is shown).
+- Compact card layout with clear data hierarchy.
+- **3-state decision buttons**: ✓ Approve (green), ✗ Deny (red), ◷ Review Later (blue).
+- FM rationale text area with proper placeholder.
+- Voice note: guidance text added (use device recorder + paste transcript — native browser audio recording is unreliable in Streamlit).
+- Conviction slider: LOW / MEDIUM / HIGH.
 
-3. **📈 Performance Tracker** — Tracks approved alerts from date of approval. Shows 1D, 1W, 1M, 3M, 6M, 12M returns with win rate analysis and sector breakdown.
+### F. Stop Loss & Target — Optional fields
+- Added `target_price` and `stop_loss` as optional number inputs on Trade Desk.
+- If FM inputs values > 0, they're saved to the database and included in recommendations.
+- Displayed in the master alert table.
 
----
+### G. Chart Image Attachment
+- File uploader on Trade Desk accepts PNG/JPG.
+- Chart is base64-encoded and stored in `alert_actions.chart_image_b64`.
+- The `chart_image_b64` column is added via migration on startup.
 
-## Quick Start
+### H. New Page: Alert Database (Master View)
+- Full tabular view of ALL historical alerts with:
+  - Alert ID, Date, Name, Ticker, Direction, Price, Interval, Sector
+  - Status (color-coded), FM Call, Conviction, Target, Stop Loss, Return %
+- **Filters**: Status dropdown, Ticker search, row count selector.
+- **Delete functionality**: Enter Alert ID → confirm → delete (cascades to actions & performance).
+- Powered by new `/api/master` endpoint with pagination support.
 
-### 1. Install dependencies
-```bash
-pip install -r requirements.txt
-```
+### I. Performance Tracking improvements
+- Entry price = price at alert trigger (confirmed).
+- Price service now has **comprehensive NSE/BSE ticker mapping** (26+ indices).
+- BSE fallback: if NSE lookup fails, automatically tries BSE suffix.
+- Tracks: high_since, low_since, max_drawdown, return_absolute.
+- Portfolio Analytics page shows: Active Positions, Avg Return, Win Rate metrics.
+- Performance table includes: Entry, Current, Return %, High Since, Drawdown, Approved Date.
 
-### 2. Start the system
-```bash
-chmod +x start.sh
-./start.sh
-```
+### J. Dashboard Design Overhaul
+- **Font**: DM Sans (modern, not generic) + JetBrains Mono for code.
+- **Sidebar**: Dark gradient navy (#0C1222 → #131B2E), minimal navigation labels.
+- **Cards**: Clean white with subtle shadows, hover effects, structured sections.
+- **Pills**: Rounded, muted color palette (not loud primary colors).
+- **Layout**: Max-width 1200px, proper spacing, dividers.
+- **Empty states**: Centered with icon + helper text.
+- Removed all childish emoji usage from navigation and headers.
+- Typography: Uppercase labels, proper letter-spacing, weight hierarchy.
 
-Or start individually:
-```bash
-# Terminal 1: Backend
-cd backend
-python -c "from models import init_db; init_db()"
-uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+### K. Approve/Deny/Review Later actions
+- 3 distinct statuses with visual identity:
+  - **Approve**: Green pill with checkmark
+  - **Deny**: Red pill with cross
+  - **Review Later**: Blue pill with clock icon
+- `AlertStatus` enum updated with `REVIEW_LATER`.
+- Review Later alerts appear in Trade Desk pending queue.
 
-# Terminal 2: Frontend
-cd frontend
-streamlit run dashboard.py
-```
-
-### 3. Access
-- **Dashboard:** http://localhost:8501
-- **API Docs:** http://localhost:8000/docs
-- **Webhook URL:** http://localhost:8000/webhook/tradingview
-
-### 4. Load test data
-Click **"📥 Load Test Alerts"** in the sidebar to generate sample alerts.
-
----
-
-## TradingView Webhook Setup
-
-### Step 1: Get your webhook URL
-When deployed, your webhook URL will be:
-```
-https://your-domain.com/webhook/tradingview
-```
-
-### Step 2: Configure TradingView Alert
-1. Open your chart in TradingView
-2. Set up your alert condition
-3. Enable **Webhook URL** and paste your endpoint
-4. In the **Message** field, paste this JSON template:
-
-#### For Single Index/Stock Alerts:
-```json
-{
-    "ticker": "{{ticker}}",
-    "exchange": "{{exchange}}",
-    "interval": "{{interval}}",
-    "open": "{{open}}",
-    "high": "{{high}}",
-    "low": "{{low}}",
-    "close": "{{close}}",
-    "volume": "{{volume}}",
-    "time": "{{time}}",
-    "timenow": "{{timenow}}",
-    "alert_name": "YOUR_ALERT_NAME",
-    "signal": "BULLISH",
-    "indicators": {
-        "rsi": "RSI_VALUE",
-        "macd": "MACD_VALUE"
-    },
-    "message": "YOUR_DESCRIPTION"
-}
-```
-
-#### For Relative Alerts (Index A vs Index B):
-```json
-{
-    "ticker": "{{ticker}}",
-    "exchange": "{{exchange}}",
-    "interval": "{{interval}}",
-    "close": "{{close}}",
-    "timenow": "{{timenow}}",
-    "alert_name": "IT_vs_Nifty_Ratio",
-    "numerator": "NIFTYIT",
-    "denominator": "NIFTY",
-    "numerator_price": 34520.60,
-    "denominator_price": 24210.85,
-    "ratio": 1.4259,
-    "signal": "BULLISH",
-    "message": "IT outperforming broad market"
-}
-```
+### L. Master Alert Database (rich view)
+- Color-coded status column using pandas Styler.
+- Filterable by status and ticker.
+- Shows FM action details, conviction, target/SL, return %.
+- Pagination support via API (`/api/master` with offset/limit).
 
 ---
 
-## Architecture
+## File Changes Summary
 
-```
-fie-phase1/
-├── backend/
-│   ├── server.py           # FastAPI server + webhook endpoint + REST API
-│   ├── models.py           # SQLAlchemy database models
-│   ├── webhook_parser.py   # TradingView payload parser
-│   └── price_service.py    # yfinance price fetching + return computation
-├── frontend/
-│   └── dashboard.py        # Streamlit dashboard (Live Alerts, Action Center, Performance)
-├── requirements.txt
-├── start.sh
-└── README.md
-```
-
-### Data Flow
-```
-TradingView Alert → Webhook POST → Parser → Database → Dashboard
-                                                          ↓
-                                            FM: Approve/Deny + Call
-                                                          ↓
-                                            Performance Tracking (yfinance)
-```
+| File | Changes |
+|------|---------|
+| `models.py` | Added `REVIEW_LATER` status, `chart_image_b64` column, `_migrate_columns()`, more instruments |
+| `server.py` | Added `/api/master`, `DELETE /api/alerts/{id}`, richer API responses, REVIEW_LATER support, chart upload, target/SL fields |
+| `dashboard.py` | Complete rewrite — premium CSS, 5 pages, all formatting fixes, 3-state actions, master DB view |
+| `webhook_parser.py` | No logic changes, cleaned up |
+| `ai_engine.py` | No changes |
+| `price_service.py` | Added 26+ NSE/BSE ticker mappings, BSE fallback, high/low/drawdown tracking |
+| `requirements.txt` | Added `psycopg2-binary` |
+| `start.sh` | Fixed paths for flat directory structure |
 
 ---
 
-## Action Types
+## Deployment on Railway
 
-When approving an alert, the Fund Manager assigns:
+1. Push all files to your GitHub repo
+2. Railway will auto-detect and rebuild
+3. Ensure environment variables are set:
+   - `DATABASE_URL` (Railway Postgres)
+   - `GEMINI_API_KEY` (for AI summaries)
+   - `FIE_API_URL` (your Railway backend URL, e.g. `https://fie2-production.up.railway.app`)
 
-| Action | Meaning |
-|--------|---------|
-| BUY | Initiate new position |
-| STRONG_BUY | High conviction buy |
-| SELL | Exit position |
-| STRONG_SELL | Urgent exit |
-| HOLD | Maintain current position |
-| ACCUMULATE | Add to existing position |
-| REDUCE | Partially exit |
-| EXIT | Full exit |
-| OVERBOUGHT | Warning - potential reversal |
-| OVERSOLD | Opportunity - potential bounce |
-| WATCH | Monitor closely |
-| SWITCH | Rotate allocation |
-
-For **relative alerts**, the FM assigns separate calls for both the numerator and denominator.
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/webhook/tradingview` | Receive TradingView alerts |
-| GET | `/api/alerts` | List alerts with filters |
-| GET | `/api/alerts/{id}` | Get alert details |
-| POST | `/api/alerts/{id}/action` | FM takes action |
-| GET | `/api/performance` | Performance tracking |
-| POST | `/api/performance/refresh` | Refresh live prices |
-| GET | `/api/stats` | Dashboard statistics |
-| GET | `/api/sectors` | Available sectors |
-| GET | `/api/price/{ticker}` | Live price lookup |
-| POST | `/api/test-alert` | Generate test alerts |
-
----
-
-## Deployment
-
-### Streamlit Cloud (Frontend)
-1. Push to GitHub
-2. Connect to Streamlit Cloud
-3. Set `FIE_API_URL` environment variable to your backend URL
-
-### Backend (Railway / Render / VPS)
-1. Deploy the `backend/` directory
-2. Set `PORT` environment variable
-3. Ensure the webhook URL is publicly accessible
-
-### Cost: ~₹0-800/month
-- Streamlit Cloud: Free
-- Backend: Railway free tier or $5/month
-- Database: SQLite (included)
-- Price data: yfinance (free)
-
----
-
-## Phase 2 Preview
-This dashboard will connect to the FIE Recommendation Engine which translates FM actionables into actual mutual fund suggestions for investors.
+## Future Considerations (Phase 3)
+- Pinecone integration for dynamic technical data retrieval
+- Real-time WebSocket price feeds
+- Multi-user authentication with role-based access
+- PDF report generation for client distribution
+- Historical backtesting engine
