@@ -5,28 +5,26 @@ Webhook endpoint for TradingView + REST API for Dashboard
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, and_, or_
-from datetime import datetime, timedelta
+from sqlalchemy import desc, or_
+from datetime import datetime
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import json
 import logging
 import os
 
 from models import (
-    init_db, get_db, SessionLocal,
+    init_db, get_db,
     TradingViewAlert, AlertAction, AlertPerformance, InstrumentMap,
-    AlertStatus, AlertType, ActionCall, SignalDirection
+    AlertStatus, AlertType, SignalDirection
 )
 from webhook_parser import parse_webhook_payload, get_recommended_alert_template
-from price_service import (
-    get_live_price, update_all_performance, compute_returns, normalize_ticker_for_yfinance
-)
+
+# ─── Import the new AI Engine ──────────────────────────
+from ai_engine import generate_technical_summary, synthesize_fm_rationale
 
 # ─── Setup ─────────────────────────────────────────────
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -44,688 +42,323 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 # ─── Pydantic Models ──────────────────────────────────
-
 class ActionRequest(BaseModel):
     alert_id: int
     decision: str                           # APPROVED or DENIED
-    primary_call: Optional[str] = None      # BUY, SELL, HOLD, etc.
+    primary_call: Optional[str] = None
     primary_notes: Optional[str] = None
     primary_target_price: Optional[float] = None
     primary_stop_loss: Optional[float] = None
-    secondary_call: Optional[str] = None    # For relative alerts
+    secondary_call: Optional[str] = None
     secondary_notes: Optional[str] = None
     secondary_target_price: Optional[float] = None
     secondary_stop_loss: Optional[float] = None
-    conviction: Optional[str] = "MEDIUM"    # HIGH, MEDIUM, LOW
+    conviction: Optional[str] = None
     fm_remarks: Optional[str] = None
+    # ── AI Rationale Fields ──
+    fm_rationale_text: Optional[str] = None
+    fm_rationale_audio: Optional[str] = None
 
-
-class AlertFilterParams(BaseModel):
-    status: Optional[str] = None
-    alert_type: Optional[str] = None
-    sector: Optional[str] = None
-    signal_direction: Optional[str] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
-    ticker: Optional[str] = None
-    limit: int = 50
-    offset: int = 0
-
-
-# ─── Startup ───────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup():
-    init_db()
-    logger.info("🚀 FIE Phase 1 Backend Started")
-
-
-# ═══════════════════════════════════════════════════════
-# WEBHOOK ENDPOINT — TradingView sends alerts here
-# ═══════════════════════════════════════════════════════
+# ─── Endpoints ─────────────────────────────────────────
 
 @app.post("/webhook/tradingview")
-async def receive_tradingview_alert(request: Request, db: Session = Depends(get_db)):
-    """
-    Receive webhook from TradingView.
-    Accepts JSON or plain text body.
-    """
+async def receive_tradingview_webhook(request: Request, db: Session = Depends(get_db)):
     try:
-        # Read raw body
-        content_type = request.headers.get("content-type", "")
-        
-        if "application/json" in content_type:
-            raw_data = await request.json()
-        else:
-            body = await request.body()
-            raw_text = body.decode("utf-8")
-            try:
-                raw_data = json.loads(raw_text)
-            except json.JSONDecodeError:
-                raw_data = {"message": raw_text}
-        
-        logger.info(f"📥 Webhook received: {json.dumps(raw_data)[:200]}...")
-        
-        # Parse the payload
-        parsed = parse_webhook_payload(raw_data)
-        
-        # Create alert record
-        alert = TradingViewAlert(
-            ticker=parsed["ticker"],
-            exchange=parsed["exchange"],
-            interval=parsed["interval"],
-            price_open=parsed["price_open"],
-            price_high=parsed["price_high"],
-            price_low=parsed["price_low"],
-            price_close=parsed["price_close"],
-            price_at_alert=parsed["price_at_alert"],
-            volume=parsed["volume"],
-            time_utc=parsed["time_utc"],
-            timenow_utc=parsed["timenow_utc"],
-            alert_name=parsed["alert_name"],
-            alert_message=parsed["alert_message"],
-            alert_condition=parsed["alert_condition"],
-            indicator_values=parsed["indicator_values"],
-            alert_type=parsed["alert_type"],
-            numerator_ticker=parsed["numerator_ticker"],
-            denominator_ticker=parsed["denominator_ticker"],
-            numerator_price=parsed["numerator_price"],
-            denominator_price=parsed["denominator_price"],
-            ratio_value=parsed["ratio_value"],
-            signal_direction=parsed["signal_direction"],
-            signal_strength=parsed["signal_strength"],
-            signal_summary=parsed["signal_summary"],
-            sector=parsed["sector"],
-            asset_class=parsed["asset_class"],
-            raw_payload=parsed["raw_payload"],
-            status=AlertStatus.PENDING,
-            processed=True,
-        )
-        
-        db.add(alert)
-        db.commit()
-        db.refresh(alert)
-        
-        logger.info(f"✅ Alert #{alert.id} stored: {alert.ticker} - {alert.signal_direction}")
-        
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "alert_id": alert.id,
-                "ticker": alert.ticker,
-                "signal": alert.signal_direction.value if alert.signal_direction else None,
-                "summary": alert.signal_summary,
-            }
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Webhook error: {e}", exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "error": str(e)}
-        )
+        payload_dict = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON format")
 
+    # 1. Handle Daily Heartbeat for Performance Tracking
+    if payload_dict.get("is_heartbeat", False):
+        return {"status": "heartbeat processed"}
 
-# ═══════════════════════════════════════════════════════
-# DASHBOARD API ROUTES
-# ═══════════════════════════════════════════════════════
+    # 2. Parse Webhook
+    parsed = parse_webhook_payload(payload_dict)
 
-# ─── Get Alerts ────────────────────────────────────────
+    # 3. AI Processing: Generate Technical Summary from Raw Data
+    ai_summary = generate_technical_summary(
+        ticker=parsed.get("ticker", "Unknown"),
+        price=parsed.get("price_at_alert", 0.0),
+        indicators=parsed.get("indicator_values", {}),
+        alert_message=parsed.get("alert_message", "No message provided")
+    )
+
+    # 4. Save Alert to Database
+    alert = TradingViewAlert(
+        ticker=parsed.get("ticker"),
+        exchange=parsed.get("exchange"),
+        interval=parsed.get("interval"),
+        price_open=parsed.get("price_open"),
+        price_high=parsed.get("price_high"),
+        price_low=parsed.get("price_low"),
+        price_close=parsed.get("price_close"),
+        price_at_alert=parsed.get("price_at_alert"),
+        volume=parsed.get("volume"),
+        time_utc=parsed.get("time_utc"),
+        timenow_utc=parsed.get("timenow_utc"),
+        alert_name=parsed.get("alert_name"),
+        alert_message=parsed.get("alert_message"),
+        alert_condition=parsed.get("alert_condition"),
+        indicator_values=parsed.get("indicator_values"),
+        alert_type=parsed.get("alert_type"),
+        numerator_ticker=parsed.get("numerator_ticker"),
+        denominator_ticker=parsed.get("denominator_ticker"),
+        numerator_price=parsed.get("numerator_price"),
+        denominator_price=parsed.get("denominator_price"),
+        ratio_value=parsed.get("ratio_value"),
+        signal_direction=parsed.get("signal_direction"),
+        signal_strength=parsed.get("signal_strength"),
+        signal_summary=ai_summary, # <--- AI Summary injected here
+        sector=parsed.get("sector"),
+        asset_class=parsed.get("asset_class"),
+        raw_payload=parsed.get("raw_payload"),
+        status=AlertStatus.PENDING,
+        processed=False,
+    )
+
+    db.add(alert)
+    db.commit()
+    db.refresh(alert)
+    logger.info(f"📥 Webhook received & AI parsed: {alert.ticker} | ID: {alert.id}")
+
+    return {"status": "success", "alert_id": alert.id, "message": "Alert logged."}
+
 
 @app.get("/api/alerts")
-async def get_alerts(
+def get_alerts(
     status: Optional[str] = None,
+    signal_direction: Optional[str] = None,
     alert_type: Optional[str] = None,
     sector: Optional[str] = None,
-    signal_direction: Optional[str] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    ticker: Optional[str] = None,
     search: Optional[str] = None,
-    limit: int = Query(default=50, le=200),
-    offset: int = 0,
-    db: Session = Depends(get_db),
+    limit: int = Query(50, le=200),
+    db: Session = Depends(get_db)
 ):
-    """Get alerts with filters"""
-    query = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
-    
-    if status:
+    query = db.query(TradingViewAlert)
+
+    if status and status != "All":
         query = query.filter(TradingViewAlert.status == status)
-    if alert_type:
-        query = query.filter(TradingViewAlert.alert_type == alert_type)
-    if sector:
-        query = query.filter(TradingViewAlert.sector == sector)
-    if signal_direction:
+    if signal_direction and signal_direction != "All":
         query = query.filter(TradingViewAlert.signal_direction == signal_direction)
-    if ticker:
-        query = query.filter(TradingViewAlert.ticker.ilike(f"%{ticker}%"))
-    if date_from:
-        query = query.filter(TradingViewAlert.received_at >= datetime.fromisoformat(date_from))
-    if date_to:
-        query = query.filter(TradingViewAlert.received_at <= datetime.fromisoformat(date_to))
+    if alert_type and alert_type != "All":
+        query = query.filter(TradingViewAlert.alert_type == alert_type)
+    if sector and sector != "All":
+        query = query.filter(TradingViewAlert.sector == sector)
     if search:
-        query = query.filter(
-            or_(
-                TradingViewAlert.ticker.ilike(f"%{search}%"),
-                TradingViewAlert.alert_name.ilike(f"%{search}%"),
-                TradingViewAlert.signal_summary.ilike(f"%{search}%"),
-                TradingViewAlert.sector.ilike(f"%{search}%"),
-            )
-        )
-    
-    total = query.count()
-    alerts = query.offset(offset).limit(limit).all()
-    
+        search_term = f"%{search}%"
+        query = query.filter(or_(
+            TradingViewAlert.ticker.ilike(search_term),
+            TradingViewAlert.alert_name.ilike(search_term),
+            TradingViewAlert.alert_message.ilike(search_term)
+        ))
+
+    alerts = query.order_by(desc(TradingViewAlert.received_at)).limit(limit).all()
+
     results = []
-    for alert in alerts:
-        action_data = None
-        if alert.action:
-            action_data = {
-                "id": alert.action.id,
-                "decision": alert.action.decision.value if alert.action.decision else None,
-                "primary_call": alert.action.primary_call.value if alert.action.primary_call else None,
-                "primary_ticker": alert.action.primary_ticker,
-                "primary_notes": alert.action.primary_notes,
-                "primary_target_price": alert.action.primary_target_price,
-                "primary_stop_loss": alert.action.primary_stop_loss,
-                "secondary_call": alert.action.secondary_call.value if alert.action.secondary_call else None,
-                "secondary_ticker": alert.action.secondary_ticker,
-                "secondary_notes": alert.action.secondary_notes,
-                "conviction": alert.action.conviction,
-                "fm_remarks": alert.action.fm_remarks,
-                "price_at_decision": alert.action.price_at_decision,
-                "decision_at": alert.action.decision_at.isoformat() if alert.action.decision_at else None,
-            }
-        
-        results.append({
-            "id": alert.id,
-            "ticker": alert.ticker,
-            "exchange": alert.exchange,
-            "interval": alert.interval,
-            "price_at_alert": alert.price_at_alert,
-            "price_open": alert.price_open,
-            "price_high": alert.price_high,
-            "price_low": alert.price_low,
-            "price_close": alert.price_close,
-            "volume": alert.volume,
-            "alert_name": alert.alert_name,
-            "alert_message": alert.alert_message,
-            "alert_condition": alert.alert_condition,
-            "indicator_values": alert.indicator_values,
-            "alert_type": alert.alert_type.value if alert.alert_type else None,
-            "numerator_ticker": alert.numerator_ticker,
-            "denominator_ticker": alert.denominator_ticker,
-            "numerator_price": alert.numerator_price,
-            "denominator_price": alert.denominator_price,
-            "ratio_value": alert.ratio_value,
-            "signal_direction": alert.signal_direction.value if alert.signal_direction else None,
-            "signal_strength": alert.signal_strength,
-            "signal_summary": alert.signal_summary,
-            "sector": alert.sector,
-            "asset_class": alert.asset_class,
-            "status": alert.status.value if alert.status else None,
-            "received_at": alert.received_at.isoformat() if alert.received_at else None,
-            "action": action_data,
-        })
-    
-    return {"total": total, "alerts": results}
+    for a in alerts:
+        alert_dict = {c.name: getattr(a, c.name) for c in a.__table__.columns}
+        if a.action:
+            alert_dict["action"] = {c.name: getattr(a.action, c.name) for c in a.action.__table__.columns}
+        results.append(alert_dict)
 
+    return {"total": len(results), "alerts": results}
 
-@app.get("/api/alerts/{alert_id}")
-async def get_alert_detail(alert_id: int, db: Session = Depends(get_db)):
-    """Get single alert with full details"""
-    alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    
-    # Fetch live price for context
-    live_price = get_live_price(alert.ticker) if alert.ticker else None
-    
-    return {
-        "alert": {
-            "id": alert.id,
-            "ticker": alert.ticker,
-            "exchange": alert.exchange,
-            "interval": alert.interval,
-            "price_at_alert": alert.price_at_alert,
-            "price_open": alert.price_open,
-            "price_high": alert.price_high,
-            "price_low": alert.price_low,
-            "price_close": alert.price_close,
-            "volume": alert.volume,
-            "alert_name": alert.alert_name,
-            "alert_message": alert.alert_message,
-            "alert_condition": alert.alert_condition,
-            "indicator_values": alert.indicator_values,
-            "alert_type": alert.alert_type.value if alert.alert_type else None,
-            "numerator_ticker": alert.numerator_ticker,
-            "denominator_ticker": alert.denominator_ticker,
-            "numerator_price": alert.numerator_price,
-            "denominator_price": alert.denominator_price,
-            "ratio_value": alert.ratio_value,
-            "signal_direction": alert.signal_direction.value if alert.signal_direction else None,
-            "signal_strength": alert.signal_strength,
-            "signal_summary": alert.signal_summary,
-            "sector": alert.sector,
-            "asset_class": alert.asset_class,
-            "status": alert.status.value if alert.status else None,
-            "received_at": alert.received_at.isoformat() if alert.received_at else None,
-            "raw_payload": alert.raw_payload,
-        },
-        "live_price": live_price,
-    }
-
-
-# ─── Delete Alert ─────────────────────────────────────
-
-@app.delete("/api/alerts/{alert_id}")
-async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
-    """Permanently delete an alert and its related action/performance records"""
-    
-    alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not alert:
-        raise HTTPException(status_code=404, detail="Alert not found")
-    
-    # Delete related performance records
-    db.query(AlertPerformance).filter(AlertPerformance.alert_id == alert_id).delete()
-    
-    # Delete related action record
-    db.query(AlertAction).filter(AlertAction.alert_id == alert_id).delete()
-    
-    # Delete the alert itself
-    db.delete(alert)
-    db.commit()
-    
-    logger.info(f"🗑️ Alert #{alert_id} ({alert.ticker}) deleted permanently")
-    
-    return {"success": True, "alert_id": alert_id, "message": f"Alert #{alert_id} deleted"}
-
-
-# ─── Take Action on Alert ─────────────────────────────
 
 @app.post("/api/alerts/{alert_id}/action")
-async def take_action(alert_id: int, action_req: ActionRequest, db: Session = Depends(get_db)):
-    """Fund Manager takes action on an alert"""
-    
+def action_alert(alert_id: int, payload: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-    
-    # Fetch live price at decision time
-    live = get_live_price(alert.ticker) if alert.ticker else {}
-    current_price = live.get("current_price") or alert.price_at_alert
-    
-    secondary_price = None
-    if alert.alert_type == AlertType.RELATIVE and alert.denominator_ticker:
-        sec_live = get_live_price(alert.denominator_ticker)
-        secondary_price = sec_live.get("current_price")
-    
-    # Create or update action
-    existing_action = db.query(AlertAction).filter(AlertAction.alert_id == alert_id).first()
-    
-    if existing_action:
-        action = existing_action
-    else:
-        action = AlertAction(alert_id=alert_id)
-    
-    # Map decision
-    decision = AlertStatus.APPROVED if action_req.decision.upper() == "APPROVED" else AlertStatus.DENIED
-    
-    action.decision = decision
-    action.decision_at = datetime.now()
-    action.primary_call = ActionCall(action_req.primary_call) if action_req.primary_call else None
-    action.primary_ticker = alert.numerator_ticker or alert.ticker
-    action.primary_notes = action_req.primary_notes
-    action.primary_target_price = action_req.primary_target_price
-    action.primary_stop_loss = action_req.primary_stop_loss
-    action.secondary_call = ActionCall(action_req.secondary_call) if action_req.secondary_call else None
-    action.secondary_ticker = alert.denominator_ticker
-    action.secondary_notes = action_req.secondary_notes
-    action.secondary_target_price = action_req.secondary_target_price
-    action.secondary_stop_loss = action_req.secondary_stop_loss
-    action.conviction = action_req.conviction
-    action.fm_remarks = action_req.fm_remarks
-    action.price_at_decision = current_price
-    action.secondary_price_at_decision = secondary_price
-    
-    if not existing_action:
-        db.add(action)
-    
-    # Update alert status
-    alert.status = decision
-    
+    if alert.status != AlertStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Alert already processed")
+
+    # ── AI Processing: Synthesize the Fund Manager's voice/text rationale
+    formal_view = synthesize_fm_rationale(
+        ticker=alert.ticker,
+        call=payload.primary_call or "ACTION",
+        text_note=payload.fm_rationale_text,
+        audio_b64=payload.fm_rationale_audio
+    )
+
+    # Use AI formalized view as remarks
+    final_remarks = payload.fm_remarks if payload.fm_remarks else formal_view
+
+    action = AlertAction(
+        alert_id=alert.id,
+        decision=payload.decision,
+        primary_call=payload.primary_call,
+        primary_notes=payload.primary_notes,
+        primary_target_price=payload.primary_target_price,
+        primary_stop_loss=payload.primary_stop_loss,
+        secondary_call=payload.secondary_call,
+        secondary_notes=payload.secondary_notes,
+        secondary_target_price=payload.secondary_target_price,
+        secondary_stop_loss=payload.secondary_stop_loss,
+        conviction=payload.conviction,
+        fm_remarks=final_remarks, # <--- AI View Injected
+        price_at_decision=alert.price_at_alert,
+    )
+
+    db.add(action)
+    alert.status = payload.decision
+    alert.processed = True
+
+    # Initialize Performance Tracking if Approved
+    if payload.decision == "APPROVED":
+        perf = AlertPerformance(
+            alert_id=alert.id,
+            ticker=alert.ticker or alert.numerator_ticker or "UNKNOWN",
+            is_primary=True,
+            reference_price=alert.price_at_alert or alert.ratio_value or 0.0,
+            reference_date=datetime.utcnow()
+        )
+        db.add(perf)
+
     db.commit()
-    
-    return {
-        "success": True,
-        "alert_id": alert_id,
-        "decision": decision.value,
-        "price_at_decision": current_price,
-    }
+    return {"success": True, "action_id": action.id, "message": "Decision recorded."}
 
 
-# ─── Performance Tracking ─────────────────────────────
+@app.delete("/api/alerts/{alert_id}")
+def delete_alert(alert_id: int, db: Session = Depends(get_db)):
+    alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    if alert.action:
+        db.delete(alert.action)
+    for perf in alert.performance_records:
+        db.delete(perf)
+
+    db.delete(alert)
+    db.commit()
+    return {"success": True, "message": "Alert deleted"}
+
 
 @app.get("/api/performance")
-async def get_performance(
-    ticker: Optional[str] = None,
-    sector: Optional[str] = None,
-    call_type: Optional[str] = None,
-    sort_by: str = "return_pct",
-    sort_order: str = "desc",
-    limit: int = Query(default=50, le=200),
-    db: Session = Depends(get_db),
-):
-    """Get performance of all approved alerts"""
-    
-    query = (
-        db.query(AlertPerformance, TradingViewAlert, AlertAction)
-        .join(TradingViewAlert, AlertPerformance.alert_id == TradingViewAlert.id)
-        .join(AlertAction, AlertAction.alert_id == TradingViewAlert.id)
-        .filter(AlertAction.decision == AlertStatus.APPROVED)
-        .filter(AlertPerformance.is_primary == True)
-    )
-    
-    if ticker:
-        query = query.filter(AlertPerformance.ticker.ilike(f"%{ticker}%"))
-    if sector:
-        query = query.filter(TradingViewAlert.sector == sector)
-    if call_type:
-        query = query.filter(AlertAction.primary_call == call_type)
-    
-    # Sorting
-    sort_col = getattr(AlertPerformance, sort_by, AlertPerformance.return_pct)
-    if sort_order == "desc":
-        query = query.order_by(desc(sort_col))
-    else:
-        query = query.order_by(sort_col)
-    
-    records = query.limit(limit).all()
-    
+def get_performance(limit: int = 100, db: Session = Depends(get_db)):
+    records = db.query(AlertPerformance).order_by(desc(AlertPerformance.snapshot_date)).limit(limit).all()
     results = []
-    for perf, alert, action in records:
+    for p in records:
+        alert = p.alert
+        action = alert.action if alert else None
         results.append({
-            "alert_id": alert.id,
-            "ticker": perf.ticker,
-            "alert_name": alert.alert_name,
-            "sector": alert.sector,
-            "signal_direction": alert.signal_direction.value if alert.signal_direction else None,
-            "call": action.primary_call.value if action.primary_call else None,
-            "conviction": action.conviction,
-            "reference_price": perf.reference_price,
-            "current_price": perf.current_price,
-            "return_pct": perf.return_pct,
-            "return_absolute": perf.return_absolute,
-            "return_1d": perf.return_1d,
-            "return_1w": perf.return_1w,
-            "return_1m": perf.return_1m,
-            "return_3m": perf.return_3m,
-            "return_6m": perf.return_6m,
-            "return_12m": perf.return_12m,
-            "high_since": perf.high_since,
-            "low_since": perf.low_since,
-            "max_drawdown": perf.max_drawdown,
-            "approved_at": action.decision_at.isoformat() if action.decision_at else None,
-            "last_updated": perf.snapshot_date.isoformat() if perf.snapshot_date else None,
+            "id": p.id,
+            "alert_id": p.alert_id,
+            "ticker": p.ticker,
+            "reference_price": p.reference_price,
+            "current_price": p.current_price,
+            "return_pct": p.return_pct,
+            "return_1d": p.return_1d,
+            "return_1w": p.return_1w,
+            "return_1m": p.return_1m,
+            "max_drawdown": p.max_drawdown,
+            "approved_at": action.created_at.isoformat() if action else None,
+            "call": action.primary_call if action else "UNKNOWN",
+            "conviction": action.conviction if action else "UNKNOWN",
+            "sector": alert.sector if alert else "UNKNOWN"
         })
-    
     return {"total": len(results), "performance": results}
 
 
-@app.post("/api/performance/refresh")
-async def refresh_performance(db: Session = Depends(get_db)):
-    """Manually trigger performance update for all approved alerts"""
-    updated = update_all_performance(db)
-    return {"success": True, "updated_count": updated}
-
-
-# ─── Dashboard Stats ───────────────────────────────────
-
 @app.get("/api/stats")
-async def get_dashboard_stats(db: Session = Depends(get_db)):
-    """Summary statistics for dashboard header"""
-    
+def get_stats(db: Session = Depends(get_db)):
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
     total_alerts = db.query(TradingViewAlert).count()
+    today_alerts = db.query(TradingViewAlert).filter(TradingViewAlert.received_at >= today_start).count()
     pending = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.PENDING).count()
     approved = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.APPROVED).count()
-    denied = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.DENIED).count()
-    
-    # Today's alerts
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_alerts = db.query(TradingViewAlert).filter(TradingViewAlert.received_at >= today_start).count()
-    
-    # Signal distribution
+
     bullish = db.query(TradingViewAlert).filter(TradingViewAlert.signal_direction == SignalDirection.BULLISH).count()
     bearish = db.query(TradingViewAlert).filter(TradingViewAlert.signal_direction == SignalDirection.BEARISH).count()
-    
-    # Average performance of approved alerts
-    avg_return = db.query(func.avg(AlertPerformance.return_pct)).filter(AlertPerformance.is_primary == True).scalar()
-    
-    # Top performing approved alert
-    top_performer = (
-        db.query(AlertPerformance)
-        .filter(AlertPerformance.is_primary == True)
-        .order_by(desc(AlertPerformance.return_pct))
-        .first()
-    )
-    
-    # Worst performing
-    worst_performer = (
-        db.query(AlertPerformance)
-        .filter(AlertPerformance.is_primary == True)
-        .order_by(AlertPerformance.return_pct)
-        .first()
-    )
-    
-    # Sector-wise alert count
-    sector_counts = (
-        db.query(TradingViewAlert.sector, func.count(TradingViewAlert.id))
-        .filter(TradingViewAlert.sector.isnot(None))
-        .group_by(TradingViewAlert.sector)
-        .all()
-    )
-    
-    # Win rate (approved alerts with positive returns)
-    total_with_perf = db.query(AlertPerformance).filter(AlertPerformance.is_primary == True, AlertPerformance.return_pct.isnot(None)).count()
-    winners = db.query(AlertPerformance).filter(AlertPerformance.is_primary == True, AlertPerformance.return_pct > 0).count()
-    win_rate = round((winners / total_with_perf * 100), 1) if total_with_perf > 0 else 0
-    
+
+    perfs = db.query(AlertPerformance).filter(AlertPerformance.return_pct != None).all()
+    avg_return = sum(p.return_pct for p in perfs) / len(perfs) if perfs else 0.0
+    winners = len([p for p in perfs if p.return_pct and p.return_pct > 0])
+    win_rate = (winners / len(perfs) * 100) if perfs else 0.0
+
+    top_perf = None
+    if perfs:
+        top_record = max(perfs, key=lambda x: x.return_pct or -999)
+        top_perf = {
+            "ticker": top_record.ticker,
+            "return_pct": top_record.return_pct
+        }
+
     return {
         "total_alerts": total_alerts,
+        "today_alerts": today_alerts,
         "pending": pending,
         "approved": approved,
-        "denied": denied,
-        "today_alerts": today_alerts,
         "bullish_count": bullish,
         "bearish_count": bearish,
-        "avg_return_pct": round(avg_return, 2) if avg_return else 0,
+        "avg_return_pct": avg_return,
         "win_rate": win_rate,
-        "top_performer": {
-            "ticker": top_performer.ticker if top_performer else None,
-            "return_pct": top_performer.return_pct if top_performer else None,
-        },
-        "worst_performer": {
-            "ticker": worst_performer.ticker if worst_performer else None,
-            "return_pct": worst_performer.return_pct if worst_performer else None,
-        },
-        "sector_distribution": {s: c for s, c in sector_counts},
+        "top_performer": top_perf
     }
 
-
-# ─── Sectors & Filters ────────────────────────────────
 
 @app.get("/api/sectors")
-async def get_sectors(db: Session = Depends(get_db)):
-    """Get all unique sectors from alerts"""
-    sectors = (
-        db.query(TradingViewAlert.sector)
-        .filter(TradingViewAlert.sector.isnot(None))
-        .distinct()
-        .all()
-    )
-    return {"sectors": [s[0] for s in sectors]}
+def get_sectors(db: Session = Depends(get_db)):
+    sectors = db.query(InstrumentMap.sector).filter(InstrumentMap.sector != None).distinct().all()
+    return {"sectors": [s[0] for s in sectors if s[0]]}
 
 
-@app.get("/api/instruments")
-async def get_instruments(db: Session = Depends(get_db)):
-    """Get instrument reference data"""
-    instruments = db.query(InstrumentMap).all()
+@app.get("/api/webhook-template")
+def get_template():
     return {
-        "instruments": [
-            {
-                "ticker": i.ticker,
-                "name": i.name,
-                "sector": i.sector,
-                "asset_class": i.asset_class,
-                "exchange": i.exchange,
-                "is_index": i.is_index,
-            }
-            for i in instruments
-        ]
+        "template": get_recommended_alert_template(AlertType.ABSOLUTE),
+        "template_relative": get_recommended_alert_template(AlertType.RELATIVE)
     }
 
 
-# ─── Live Price Endpoint ──────────────────────────────
-
-@app.get("/api/price/{ticker}")
-async def get_price(ticker: str):
-    """Get live price for any ticker"""
-    return get_live_price(ticker)
-
-
-# ─── Webhook Template ─────────────────────────────────
-
-@app.get("/api/webhook-template")
-async def webhook_template():
-    """Get recommended TradingView alert message template"""
-    return get_recommended_alert_template()
-
-
-# ─── Test Endpoint ─────────────────────────────────────
-
 @app.post("/api/test-alert")
-async def send_test_alert(db: Session = Depends(get_db)):
-    """Send a simulated TradingView alert for testing"""
-    
-    test_alerts = [
+def create_test_alert(db: Session = Depends(get_db)):
+    import random
+    mock_alerts = [
         {
-            "ticker": "NIFTY",
-            "exchange": "NSE",
-            "interval": "1D",
-            "open": 24150.30,
-            "high": 24280.50,
-            "low": 24050.75,
-            "close": 24210.85,
-            "volume": 285000000,
-            "timenow": datetime.now().isoformat(),
-            "alert_name": "Nifty 50 RSI Overbought",
-            "signal": "BEARISH",
-            "indicators": {
-                "rsi": 73.5,
-                "macd": 45.2,
-                "ema_200": 23150.40,
-                "adx": 28.3,
-            },
-            "message": "Nifty 50 RSI crossed above 70 - overbought zone. MACD histogram turning negative. Consider reducing exposure."
+            "ticker": "RELIANCE", "exchange": "NSE", "interval": "1D", "price_at_alert": 2950.45,
+            "alert_name": "RSI Oversold Bounce", "alert_message": "RSI crossed above 30 on daily.",
+            "signal_direction": SignalDirection.BULLISH, "sector": "Energy", "asset_class": "EQUITY"
         },
         {
-            "ticker": "NIFTYIT/NIFTY",
-            "exchange": "NSE",
-            "interval": "1D",
-            "close": 1.42,
-            "timenow": datetime.now().isoformat(),
-            "alert_name": "IT vs Nifty Relative Strength",
-            "numerator": "NIFTYIT",
-            "denominator": "NIFTY",
-            "numerator_price": 34520.60,
-            "denominator_price": 24210.85,
-            "ratio": 1.4259,
-            "signal": "BULLISH",
-            "indicators": {
-                "relative_strength": 1.4259,
-                "rsi": 62.1,
-                "macd": 0.023,
-            },
-            "message": "IT sector outperforming Nifty. Relative strength ratio at 52-week high. IT allocation increase recommended."
-        },
-        {
-            "ticker": "BANKNIFTY",
-            "exchange": "NSE",
-            "interval": "4H",
-            "open": 51200.00,
-            "high": 51580.00,
-            "low": 51050.00,
-            "close": 51450.00,
-            "volume": 142000000,
-            "timenow": datetime.now().isoformat(),
-            "alert_name": "Bank Nifty Golden Cross",
-            "signal": "BULLISH",
-            "indicators": {
-                "rsi": 58.2,
-                "macd": 125.8,
-                "ema_50": 50850.00,
-                "ema_200": 50720.00,
-                "adx": 32.5,
-            },
-            "message": "Bank Nifty 50 EMA crossed above 200 EMA - Golden Cross confirmed. Strong bullish signal with rising ADX. Banking sector momentum building."
-        },
+            "ticker": "HDFCBANK", "exchange": "NSE", "interval": "4H", "price_at_alert": 1420.10,
+            "alert_name": "MACD Bearish Cross", "alert_message": "MACD line crossed below signal line.",
+            "signal_direction": SignalDirection.BEARISH, "sector": "Banking", "asset_class": "EQUITY"
+        }
     ]
-    
+
     created_ids = []
-    for test_data in test_alerts:
-        parsed = parse_webhook_payload(test_data)
+    for m in mock_alerts:
+        # Pass mock alerts through the AI summary generator
+        ai_summary = generate_technical_summary(
+            ticker=m["ticker"], price=m["price_at_alert"],
+            indicators={}, alert_message=m["alert_message"]
+        )
         alert = TradingViewAlert(
-            ticker=parsed["ticker"],
-            exchange=parsed["exchange"],
-            interval=parsed["interval"],
-            price_open=parsed["price_open"],
-            price_high=parsed["price_high"],
-            price_low=parsed["price_low"],
-            price_close=parsed["price_close"],
-            price_at_alert=parsed["price_at_alert"],
-            volume=parsed["volume"],
-            time_utc=parsed["time_utc"],
-            timenow_utc=parsed["timenow_utc"],
-            alert_name=parsed["alert_name"],
-            alert_message=parsed["alert_message"],
-            alert_condition=parsed["alert_condition"],
-            indicator_values=parsed["indicator_values"],
-            alert_type=parsed["alert_type"],
-            numerator_ticker=parsed["numerator_ticker"],
-            denominator_ticker=parsed["denominator_ticker"],
-            numerator_price=parsed["numerator_price"],
-            denominator_price=parsed["denominator_price"],
-            ratio_value=parsed["ratio_value"],
-            signal_direction=parsed["signal_direction"],
-            signal_strength=parsed["signal_strength"],
-            signal_summary=parsed["signal_summary"],
-            sector=parsed["sector"],
-            asset_class=parsed["asset_class"],
-            raw_payload=parsed["raw_payload"],
+            **m,
             status=AlertStatus.PENDING,
-            processed=True,
+            signal_summary=ai_summary,
         )
         db.add(alert)
         db.commit()
         db.refresh(alert)
         created_ids.append(alert.id)
-    
-    return {"success": True, "test_alerts_created": created_ids, "count": len(created_ids)}
 
+    return {"success": True, "count": len(created_ids), "ids": created_ids}
 
-# ─── Health Check ──────────────────────────────────────
 
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "service": "FIE Phase 1", "timestamp": datetime.now().isoformat()}
-
+def health():
+    return {"status": "healthy", "service": "FIE Phase 1 + AI Engine", "timestamp": datetime.utcnow().isoformat()}
 
 # ─── Run ───────────────────────────────────────────────
-
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
