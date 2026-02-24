@@ -181,17 +181,15 @@ if page == "Command Center":
     st.markdown("<h1>Command Center</h1><p style='color:#64748B; font-size:13px; margin-bottom:20px;'>Real-time signal feed · Pending alerts requiring action</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     pending_ct = stats.get("pending", 0) + stats.get("review_later", 0)
-    intensity = stats.get("recent_intensity", 0)
     bull_p = stats.get("bullish_pending", 0)
     bear_p = stats.get("bearish_pending", 0)
-    i_label = "HIGH" if intensity >= 5 else "MEDIUM" if intensity >= 2 else "LOW"
     
-    c1, c2, c3, c4 = st.columns(4)
+    # Signal Intensity removed, now 3 clean columns
+    c1, c2, c3 = st.columns(3)
     c1.metric("Pending Alerts", pending_ct)
-    c2.metric("Signal Intensity", i_label)
-    c3.metric("Bullish / Bearish", f"{bull_p} / {bear_p}")
+    c2.metric("Bullish / Bearish", f"{bull_p} / {bear_p}")
     now = datetime.now()
-    c4.metric("Market", "OPEN" if (now.weekday() < 5 and 9 <= now.hour < 16) else "CLOSED")
+    c3.metric("Market", "OPEN" if (now.weekday() < 5 and 9 <= now.hour < 16) else "CLOSED")
     
     st.markdown("<div class='divider'></div>", unsafe_allow_html=True)
     fc1, _, _, _ = st.columns([1, 1, 1, 2])
@@ -414,19 +412,43 @@ elif page == "Alert Database":
     
     f1,f2,f3,f4 = st.columns([1,1,1,1])
     with f1: ds = st.selectbox("Status", ["APPROVED","All","PENDING","DENIED","REVIEW_LATER"], key="ds")
-    with f2: dt = st.text_input("Search Ticker", key="dt")
+    
+    # Replaced Text Filter with Time Filter
+    with f2: time_filter = st.selectbox("Timeframe", ["All Time", "Last 24h", "Last 7d", "Last 30d"], key="tf")
+    
     with f3: dl = st.selectbox("Rows", [50,100,200], key="dl")
-    with f4:
-        view_mode = st.selectbox("View", ["Cards", "Table"], key="vm")
+    with f4: view_mode = st.selectbox("View", ["Cards", "Table"], key="vm")
     
     pm = {"limit": dl}
     if ds != "All": pm["status"] = ds
-    if dt: pm["ticker"] = dt
+    
     m = api_call('GET', "/api/master", params=pm)
     
     if m and m.get("alerts"):
         als = m["alerts"]
-        st.markdown(f"<p style='font-size:12px; color:#94A3B8; margin-bottom:16px;'>Showing {len(als)} of {m.get('total', len(als))}</p>", unsafe_allow_html=True)
+        
+        # Apply the timeframe filter locally based on the received timestamps
+        if time_filter != "All Time":
+            filtered_als = []
+            current_ts = time.time()
+            for a in als:
+                try:
+                    # Parse ISO format datetime safely
+                    a_dt = datetime.fromisoformat(str(a.get('received_at')).replace("Z", "+00:00"))
+                    diff_days = (current_ts - a_dt.timestamp()) / 86400.0
+                    
+                    if time_filter == "Last 24h" and diff_days <= 1:
+                        filtered_als.append(a)
+                    elif time_filter == "Last 7d" and diff_days <= 7:
+                        filtered_als.append(a)
+                    elif time_filter == "Last 30d" and diff_days <= 30:
+                        filtered_als.append(a)
+                except:
+                    # If date parsing fails, leave the alert in to be safe
+                    filtered_als.append(a)
+            als = filtered_als
+            
+        st.markdown(f"<p style='font-size:12px; color:#94A3B8; margin-bottom:16px;'>Showing {len(als)} alerts</p>", unsafe_allow_html=True)
         
         if view_mode == "Cards":
             for a in als:
