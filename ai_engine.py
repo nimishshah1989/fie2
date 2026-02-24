@@ -6,7 +6,6 @@ model = None
 
 if api_key:
     genai.configure(api_key=api_key)
-    # Using the lightning-fast Flash model optimized for multimodal (audio/text)
     model = genai.GenerativeModel('gemini-1.5-flash')
 
 def generate_technical_summary(ticker, price, indicators, alert_message):
@@ -42,7 +41,6 @@ def synthesize_fm_rationale(ticker, call, text_note=None, audio_b64=None):
     contents = [prompt]
     
     if audio_b64:
-        # Gemini natively understands audio via base64 encoding
         contents.append({
             "mime_type": "audio/wav", 
             "data": audio_b64
