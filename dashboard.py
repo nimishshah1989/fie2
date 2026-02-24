@@ -219,7 +219,7 @@ if page == "📊 Live Alerts":
             if alert.get("alert_type") == "RELATIVE":
                 price = f"Ratio: {alert.get('ratio_value', alert.get('price_at_alert', 0)):.4f}"
             else:
-                price = f"₹{alert.get('price_at_alert', 0):,.2f}"
+                price = f"Rs.{alert.get('price_at_alert', 0):,.2f}"
             
             st.markdown(f"""
             <div class="alert-card {sig_class}{pend_class}">
@@ -303,7 +303,7 @@ elif page == "✅ Action Center":
                             if is_rel:
                                 st.metric(lbl, fmt(alert.get(key), decimals=4))
                             else:
-                                st.metric(lbl, fmt(alert.get(key), prefix="₹"))
+                                st.metric(lbl, fmt(alert.get(key), prefix="Rs."))
                     
                     if alert.get("indicator_values"):
                         st.markdown("**Indicators:**")
@@ -312,8 +312,8 @@ elif page == "✅ Action Center":
                     if is_rel:
                         st.markdown("**Relative Alert Details:**")
                         rc = st.columns(3)
-                        with rc[0]: st.metric(f"Num: {alert.get('numerator_ticker','?')}", fmt(alert.get("numerator_price"), prefix="₹"))
-                        with rc[1]: st.metric(f"Den: {alert.get('denominator_ticker','?')}", fmt(alert.get("denominator_price"), prefix="₹"))
+                        with rc[0]: st.metric(f"Num: {alert.get('numerator_ticker','?')}", fmt(alert.get("numerator_price"), prefix="Rs."))
+                        with rc[1]: st.metric(f"Den: {alert.get('denominator_ticker','?')}", fmt(alert.get("denominator_price"), prefix="Rs."))
                         with rc[2]: st.metric("Ratio", fmt(alert.get("ratio_value"), decimals=4))
                 
                 with col_act:
