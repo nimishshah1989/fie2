@@ -15,7 +15,6 @@ st.set_page_config(page_title="Jhaveri Intelligence", layout="wide", initial_sid
 if "last_refresh" not in st.session_state:
     st.session_state.last_refresh = time.time()
 
-# ─── SAFE CSS ─────────────────────────────────────────────────
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
@@ -23,7 +22,6 @@ st.markdown("""
     .stApp { background: #FAFBFC !important; }
     #MainMenu, footer { display: none !important; }
     .block-container { padding-top: 1.5rem !important; max-width: 1400px !important; }
-    
     div[data-testid="stMetric"] {
         background: #FFFFFF; border: 1px solid #E8ECF1; border-radius: 8px;
         padding: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
@@ -31,7 +29,6 @@ st.markdown("""
     div[data-testid="stMetric"] label { font-size: 11px !important; color: #64748B !important; font-weight: 700 !important; text-transform: uppercase !important; }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] { font-size: 22px !important; color: #0F172A !important; font-weight: 800 !important; }
     .empty-state { text-align: center; padding: 40px 20px; color: #94A3B8; }
-    
     [data-testid="stVerticalBlockBorderWrapper"] { 
         padding: 16px !important; border-radius: 10px !important; 
         background: #FFFFFF !important; box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
@@ -55,7 +52,7 @@ def api_call(method, endpoint, data=None, params=None):
 
 def fmt_price(val):
     if val is None or val == 0: return "—"
-    try: return f"₹{float(val):,.2f}"
+    try: return f"{float(val):,.2f}"
     except: return "—"
 
 def fmt_ist(iso_str):
@@ -63,17 +60,22 @@ def fmt_ist(iso_str):
     try:
         dt = datetime.fromisoformat(str(iso_str).replace("Z", "+00:00"))
         ist_dt = dt + timedelta(hours=5, minutes=30)
-        return ist_dt.strftime("%d-%b-%y %I:%M %p").lower()
+        return ist_dt.strftime("%d-%b %I:%M %p").lower()
     except: return str(iso_str)[:16]
 
 def asset_pill(asset_class):
     a = str(asset_class).strip().upper()
     if a in ["NONE", "NULL", "", "—"]: a = "EQUITY"
-    if a == "COMMODITY": bg, tc, br = "#FFFBEB", "#B45309", "#FDE68A"
-    elif a == "CURRENCY": bg, tc, br = "#ECFDF5", "#059669", "#A7F3D0"
-    elif a == "INDEX": bg, tc, br = "#F3E8FF", "#7E22CE", "#D8B4FE"
-    else: bg, tc, br = "#EFF6FF", "#2563EB", "#BFDBFE"
-    return f"<span style='background:{bg}; color:{tc}; border:1px solid {br}; padding:3px 8px; border-radius:6px; font-size:9px; font-weight:800; letter-spacing:0.5px;'>{a}</span>"
+    colors = {"COMMODITY": ("#FFFBEB","#B45309","#FDE68A"), "CURRENCY": ("#ECFDF5","#059669","#A7F3D0"),
+              "INDEX": ("#F3E8FF","#7E22CE","#D8B4FE")}
+    bg, tc, br = colors.get(a, ("#EFF6FF","#2563EB","#BFDBFE"))
+    return f"<span style='background:{bg}; color:{tc}; border:1px solid {br}; padding:2px 7px; border-radius:5px; font-size:9px; font-weight:800; letter-spacing:0.5px;'>{a}</span>"
+
+def signal_pill(direction):
+    d = str(direction or "NEUTRAL").upper()
+    if d == "BULLISH": return "<span style='color:#059669; background:#ECFDF5; border:1px solid #A7F3D0; padding:2px 7px; border-radius:5px; font-size:9px; font-weight:700;'>BULLISH</span>"
+    if d == "BEARISH": return "<span style='color:#DC2626; background:#FEF2F2; border:1px solid #FECACA; padding:2px 7px; border-radius:5px; font-size:9px; font-weight:700;'>BEARISH</span>"
+    return "<span style='color:#64748B; background:#F1F5F9; border:1px solid #E2E8F0; padding:2px 7px; border-radius:5px; font-size:9px; font-weight:700;'>NEUTRAL</span>"
 
 def stat_pill(s):
     s = str(s or "PENDING").upper()
@@ -81,10 +83,34 @@ def stat_pill(s):
     if s == "APPROVED": return "<span style='color:#059669; background:#ECFDF5; border:1px solid #A7F3D0; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>APPROVED</span>"
     return f"<span style='color:#DC2626; background:#FEF2F2; border:1px solid #FECACA; padding:2px 8px; border-radius:100px; font-size:9px; font-weight:700;'>{s}</span>"
 
+def confluence_bar(bull, bear):
+    try:
+        b = int(bull or 0); s = int(bear or 0)
+        total = max(b + s, 1)
+        bp = b / 10 * 100; sp = s / 10 * 100
+        return f"""<div style='display:flex; gap:2px; margin:4px 0;'>
+            <div style='height:4px; width:{bp}%; background:#059669; border-radius:2px;'></div>
+            <div style='height:4px; width:{sp}%; background:#DC2626; border-radius:2px;'></div>
+            <div style='height:4px; flex:1; background:#E2E8F0; border-radius:2px;'></div>
+        </div>
+        <div style='display:flex; justify-content:space-between; font-size:9px; color:#94A3B8;'>
+            <span>{b}/10 Bull</span><span>{s}/10 Bear</span>
+        </div>"""
+    except: return ""
+
+def rsi_gauge(val):
+    try:
+        v = float(val)
+        if v > 70: color, label = "#DC2626", "OB"
+        elif v < 30: color, label = "#059669", "OS"
+        else: color, label = "#64748B", ""
+        return f"<span style='color:{color}; font-weight:700;'>{v:.0f}</span>{f' <span style=\"font-size:8px; color:{color};\">{label}</span>' if label else ''}"
+    except: return "—"
+
 def clean_placeholder(text):
     if not text: return ""
     t = str(text).strip()
-    if "{{" in t or t.lower() in ["none", "null", ""]: return "Manual Alert"
+    if "{{" in t or t.lower() in ("none", "null", ""): return "Manual Alert"
     return t
 
 # ─── Sidebar ─────────────────────────────────────────────
@@ -103,10 +129,10 @@ with st.sidebar:
 _should_auto_refresh = st.session_state.get("auto_refresh", True)
 
 # ═══════════════════════════════════════════════════════════
-# COMMAND CENTER
+# COMMAND CENTER — with rich indicator cards
 # ═══════════════════════════════════════════════════════════
 if page == "Command Center":
-    st.markdown("<h1>Command Center</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom:4px;'>Command Center</h1><p style='color:#64748B; font-size:13px; margin-top:0;'>Real-time signal feed with technical intelligence</p>", unsafe_allow_html=True)
     stats = api_call('GET', "/api/stats") or {}
     c1, c2, c3 = st.columns(3)
     c1.metric("Total Alerts", stats.get("total_alerts", 0))
@@ -121,7 +147,7 @@ if page == "Command Center":
     data = api_call('GET', "/api/alerts", params=params)
     
     if not data or not data.get("alerts"):
-        st.markdown("<div class='empty-state'>📡 No signals found</div>", unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'>No signals found</div>", unsafe_allow_html=True)
     else:
         cols = st.columns(3)
         for i, al in enumerate(data["alerts"]):
@@ -129,30 +155,80 @@ if page == "Command Center":
                 with st.container(border=True):
                     alert_nm = clean_placeholder(al.get("alert_name"))
                     tkr = str(al.get("ticker", "—")).strip()
-                    tkr_html = f"<div style='font-size:12px; color:#475569;'>{tkr}</div>" if alert_nm.upper() != tkr.upper() else ""
+                    ind = al.get("indicators") or {}
+                    has_rich_data = bool(ind and ind.get("rsi") is not None)
+                    
+                    # Header row: asset pill + signal pill + time
+                    tkr_display = f"<span style='font-size:11px; color:#475569; margin-left:6px;'>{tkr}</span>" if alert_nm.upper() != tkr.upper() else ""
+                    interval_display = f"<span style='font-size:9px; color:#94A3B8; margin-left:4px;'>{al.get('interval','')}</span>" if al.get('interval') and al.get('interval') != '—' else ""
+                    
                     st.markdown(f"""
-                    <div style='display:flex; justify-content:space-between; margin-bottom:10px;'>
-                        {asset_pill(al.get('asset_class'))}
-                        <div style='font-size:10px; color:#64748B;'>{fmt_ist(al.get('received_at'))}</div>
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                        <div>{asset_pill(al.get('asset_class'))} {signal_pill(al.get('signal_direction'))}</div>
+                        <div style='font-size:10px; color:#94A3B8;'>{fmt_ist(al.get('received_at'))}</div>
                     </div>
                     <div style='display:flex; justify-content:space-between; align-items:flex-end;'>
-                        <div><div style='font-size:16px; font-weight:800;'>{alert_nm}</div>{tkr_html}</div>
-                        <div style='text-align:right;'><div style='font-size:16px; font-weight:800;'>{fmt_price(al.get("price_at_alert"))}</div><div>{stat_pill(al.get('status'))}</div></div>
+                        <div>
+                            <div style='font-size:15px; font-weight:800; color:#0F172A;'>{alert_nm}{interval_display}</div>
+                            {f"<div style='font-size:11px; color:#64748B;'>{tkr}</div>" if alert_nm.upper() != tkr.upper() else ""}
+                        </div>
+                        <div style='text-align:right;'>
+                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get("price_at_alert"))}</div>
+                            <div>{stat_pill(al.get('status'))}</div>
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
-                    msg = clean_placeholder(al.get("alert_message"))
-                    if msg and "{{" not in msg:
-                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px; background:#F8FAFC; border-radius:6px; margin-top:8px;'>{msg}</div>", unsafe_allow_html=True)
+                    
+                    # Rich indicator strip (only for FIE Pine payloads)
+                    if has_rich_data:
+                        rsi_html = rsi_gauge(ind.get("rsi"))
+                        st_dir = ind.get("supertrend_dir", "")
+                        st_color = "#059669" if st_dir == "BULLISH" else "#DC2626" if st_dir == "BEARISH" else "#94A3B8"
+                        htf = ind.get("htf_trend", "")
+                        htf_color = "#059669" if htf == "BULLISH" else "#DC2626" if htf == "BEARISH" else "#94A3B8"
+                        adx_val = ind.get("adx")
+                        adx_str = f"{float(adx_val):.0f}" if adx_val else "—"
+                        
+                        st.markdown(f"""
+                        <div style='background:#F8FAFC; border-radius:6px; padding:8px 10px; margin-top:8px;'>
+                            <div style='display:flex; justify-content:space-between; font-size:10px; margin-bottom:6px;'>
+                                <div><span style='color:#94A3B8;'>RSI</span> {rsi_html}</div>
+                                <div><span style='color:#94A3B8;'>ADX</span> <span style='font-weight:700;'>{adx_str}</span></div>
+                                <div><span style='color:#94A3B8;'>ST</span> <span style='color:{st_color}; font-weight:700;'>{st_dir[:4] if st_dir else "—"}</span></div>
+                                <div><span style='color:#94A3B8;'>HTF</span> <span style='color:{htf_color}; font-weight:700;'>{htf[:4] if htf else "—"}</span></div>
+                            </div>
+                            {confluence_bar(ind.get("confluence_bull_score"), ind.get("confluence_bear_score"))}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # MA alignment + candle pattern
+                        ma_a = ind.get("ma_alignment", "")
+                        cp = ind.get("candle_pattern", "")
+                        extras = []
+                        if ma_a and ma_a != "MIXED": extras.append(f"MA: {ma_a}")
+                        if cp and cp != "NONE": extras.append(f"Pattern: {cp}")
+                        vr = ind.get("vol_ratio")
+                        if vr:
+                            try:
+                                vrf = float(vr)
+                                if vrf > 1.5: extras.append(f"Vol: {vrf:.1f}x")
+                            except: pass
+                        if extras:
+                            st.markdown(f"<div style='font-size:9px; color:#64748B; margin-top:4px;'>{' &middot; '.join(extras)}</div>", unsafe_allow_html=True)
+                    else:
+                        # Legacy card — show alert message
+                        msg = clean_placeholder(al.get("alert_message"))
+                        if msg and "{{" not in msg and msg != "Manual Alert":
+                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px; background:#F8FAFC; border-radius:6px; margin-top:8px;'>{msg[:200]}</div>", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════
 # PORTFOLIO ANALYTICS
 # ═══════════════════════════════════════════════════════════
 elif page == "Portfolio Analytics":
     st.markdown("<h1>Portfolio Analytics</h1>", unsafe_allow_html=True)
-    if st.button("🔄 Sync Prices", type="primary"):
+    if st.button("Sync Prices", type="primary"):
         api_call('POST', "/api/performance/refresh")
         st.rerun()
-    
     data = api_call('GET', "/api/performance")
     if data and data.get("performance"):
         perf = data["performance"]
@@ -163,7 +239,6 @@ elif page == "Portfolio Analytics":
         m2.metric("Avg Return", f"{sum(rets)/n:+.2f}%")
         m3.metric("Win Rate", f"{sum(1 for r in rets if r > 0)/n*100:.0f}%")
         m4.metric("Best/Worst", f"{max(rets):+.1f}% / {min(rets):+.1f}%")
-        
         st.divider()
         cols = st.columns(3)
         for i, p in enumerate(perf):
@@ -184,7 +259,7 @@ elif page == "Portfolio Analytics":
                     <div style='font-size:10px; color:#64748B;'>Max DD: <span style='color:#DC2626;'>{dd:.2f}%</span></div>
                     """, unsafe_allow_html=True)
     else:
-        st.markdown("<div class='empty-state'>📊 No active positions</div>", unsafe_allow_html=True)
+        st.markdown("<div class='empty-state'>No active positions</div>", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════
 # ALERT DATABASE
@@ -205,24 +280,21 @@ elif page == "Alert Database":
                     <div style='font-size:13px; color:#334155; margin:5px 0;'>{a.get('ticker','—')}</div>
                     <div style='font-size:12px; margin-bottom:10px;'>Price: <b>{fmt_price(a.get('price_at_alert'))}</b></div>
                     """, unsafe_allow_html=True)
-                    if st.button("🗑️ Delete", key=f"del_{a['id']}", use_container_width=True):
+                    if st.button("Delete", key=f"del_{a['id']}", use_container_width=True):
                         api_call('DELETE', f"/api/alerts/{a['id']}")
                         st.rerun()
 
-# ─── Default Pages ───────────────────────────────────────────
 elif page == "Trade Desk":
     st.info("Visit Command Center to review pending alerts.")
 elif page == "Integrations":
     st.code(f"Webhook URL: {API_BASE}/webhook/tradingview")
+    st.markdown("### Pine Script Setup")
+    st.markdown("Use the **FIE Signal Engine v1.0** Pine Script indicator. It automatically sends rich JSON payloads with 25+ indicators via webhook. No manual message formatting needed.")
 
-# ─── AUTO REFRESH (Targeted clicker) ──────────────────────────
+# ─── AUTO REFRESH ──────────────────────────────────────────
 if _should_auto_refresh:
-    components.html("""
-        <script>
+    components.html("""<script>
         window.parent.document.querySelectorAll('button').forEach(btn => {
-            if (btn.innerText.includes('Sync')) {
-                setTimeout(() => btn.click(), 2000);
-            }
+            if (btn.innerText.includes('Sync')) { setTimeout(() => btn.click(), 2000); }
         });
-        </script>
-        """, height=0)
+    </script>""", height=0)
