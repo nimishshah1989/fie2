@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 import json
 import os
+import logging
 
 from models import (
     init_db, get_db,
@@ -15,21 +16,21 @@ from models import (
     SignalDirection, AlertType
 )
 from price_service import update_all_performance, get_live_price
+from ai_engine import generate_technical_summary
+
+logger = logging.getLogger("fie")
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="JHAVERI FIE Engine")
 
-# Fully open CORS to prevent security rejections
 app.add_middleware(
-    CORSMiddleware, 
-    allow_origins=["*"], 
-    allow_credentials=False, 
-    allow_methods=["*"], 
-    allow_headers=["*"]
+    CORSMiddleware, allow_origins=["*"], allow_credentials=False,
+    allow_methods=["*"], allow_headers=["*"]
 )
 
 class ActionRequest(BaseModel):
     alert_id: int
-    decision: str 
+    decision: str
     primary_call: Optional[str] = None
     conviction: Optional[str] = "MEDIUM"
     fm_rationale_text: Optional[str] = None
@@ -42,72 +43,142 @@ async def startup():
     init_db()
 
 # ═══════════════════════════════════════════════════════
-# 🔥 MASTER WEBHOOK PROCESSOR 🔥
-# Safely scrubs TradingView data and writes to DB
+# WEBHOOK PROCESSOR — handles legacy + FIE Pine payloads
 # ═══════════════════════════════════════════════════════
+
+def _sf(v):
+    if v is None: return None
+    s = str(v).strip().lower()
+    if s in ("null","nan","none","","n/a") or "{{" in s: return None
+    try: return float(v)
+    except: return None
+
+def _cs(v, d=""):
+    if v is None: return d
+    t = str(v).strip()
+    return d if ("{{" in t or t.lower() in ("none","null")) else t
+
+def _parse_fie(data):
+    p = data.get("price", {})
+    indicators = {}
+    for section_key in ("moving_averages","momentum","trend","volatility","volume_analysis","levels"):
+        sec = data.get(section_key, {})
+        for k, v in sec.items():
+            if isinstance(v, (int, float, str, bool)):
+                indicators[k] = v
+    htf = data.get("htf", {})
+    for k, v in htf.items():
+        if isinstance(v, (int, float, str)):
+            indicators[f"htf_{k}"] = v
+    conf = data.get("confluence", {})
+    for k, v in conf.items():
+        if isinstance(v, (int, float, str)):
+            indicators[f"confluence_{k}"] = v
+    if p.get("candle_pattern"):
+        indicators["candle_pattern"] = p["candle_pattern"]
+
+    sig = str(data.get("signal","NEUTRAL")).upper()
+    signal_dir = SignalDirection(sig) if sig in ("BULLISH","BEARISH","NEUTRAL") else SignalDirection.NEUTRAL
+    at = str(data.get("alert_type","ABSOLUTE")).upper()
+
+    mom = data.get("momentum", {})
+    trend = data.get("trend", {})
+
+    parts = []
+    ticker = _cs(data.get("ticker"), "Unknown")
+    alert_name = _cs(data.get("alert_name"), f"{ticker} Signal")
+    parts.append(alert_name)
+    if p.get("close"): parts.append(f"Price: {p['close']}")
+    rsi = mom.get("rsi")
+    if rsi is not None:
+        rl = "OB" if float(rsi)>70 else "OS" if float(rsi)<30 else "N"
+        parts.append(f"RSI:{rsi}({rl})")
+    cb = conf.get("bias","")
+    if cb: parts.append(f"Confluence:{cb}({conf.get('bull_score','')}B/{conf.get('bear_score','')}S)")
+    std = trend.get("supertrend_dir","")
+    if std: parts.append(f"ST:{std}")
+    ht = htf.get("trend","")
+    if ht: parts.append(f"HTF:{ht}")
+    ma_a = data.get("moving_averages",{}).get("ma_alignment","")
+    if ma_a: parts.append(f"MA:{ma_a}")
+    cp = p.get("candle_pattern","NONE")
+    if cp and cp != "NONE": parts.append(f"Pat:{cp}")
+    summary = " | ".join(parts)
+    cm = _cs(data.get("custom_message"), "")
+
+    return {
+        "ticker": ticker, "exchange": _cs(data.get("exchange")),
+        "interval": _cs(data.get("interval")),
+        "price_at_alert": _sf(p.get("close")) or _sf(data.get("close")),
+        "price_open": _sf(p.get("open")), "price_high": _sf(p.get("high")),
+        "price_low": _sf(p.get("low")), "price_close": _sf(p.get("close")),
+        "volume": _sf(p.get("volume")) or _sf(data.get("volume")),
+        "alert_name": alert_name, "alert_message": cm or summary,
+        "signal_direction": signal_dir,
+        "signal_strength": _sf(conf.get("signal_strength")),
+        "signal_summary": summary,
+        "alert_type": AlertType.RELATIVE if at=="RELATIVE" else AlertType.ABSOLUTE,
+        "asset_class": _cs(data.get("asset_class"),"EQUITY"),
+        "sector": _cs(data.get("sector")),
+        "indicator_values": indicators, "raw_payload": data,
+    }
+
+def _parse_legacy(data):
+    sig = str(data.get("signal","")).upper()
+    sd = SignalDirection(sig) if sig in ("BULLISH","BEARISH","NEUTRAL") else SignalDirection.NEUTRAL
+    return {
+        "ticker": _cs(data.get("ticker"),"UNKNOWN"), "exchange": _cs(data.get("exchange")),
+        "interval": _cs(data.get("interval")),
+        "price_at_alert": _sf(data.get("close")) or _sf(data.get("price")),
+        "price_open": None, "price_high": None, "price_low": None,
+        "price_close": _sf(data.get("close")),
+        "volume": _sf(data.get("volume")),
+        "alert_name": _cs(data.get("alert_name"),"Manual Alert"),
+        "alert_message": str(data.get("message",data.get("alert_message","")))[:500],
+        "signal_direction": sd, "signal_strength": None, "signal_summary": None,
+        "alert_type": AlertType.ABSOLUTE, "asset_class": None, "sector": None,
+        "indicator_values": {}, "raw_payload": data,
+    }
+
 async def process_webhook(request: Request, db: Session):
     try:
-        body_bytes = await request.body()
-        body_str = body_bytes.decode("utf-8")
-        
-        try:
-            data = json.loads(body_str)
-        except:
-            data = {"message": body_str}
+        body = (await request.body()).decode("utf-8")
+        try: data = json.loads(body)
+        except: data = {"message": body}
 
-        def safe_float(k):
-            v = data.get(k)
-            if v is None: return None
-            v_str = str(v).strip().lower()
-            if v_str in ("null", "nan", "none", "", "n/a") or "{{" in v_str: return None
-            try: return float(v)
-            except: return None
+        parsed = _parse_fie(data) if data.get("fie_version") else _parse_legacy(data)
 
-        def safe_date(k):
-            v = data.get(k)
-            if not v: return None
-            v_str = str(v).strip()
-            if "{{" in v_str: return None 
+        if parsed.get("indicator_values"):
             try:
-                from dateutil import parser
-                return parser.parse(v_str)
-            except:
-                return None
-                
-        def clean_str(k, default=""):
-            v = str(data.get(k, default)).strip()
-            if "{{" in v: return default
-            return v
+                ai = generate_technical_summary(parsed["ticker"], parsed.get("price_at_alert"), parsed["indicator_values"], parsed.get("alert_message",""))
+                if ai and ai != parsed.get("alert_message"):
+                    parsed["signal_summary"] = ai
+            except Exception as e:
+                logger.warning(f"AI enrichment failed: {e}")
 
-        signal_dir = SignalDirection.NEUTRAL
-        if data.get("signal") and str(data.get("signal")).upper() in ["BULLISH", "BEARISH", "NEUTRAL"]:
-            signal_dir = SignalDirection(str(data.get("signal")).upper())
+        if not parsed.get("signal_summary"):
+            parsed["signal_summary"] = parsed.get("alert_message") or "Signal received"
 
         alert = TradingViewAlert(
-            ticker=clean_str("ticker", "UNKNOWN"),
-            exchange=clean_str("exchange", ""),
-            interval=clean_str("interval", ""),
-            price_at_alert=safe_float("close") or safe_float("price"),
-            volume=safe_float("volume"),
-            time_utc=safe_date("time") or safe_date("timenow") or datetime.utcnow(),
-            alert_name=clean_str("alert_name", "Manual Alert"),
-            alert_message=str(data.get("message", body_str))[:500],
-            signal_direction=signal_dir,
-            alert_type=AlertType.ABSOLUTE,
-            status=AlertStatus.PENDING,
-            processed=True,
-            raw_payload=data
+            ticker=parsed["ticker"], exchange=parsed["exchange"], interval=parsed["interval"],
+            price_at_alert=parsed["price_at_alert"], price_open=parsed.get("price_open"),
+            price_high=parsed.get("price_high"), price_low=parsed.get("price_low"),
+            price_close=parsed.get("price_close"), volume=parsed["volume"],
+            alert_name=parsed["alert_name"], alert_message=parsed["alert_message"],
+            signal_direction=parsed["signal_direction"], signal_strength=parsed.get("signal_strength"),
+            signal_summary=parsed.get("signal_summary"),
+            alert_type=parsed.get("alert_type", AlertType.ABSOLUTE),
+            asset_class=parsed.get("asset_class"), sector=parsed.get("sector"),
+            indicator_values=parsed.get("indicator_values"),
+            status=AlertStatus.PENDING, processed=True, raw_payload=parsed["raw_payload"],
         )
-        
-        db.add(alert)
-        db.commit()
-        db.refresh(alert)
+        db.add(alert); db.commit(); db.refresh(alert)
+        logger.info(f"Alert #{alert.id}: {alert.ticker} / {alert.alert_name}")
         return JSONResponse(status_code=200, content={"success": True, "alert_id": alert.id})
-        
     except Exception as e:
         db.rollback()
+        logger.error(f"Webhook error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
-
 
 @app.post("/webhook/tradingview")
 @app.post("/webhook/tradingview/")
@@ -115,87 +186,79 @@ async def explicit_webhook(request: Request, db: Session = Depends(get_db)):
     return await process_webhook(request, db)
 
 # ═══════════════════════════════════════════════════════
-# REST API LOGIC
+# REST API
 # ═══════════════════════════════════════════════════════
+
 def _serialize_alert(a, db=None):
     action_data = None
     if a.action:
         action_data = {
             "call": a.action.primary_call.value if a.action.primary_call else None,
-            "conviction": a.action.conviction,
-            "remarks": a.action.fm_remarks,
+            "conviction": a.action.conviction, "remarks": a.action.fm_remarks,
             "has_chart": bool(a.action.chart_image_b64),
             "decision_at": a.action.decision_at.isoformat() if a.action.decision_at else None,
         }
-
     perf_data = None
     if db:
         perf = db.query(AlertPerformance).filter_by(alert_id=a.id, is_primary=True).first()
         if perf:
-            perf_data = {
-                "reference_price": perf.reference_price,
-                "current_price": perf.current_price,
-                "return_pct": perf.return_pct,
-                "max_drawdown": perf.max_drawdown,
-                "last_updated": perf.snapshot_date.isoformat() if perf.snapshot_date else None,
-            }
+            perf_data = {"reference_price": perf.reference_price, "current_price": perf.current_price,
+                         "return_pct": perf.return_pct, "max_drawdown": perf.max_drawdown,
+                         "last_updated": perf.snapshot_date.isoformat() if perf.snapshot_date else None}
 
+    ind = a.indicator_values or {}
     return {
-        "id": a.id,
-        "ticker": a.ticker or "—",
-        "exchange": a.exchange or "—",
-        "price_at_alert": a.price_at_alert,
-        "volume": a.volume,
+        "id": a.id, "ticker": a.ticker or "—", "exchange": a.exchange or "—",
+        "interval": a.interval or "—",
+        "price_at_alert": a.price_at_alert, "volume": a.volume,
         "alert_name": a.alert_name or "System Trigger",
         "alert_message": a.alert_message,
         "signal_direction": a.signal_direction.value if a.signal_direction else "NEUTRAL",
+        "signal_strength": a.signal_strength, "signal_summary": a.signal_summary,
         "status": a.status.value if a.status else "PENDING",
         "received_at": a.received_at.isoformat() if a.received_at else None,
-        "asset_class": a.asset_class or "—",
-        "action": action_data,
-        "performance": perf_data,
+        "asset_class": a.asset_class or "—", "sector": a.sector or "—",
+        "action": action_data, "performance": perf_data,
+        "indicators": {
+            "rsi": ind.get("rsi"), "macd_hist": ind.get("macd_hist"),
+            "supertrend_dir": ind.get("supertrend_dir"), "adx": ind.get("adx"),
+            "bb_pctb": ind.get("bb_pctb"), "vol_ratio": ind.get("vol_ratio"),
+            "ma_alignment": ind.get("ma_alignment"), "candle_pattern": ind.get("candle_pattern"),
+            "confluence_bias": ind.get("confluence_bias"),
+            "confluence_bull_score": ind.get("confluence_bull_score"),
+            "confluence_bear_score": ind.get("confluence_bear_score"),
+            "confluence_signal_strength": ind.get("confluence_signal_strength"),
+            "htf_trend": ind.get("htf_trend"), "atr_pct": ind.get("atr_pct"),
+            "dist_vwap_pct": ind.get("dist_vwap_pct"),
+        } if ind else None,
     }
 
 @app.get("/api/alerts")
 async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db)):
-    query = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
-    if status and status != "All":
-        query = query.filter(TradingViewAlert.status == status)
-    results = [_serialize_alert(a, db) for a in query.limit(limit).all()]
-    return {"alerts": results}
+    q = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
+    if status and status != "All": q = q.filter(TradingViewAlert.status == status)
+    return {"alerts": [_serialize_alert(a, db) for a in q.limit(limit).all()]}
 
 @app.post("/api/alerts/{alert_id}/action")
 async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
     if not alert: raise HTTPException(status_code=404)
-
-    decision_map = {"APPROVED": AlertStatus.APPROVED, "DENIED": AlertStatus.DENIED, "REVIEW_LATER": AlertStatus.REVIEW_LATER}
-    decision = decision_map.get(req.decision, AlertStatus.DENIED)
-
+    dm = {"APPROVED": AlertStatus.APPROVED, "DENIED": AlertStatus.DENIED, "REVIEW_LATER": AlertStatus.REVIEW_LATER}
+    decision = dm.get(req.decision, AlertStatus.DENIED)
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first() or AlertAction(alert_id=alert_id)
-    action.decision = decision
-    action.decision_at = datetime.now()
-    action.primary_ticker = alert.ticker
-    action.conviction = req.conviction
-
+    action.decision = decision; action.decision_at = datetime.now()
+    action.primary_ticker = alert.ticker; action.conviction = req.conviction
     if req.primary_call:
         try: action.primary_call = ActionCall(req.primary_call)
         except: action.primary_call = None
-    
     if req.fm_rationale_text: action.fm_remarks = req.fm_rationale_text
     if req.chart_image_b64: action.chart_image_b64 = req.chart_image_b64
-
     if not action.id: db.add(action)
     alert.status = decision
-
     if decision == AlertStatus.APPROVED:
-        existing_perf = db.query(AlertPerformance).filter_by(alert_id=alert.id).first()
-        if not existing_perf:
-            db.add(AlertPerformance(
-                alert_id=alert.id, ticker=alert.ticker, is_primary=True,
-                reference_price=alert.price_at_alert or 0.0, reference_date=datetime.now()
-            ))
-
+        if not db.query(AlertPerformance).filter_by(alert_id=alert.id).first():
+            db.add(AlertPerformance(alert_id=alert.id, ticker=alert.ticker, is_primary=True,
+                                    reference_price=alert.price_at_alert or 0.0, reference_date=datetime.now()))
     db.commit()
     return {"success": True}
 
@@ -205,8 +268,7 @@ async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     if not alert: raise HTTPException(status_code=404)
     db.query(AlertAction).filter_by(alert_id=alert_id).delete()
     db.query(AlertPerformance).filter_by(alert_id=alert_id).delete()
-    db.delete(alert)
-    db.commit()
+    db.delete(alert); db.commit()
     return {"success": True}
 
 @app.get("/api/performance")
@@ -223,8 +285,7 @@ async def get_performance(db: Session = Depends(get_db)):
 
 @app.post("/api/performance/refresh")
 async def refresh_performance(db: Session = Depends(get_db)):
-    updated = update_all_performance(db)
-    return {"success": True, "updated_count": updated}
+    return {"success": True, "updated_count": update_all_performance(db)}
 
 @app.get("/api/stats")
 async def get_stats(db: Session = Depends(get_db)):
@@ -234,10 +295,9 @@ async def get_stats(db: Session = Depends(get_db)):
 
 @app.get("/api/master")
 async def get_master_alerts(limit: int = 200, status: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
-    if status and status != "All": query = query.filter(TradingViewAlert.status == status)
-    results = [_serialize_alert(a, db) for a in query.limit(limit).all()]
-    return {"alerts": results}
+    q = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
+    if status and status != "All": q = q.filter(TradingViewAlert.status == status)
+    return {"alerts": [_serialize_alert(a, db) for a in q.limit(limit).all()]}
 
 @app.get("/api/alerts/{alert_id}/chart")
 async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
@@ -245,15 +305,11 @@ async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
     if not action or not action.chart_image_b64: raise HTTPException(status_code=404)
     return {"chart_image_b64": action.chart_image_b64}
 
-
 # ═══════════════════════════════════════════════════════
-# 🔥 STREAMLIT REVERSE PROXY (INTERCEPTS ALL WEBHOOKS) 🔥
+# STREAMLIT REVERSE PROXY
 # ═══════════════════════════════════════════════════════
-import httpx
-import subprocess
-import sys
-import asyncio
-from starlette.websockets import WebSocket, WebSocketDisconnect
+import httpx, subprocess, sys, asyncio
+from starlette.websockets import WebSocket
 
 STREAMLIT_INTERNAL_PORT = 8501
 STREAMLIT_BASE = f"http://127.0.0.1:{STREAMLIT_INTERNAL_PORT}"
@@ -262,16 +318,12 @@ _proxy_client = None
 
 def _start_streamlit():
     global _streamlit_proc
-    cmd = [
+    _streamlit_proc = subprocess.Popen([
         sys.executable, "-m", "streamlit", "run", "dashboard.py",
-        "--server.port", str(STREAMLIT_INTERNAL_PORT),
-        "--server.address", "127.0.0.1",
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false",
-        "--server.enableCORS", "false",
-        "--server.enableXsrfProtection", "false",
-    ]
-    _streamlit_proc = subprocess.Popen(cmd)
+        "--server.port", str(STREAMLIT_INTERNAL_PORT), "--server.address", "127.0.0.1",
+        "--server.headless", "true", "--browser.gatherUsageStats", "false",
+        "--server.enableCORS", "false", "--server.enableXsrfProtection", "false",
+    ])
 
 @app.on_event("startup")
 async def startup_proxy():
@@ -281,7 +333,6 @@ async def startup_proxy():
 
 @app.on_event("shutdown")
 async def shutdown_proxy():
-    global _streamlit_proc, _proxy_client
     if _streamlit_proc: _streamlit_proc.terminate()
     if _proxy_client: await _proxy_client.aclose()
 
@@ -289,45 +340,33 @@ async def shutdown_proxy():
 async def ws_proxy(websocket: WebSocket):
     await websocket.accept()
     import websockets as ws_lib
-    ws_url = f"ws://127.0.0.1:{STREAMLIT_INTERNAL_PORT}/_stcore/stream"
     try:
-        async with ws_lib.connect(ws_url) as remote:
-            async def client_to_streamlit():
+        async with ws_lib.connect(f"ws://127.0.0.1:{STREAMLIT_INTERNAL_PORT}/_stcore/stream") as remote:
+            async def c2s():
                 try:
-                    while True:
-                        data = await websocket.receive_text()
-                        await remote.send(data)
+                    while True: await remote.send(await websocket.receive_text())
                 except: pass
-            async def streamlit_to_client():
+            async def s2c():
                 try:
-                    async for msg in remote:
-                        if isinstance(msg, str): await websocket.send_text(msg)
-                        else: await websocket.send_bytes(msg)
+                    async for m in remote:
+                        if isinstance(m, str): await websocket.send_text(m)
+                        else: await websocket.send_bytes(m)
                 except: pass
-            await asyncio.gather(client_to_streamlit(), streamlit_to_client())
+            await asyncio.gather(c2s(), s2c())
     except: pass
     finally:
         try: await websocket.close()
         except: pass
 
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@app.api_route("/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS","HEAD"])
 async def proxy_streamlit(request: Request, path: str = "", db: Session = Depends(get_db)):
-    # 🚨 CRITICAL INTERCEPT 🚨
-    # If the URL contains "webhook" anywhere, forcefully route it to the database!
-    # It is physically impossible for Streamlit to block it now.
-    if "webhook" in path.lower():
-        return await process_webhook(request, db)
-
+    if "webhook" in path.lower(): return await process_webhook(request, db)
     url = f"/{path}"
     if request.url.query: url += f"?{request.url.query}"
-    headers = dict(request.headers)
-    headers.pop("host", None)
-    headers.pop("content-length", None)
-    body = await request.body()
+    h = dict(request.headers); h.pop("host",None); h.pop("content-length",None)
     try:
-        resp = await _proxy_client.request(method=request.method, url=url, headers=headers, content=body)
-        skip = {"content-encoding", "transfer-encoding", "connection", "content-length"}
-        resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
-        return Response(content=resp.content, status_code=resp.status_code, headers=resp_headers)
+        r = await _proxy_client.request(method=request.method, url=url, headers=h, content=await request.body())
+        skip = {"content-encoding","transfer-encoding","connection","content-length"}
+        return Response(content=r.content, status_code=r.status_code, headers={k:v for k,v in r.headers.items() if k.lower() not in skip})
     except:
         return Response(content="Dashboard loading...", status_code=502)
