@@ -154,6 +154,31 @@ async def process_webhook(request: Request, db: Session):
         parsed = _parse_fie(data) if is_fie else _parse_legacy(data)
         logger.info(f"Parsed: ticker={parsed.get('ticker')} price={parsed.get('price_at_alert')} indicators={len(parsed.get('indicator_values',{}))}")
 
+        # ── Override signal_direction from confluence if available ──
+        ind_vals = parsed.get("indicator_values") or {}
+        bull_conf = ind_vals.get("confluence_bull_score") or ind_vals.get("confluence_bull") or 0
+        bear_conf = ind_vals.get("confluence_bear_score") or ind_vals.get("confluence_bear") or 0
+        st_dir    = str(ind_vals.get("supertrend_dir") or ind_vals.get("supertrend_direction") or "").upper()
+        ma_align  = str(ind_vals.get("ma_alignment") or "").upper()
+        try: bull_conf = float(bull_conf)
+        except: bull_conf = 0
+        try: bear_conf = float(bear_conf)
+        except: bear_conf = 0
+
+        if bear_conf > bull_conf and bear_conf > 0:
+            parsed["signal_direction"] = SignalDirection.BEARISH
+        elif bull_conf > bear_conf and bull_conf > 0:
+            parsed["signal_direction"] = SignalDirection.BULLISH
+        elif st_dir in ("BEARISH", "BEAR"):
+            parsed["signal_direction"] = SignalDirection.BEARISH
+        elif st_dir in ("BULLISH", "BULL"):
+            parsed["signal_direction"] = SignalDirection.BULLISH
+        elif "BEAR" in ma_align:
+            parsed["signal_direction"] = SignalDirection.BEARISH
+        elif "BULL" in ma_align:
+            parsed["signal_direction"] = SignalDirection.BULLISH
+        # else keep whatever _interpret_signal determined
+
         if parsed.get("indicator_values"):
             try:
                 ai = generate_technical_summary(parsed["ticker"], parsed.get("price_at_alert"), parsed["indicator_values"], parsed.get("alert_message",""))
