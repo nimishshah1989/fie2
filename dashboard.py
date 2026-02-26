@@ -322,6 +322,13 @@ def call_pill(c):
     return f'<span class="pill p-neutral" style="font-size:9px;">{c}</span>' if c else ""
 
 
+TF_MAP = {
+    "1": "1m", "3": "3m", "5": "5m", "15": "15m", "30": "30m",
+    "60": "1h", "120": "2h", "240": "4h", "D": "1D", "W": "1W", "M": "1M",
+    "1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m",
+    "1h": "1h", "2h": "2h", "4h": "4h", "1d": "1D", "1w": "1W",
+}
+
 def tf_label(i): return TF_MAP.get(str(i or ""), str(i or "—"))
 
 def display_name(a):
@@ -799,24 +806,24 @@ with tab3:
 # TAB 4 — PERFORMANCE
 # ══════════════════════════════════════════════════════════
 with tab4:
-    st.markdown('<div class="sec-hdr">Performance Tracker · Approved Calls</div>', unsafe_allow_html=True)
+    @st.fragment(run_every=60)
+    def performance_tab():
+        st.markdown('<div class="sec-hdr">Performance Tracker · Approved Calls · Auto-refreshes every 60s</div>', unsafe_allow_html=True)
 
-    rc, _ = st.columns([1, 4])
-    with rc:
-        if st.button("⟳ Refresh Prices", type="primary", use_container_width=True):
-            r = api_post("/api/performance/refresh", {})
-            if r and not r.get("error"):
-                st.success(f"Updated {r.get('updated_count', 0)} records.")
-            else:
-                st.error("Refresh failed — check backend logs.")
+        # Auto-refresh prices on every fragment run
+        api_post("/api/performance/refresh", {})
 
-    perf_data = api_get("/api/performance") or {}
-    records = perf_data.get("performance", [])
-    nifty_ret = perf_data.get("nifty_return")
+        perf_data = api_get("/api/performance") or {}
+        records = perf_data.get("performance", [])
+        nifty_ret = perf_data.get("nifty_return")
 
-    if not records:
-        st.markdown('<div class="no-data"><div class="no-data-icon">📊</div>No data yet.<br>Approve an alert then click Refresh Prices.</div>', unsafe_allow_html=True)
-    else:
+        ist_now = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
+        st.caption(f"Prices refreshed · {ist_now}")
+
+        if not records:
+            st.markdown('<div class="no-data"><div class="no-data-icon">📊</div>No data yet.<br>Approve an alert to start tracking performance.</div>', unsafe_allow_html=True)
+            return
+
         valid = [r for r in records if r.get("return_pct") is not None]
         beats_list = [r for r in valid if r.get("beats_benchmark") is True]
         hit_list   = [r for r in valid if r.get("return_pct", 0) > 0]
@@ -830,31 +837,42 @@ with tab4:
 
         # ── Page-level KPI cards ──
         nifty_str = f"NIFTY 1d: {nifty_ret:+.2f}%" if nifty_ret is not None else "NIFTY: —"
+        wd_num = f"{worst_dd['max_drawdown']:.2f}%" if worst_dd else "—"
+        wd_tick = worst_dd['ticker'] if worst_dd else "—"
         st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
 <div class="stat-card"><div class="stat-num {'bull' if avg_r>=0 else 'bear'}">{avg_r:+.2f}%</div><div class="stat-lbl">Avg Return</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{nifty_str}</div></div>
 <div class="stat-card"><div class="stat-num {'bull' if hit_rate>=50 else 'bear'}">{hit_rate:.0f}%</div><div class="stat-lbl">Hit Rate</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{len(hit_list)}/{len(valid)} profitable</div></div>
 <div class="stat-card"><div class="stat-num {'bull' if beat_rate>=50 else 'bear'}">{beat_rate:.0f}%</div><div class="stat-lbl">Beat Benchmark</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">vs NIFTY 50</div></div>
-<div class="stat-card"><div class="stat-num bear">{worst_dd['max_drawdown']:.2f}%</div><div class="stat-lbl">Worst Drawdown</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{worst_dd['ticker'] if worst_dd else '—'}</div></div>
+<div class="stat-card"><div class="stat-num bear">{wd_num}</div><div class="stat-lbl">Worst Drawdown</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{wd_tick}</div></div>
 </div>""", unsafe_allow_html=True)
 
         if best and worst:
+            b_ref = float(best['reference_price']) if best.get('reference_price') else 0
+            b_cur = float(best['current_price']) if best.get('current_price') else 0
+            w_ref = float(worst['reference_price']) if worst.get('reference_price') else 0
+            w_cur = float(worst['current_price']) if worst.get('current_price') else 0
             st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px;">
 <div class="stat-card" style="border-left:3px solid var(--bull);">
   <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Best Call</div>
   <div style="font-size:16px;font-weight:700;color:var(--text);">{best['ticker']} · {best.get('action_call','—')}</div>
   <div style="font-size:22px;font-weight:700;color:var(--bull);margin:4px 0;">{best['return_pct']:+.2f}%</div>
-  <div style="font-size:11px;color:var(--text2);">Entry ₹{float(best['reference_price']):,.2f} → Current ₹{float(best['current_price']):,.2f}</div>
+  <div style="font-size:11px;color:var(--text2);">₹{b_ref:,.2f} → ₹{b_cur:,.2f}</div>
 </div>
 <div class="stat-card" style="border-left:3px solid var(--bear);">
   <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Worst Call</div>
   <div style="font-size:16px;font-weight:700;color:var(--text);">{worst['ticker']} · {worst.get('action_call','—')}</div>
   <div style="font-size:22px;font-weight:700;color:var(--bear);margin:4px 0;">{worst['return_pct']:+.2f}%</div>
-  <div style="font-size:11px;color:var(--text2);">Entry ₹{float(worst['reference_price']):,.2f} → Current ₹{float(worst['current_price']):,.2f}</div>
+  <div style="font-size:11px;color:var(--text2);">₹{w_ref:,.2f} → ₹{w_cur:,.2f}</div>
 </div>
 </div>""", unsafe_allow_html=True)
 
         # ── Per-alert cards ──
         st.markdown('<div class="sec-hdr" style="margin-top:8px;">Individual Call Performance</div>', unsafe_allow_html=True)
+
+        def pr(v):
+            if v is None: return '<span style="color:var(--text3);">—</span>'
+            col = "var(--bull)" if v >= 0 else "var(--bear)"
+            return f'<span style="color:{col};font-weight:600;">{v:+.2f}%</span>'
 
         for r in records:
             ret     = r.get("return_pct")
@@ -873,21 +891,17 @@ with tab4:
             ticker  = r.get("ticker") or "—"
             direction = r.get("signal_direction", "BULLISH")
             beats   = r.get("beats_benchmark")
-            nifty_b = r.get("nifty_benchmark_ret")
             updated = (r.get("last_updated") or "")[:10]
 
             ret_color = "var(--bull)" if (ret or 0) >= 0 else "var(--bear)"
-            ret_str   = f"{ret:+.2f}%" if ret is not None else "—"
-            ref_str   = f"₹{float(ref):,.2f}" if ref else "—"
-            curr_str  = f"₹{float(curr):,.2f}" if curr else "—"
-            dd_str    = f"{dd:.2f}%" if dd is not None else "—"
-            hi_str    = f"₹{float(hi):,.2f}" if hi else "—"
-            lo_str    = f"₹{float(lo):,.2f}" if lo else "—"
-            tgt_str   = f"₹{float(tgt):,.2f}" if tgt else "—"
-            stp_str   = f"₹{float(stp):,.2f}" if stp else "—"
-
-            # Period returns
-            def pr(v): return f'<span style="color:{"var(--bull)" if (v or 0)>=0 else "var(--bear)"};font-weight:600;">{v:+.2f}%</span>' if v is not None else '<span style="color:var(--text3);">—</span>'
+            ret_str  = f"{ret:+.2f}%" if ret is not None else "—"
+            ref_str  = f"₹{float(ref):,.2f}" if ref else "—"
+            curr_str = f"₹{float(curr):,.2f}" if curr else "—"
+            dd_str   = f"{dd:.2f}%" if dd is not None else "—"
+            hi_str   = f"₹{float(hi):,.2f}" if hi else "—"
+            lo_str   = f"₹{float(lo):,.2f}" if lo else "—"
+            tgt_str  = f"₹{float(tgt):,.2f}" if tgt else "—"
+            stp_str  = f"₹{float(stp):,.2f}" if stp else "—"
 
             benchmark_badge = ""
             if beats is True:
@@ -895,26 +909,31 @@ with tab4:
             elif beats is False:
                 benchmark_badge = '<span class="pill p-bear" style="font-size:9px;">↓ Lagged NIFTY</span>'
 
-            # Target/stop progress
+            dd_pill  = f'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">DD {dd_str}</span>' if dd is not None else ""
+            hi_pill  = f'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">H {hi_str}</span>' if hi else ""
+            lo_pill  = f'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">L {lo_str}</span>' if lo else ""
+
+            # Target/stop progress bar
             progress_html = ""
             if tgt and stp and ref and curr:
-                tgt_f, stp_f, ref_f, curr_f = float(tgt), float(stp), float(ref), float(curr)
-                if direction == "BULLISH" and tgt_f > stp_f:
-                    rng = tgt_f - stp_f
-                    prog = max(0, min(100, (curr_f - stp_f) / rng * 100)) if rng > 0 else 50
-                    progress_html = f"""<div style="margin-top:8px;">
+                tgt_f, stp_f, curr_f = float(tgt), float(stp), float(curr)
+                if tgt_f != stp_f:
+                    rng  = tgt_f - stp_f
+                    prog = max(0, min(100, (curr_f - stp_f) / rng * 100))
+                    bar_col = "var(--bull)" if prog > 50 else "var(--gold)"
+                    progress_html = f"""<div style="margin-top:10px;">
 <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-bottom:3px;">
   <span>SL {stp_str}</span><span>Entry {ref_str}</span><span>TGT {tgt_str}</span>
 </div>
 <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">
-  <div style="width:{prog:.0f}%;height:100%;background:{'var(--bull)' if prog>50 else 'var(--gold)'};border-radius:2px;transition:width .3s;"></div>
+  <div style="width:{prog:.0f}%;height:100%;background:{bar_col};border-radius:2px;"></div>
 </div></div>"""
 
             st.markdown(f"""<div class="alert-card {'bull' if (ret or 0)>=0 else 'bear'}" style="margin-bottom:10px;">
 <div style="display:flex;justify-content:space-between;align-items:flex-start;">
   <div>
     <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1;">{ticker}</div>
-    <div style="font-size:11px;color:var(--text3);margin-top:2px;">{call} · {conv} · {updated}</div>
+    <div style="font-size:11px;color:var(--text2);margin-top:2px;">{call} · {conv} · {updated}</div>
   </div>
   <div style="text-align:right;">
     <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:{ret_color};line-height:1;">{ret_str}</div>
@@ -922,10 +941,7 @@ with tab4:
   </div>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-  {benchmark_badge}
-  {'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">DD ' + dd_str + '</span>' if dd else ''}
-  {'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">H ' + hi_str + '</span>' if hi else ''}
-  {'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">L ' + lo_str + '</span>' if lo else ''}
+  {benchmark_badge}{dd_pill}{hi_pill}{lo_pill}
 </div>
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;">
   <div class="det-cell"><div class="det-lbl">From Entry</div><div class="det-val" style="color:{ret_color};">{ret_str}</div></div>
@@ -936,6 +952,7 @@ with tab4:
 {progress_html}
 </div>""", unsafe_allow_html=True)
 
+    performance_tab()
 
 
 # ══════════════════════════════════════════════════════════
