@@ -215,6 +215,35 @@ p, li { color: var(--text) !important; }
 /* ── No data ── */
 .no-data { text-align: center; padding: 60px 24px; color: var(--text3); font-size: 13px; }
 .no-data-icon { font-size: 28px; margin-bottom: 10px; }
+
+/* ── Selectbox / dropdown fixes — force visible text ── */
+.stSelectbox div[data-baseweb="select"] > div,
+.stSelectbox div[data-baseweb="select"] > div > div,
+.stSelectbox [data-baseweb="select"] span,
+.stSelectbox [data-baseweb="select"] div { 
+  background: var(--surface2) !important; 
+  color: var(--text) !important; 
+  border-color: var(--border) !important; 
+}
+/* Dropdown list items */
+[data-baseweb="menu"] { background: var(--surface2) !important; border: 1px solid var(--border2) !important; }
+[data-baseweb="menu"] li { background: var(--surface2) !important; color: var(--text) !important; }
+[data-baseweb="menu"] li:hover { background: var(--surface3) !important; color: var(--text) !important; }
+[data-baseweb="option"] { background: var(--surface2) !important; color: var(--text) !important; }
+[data-baseweb="option"]:hover { background: var(--surface3) !important; }
+/* Selected item text */
+div[data-baseweb="select"] [aria-selected="true"] { background: var(--accent-dim) !important; color: var(--accent) !important; }
+/* Input and textarea */
+.stTextInput input, .stNumberInput input, .stTextArea textarea { 
+  background: var(--surface2) !important; border-color: var(--border) !important; 
+  color: var(--text) !important; border-radius: 6px !important; font-size: 13px !important; 
+}
+/* Labels */
+label[data-testid], .stSelectbox label, .stTextInput label, .stTextArea label, 
+.stNumberInput label, .stFileUploader label {
+  color: var(--text2) !important; font-size: 10px !important; font-weight: 700 !important; 
+  letter-spacing: 0.08em !important; text-transform: uppercase !important; 
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -284,7 +313,15 @@ def conv_pill(c):
     cls = {"HIGH": "p-high", "MEDIUM": "p-medium", "LOW": "p-low"}
     return f'<span class="pill {cls.get(c,"p-neutral")}">{c}</span>'
 
-TF_MAP = {"1":"1m","3":"3m","5":"5m","15":"15m","30":"30m","60":"1H","D":"Daily","W":"Weekly"}
+def call_pill(c):
+    c = (c or "").upper()
+    buy_calls = {"BUY","STRONG_BUY","ACCUMULATE"}
+    sell_calls = {"SELL","STRONG_SELL","REDUCE","EXIT"}
+    if c in buy_calls: return f'<span class="pill p-bull" style="font-size:9px;">{c}</span>'
+    if c in sell_calls: return f'<span class="pill p-bear" style="font-size:9px;">{c}</span>'
+    return f'<span class="pill p-neutral" style="font-size:9px;">{c}</span>' if c else ""
+
+
 def tf_label(i): return TF_MAP.get(str(i or ""), str(i or "—"))
 
 def display_name(a):
@@ -495,9 +532,7 @@ with tab2:
             bear_s = ind.get("confluence_bear_score", "")
             conf_txt = f"Bull {bull_s} vs Bear {bear_s}" if (bull_s != "" or bear_s != "") else conf
 
-            border_color = {"bull": "var(--bull)", "bear": "var(--bear)"}.get(cls, "var(--border2)")
-            selected_bg = "background:var(--surface2);" if is_selected else ""
-
+            _conf_pill = f'<span class="pill" style="background:var(--surface3);color:var(--text2);font-size:9px;">{conf_txt}</span>' if conf_txt else ""
             st.markdown(f"""<div class="alert-card {cls}" style="margin-bottom:4px;cursor:pointer;{selected_bg}">
   <div class="card-top" style="margin-bottom:6px;">
     <div>
@@ -512,14 +547,14 @@ with tab2:
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     {sig_pill(d)}
     {status_pill("PENDING")}
-    {'<span class="pill" style="background:var(--surface3);color:var(--text2);font-size:9px;">' + conf_txt + '</span>' if conf_txt else ''}
+    {_conf_pill}
     {chips_html(ind)}
   </div>
 </div>""", unsafe_allow_html=True)
 
-            btn_cols = st.columns([1, 1, 1, 1, 4])
+            btn_cols = st.columns([1, 1, 1, 5])
             with btn_cols[0]:
-                if st.button("Details" if not is_selected else "Hide", key=f"sel_{alert_id}", use_container_width=True):
+                if st.button("Details" if not is_selected else "▲ Hide", key=f"sel_{alert_id}", use_container_width=True):
                     if is_selected:
                         st.session_state.tc_selected = None
                         st.session_state.tc_action = None
@@ -541,20 +576,11 @@ with tab2:
                         st.rerun()
                     else:
                         st.error(f"Error: {(r or {}).get('error','Unknown')}")
-            with btn_cols[3]:
-                if st.button("⏸ Later", key=f"latr_{alert_id}", use_container_width=True):
-                    r = api_post(f"/api/alerts/{alert_id}/action", {"alert_id": alert_id, "decision": "REVIEW_LATER"})
-                    if r and not r.get("error"):
-                        if st.session_state.tc_selected == alert_id:
-                            st.session_state.tc_selected = None
-                        st.rerun()
-                    else:
-                        st.error(f"Error: {(r or {}).get('error','Unknown')}")
 
             # ── Detail panel — only shown for selected card ──
             if is_selected:
                 with st.container():
-                    st.markdown(f"""<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:{0}px 0px 8px 8px;padding:16px;margin-top:-4px;margin-bottom:12px;">""", unsafe_allow_html=True)
+                    st.markdown('<div style="background:var(--surface2);border:1px solid var(--border2);border-radius:0 0 8px 8px;padding:16px;margin-top:-4px;margin-bottom:12px;">', unsafe_allow_html=True)
 
                     dc1, dc2 = st.columns([3, 2])
 
@@ -574,8 +600,18 @@ with tab2:
   <div class="det-cell"><div class="det-lbl">Candle</div><div class="det-val">{ind.get('candle_pattern','—')}</div></div>
 </div>""", unsafe_allow_html=True)
 
-                        if summary:
-                            st.markdown(f'<div class="ai-box" style="margin-top:10px;"><div class="ai-lbl">AI Analysis</div>{summary}</div>', unsafe_allow_html=True)
+                        # ── Lazy commentary — fetch on demand via API ──
+                        if ind:
+                            cached_key = f"commentary_{alert_id}"
+                            if cached_key not in st.session_state:
+                                with st.spinner("Generating AI commentary..."):
+                                    res = api_post(f"/api/alerts/{alert_id}/commentary", {})
+                                    st.session_state[cached_key] = (res or {}).get("commentary", "")
+                            commentary = st.session_state.get(cached_key, "")
+                            if commentary:
+                                st.markdown(f'<div class="ai-box" style="margin-top:10px;"><div class="ai-lbl">AI Analysis</div>{commentary}</div>', unsafe_allow_html=True)
+                        elif summary:
+                            st.markdown(f'<div class="ai-box" style="margin-top:10px;"><div class="ai-lbl">Alert Message</div>{summary}</div>', unsafe_allow_html=True)
 
                     with dc2:
                         if st.session_state.tc_action == "APPROVE":
@@ -674,6 +710,8 @@ with tab3:
 
             # Compact row card
             selected_bg = "background:var(--surface2);" if is_selected else ""
+            _call_pill  = call_pill(action.get("call", "")) if action else ""
+            _conv_pill  = conv_pill(action.get("conviction", "")) if action else ""
             st.markdown(f"""<div class="alert-card {cls}" style="margin-bottom:4px;{selected_bg}">
   <div class="card-top" style="margin-bottom:4px;">
     <div>
@@ -686,9 +724,7 @@ with tab3:
     </div>
   </div>
   <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-    {sig_pill(d)} {status_pill(status)}
-    {('<span class="pill p-approved" style="font-size:9px;">' + (action.get('call') or '') + '</span>') if action.get('call') else ''}
-    {('<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">' + (action.get('conviction') or '') + '</span>') if action.get('conviction') else ''}
+    {sig_pill(d)} {status_pill(status)} {_call_pill} {_conv_pill}
   </div>
 </div>""", unsafe_allow_html=True)
 
@@ -763,11 +799,11 @@ with tab3:
 # TAB 4 — PERFORMANCE
 # ══════════════════════════════════════════════════════════
 with tab4:
-    st.markdown('<div class="sec-hdr">Performance Tracker</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">Performance Tracker · Approved Calls</div>', unsafe_allow_html=True)
 
     rc, _ = st.columns([1, 4])
     with rc:
-        if st.button("Refresh Prices", type="primary", use_container_width=True):
+        if st.button("⟳ Refresh Prices", type="primary", use_container_width=True):
             r = api_post("/api/performance/refresh", {})
             if r and not r.get("error"):
                 st.success(f"Updated {r.get('updated_count', 0)} records.")
@@ -776,41 +812,130 @@ with tab4:
 
     perf_data = api_get("/api/performance") or {}
     records = perf_data.get("performance", [])
+    nifty_ret = perf_data.get("nifty_return")
 
     if not records:
         st.markdown('<div class="no-data"><div class="no-data-icon">📊</div>No data yet.<br>Approve an alert then click Refresh Prices.</div>', unsafe_allow_html=True)
     else:
         valid = [r for r in records if r.get("return_pct") is not None]
-        if valid:
-            avg_r = sum(r["return_pct"] for r in valid) / len(valid)
-            hit = sum(1 for r in valid if r["return_pct"] > 0) / len(valid) * 100
-            best = max(valid, key=lambda x: x["return_pct"])
-            worst = min(valid, key=lambda x: x["return_pct"])
-            st.markdown(f"""<div class="stat-row">
-<div class="stat-card"><div class="stat-num {'bull' if avg_r>=0 else 'bear'}">{avg_r:+.2f}%</div><div class="stat-lbl">Avg Return</div></div>
-<div class="stat-card"><div class="stat-num">{hit:.0f}%</div><div class="stat-lbl">Hit Rate</div></div>
-<div class="stat-card"><div class="stat-num bull">{best['return_pct']:+.2f}%</div><div class="stat-lbl">Best · {best['ticker']}</div></div>
-<div class="stat-card"><div class="stat-num bear">{worst['return_pct']:+.2f}%</div><div class="stat-lbl">Worst · {worst['ticker']}</div></div>
+        beats_list = [r for r in valid if r.get("beats_benchmark") is True]
+        hit_list   = [r for r in valid if r.get("return_pct", 0) > 0]
+        avg_r    = sum(r["return_pct"] for r in valid) / len(valid) if valid else 0
+        hit_rate = len(hit_list) / len(valid) * 100 if valid else 0
+        beat_rate = len(beats_list) / len(valid) * 100 if valid else 0
+        best  = max(valid, key=lambda x: x["return_pct"]) if valid else None
+        worst = min(valid, key=lambda x: x["return_pct"]) if valid else None
+        max_dd_list = [r for r in records if r.get("max_drawdown") is not None]
+        worst_dd = min(max_dd_list, key=lambda x: x["max_drawdown"]) if max_dd_list else None
+
+        # ── Page-level KPI cards ──
+        nifty_str = f"NIFTY 1d: {nifty_ret:+.2f}%" if nifty_ret is not None else "NIFTY: —"
+        st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+<div class="stat-card"><div class="stat-num {'bull' if avg_r>=0 else 'bear'}">{avg_r:+.2f}%</div><div class="stat-lbl">Avg Return</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{nifty_str}</div></div>
+<div class="stat-card"><div class="stat-num {'bull' if hit_rate>=50 else 'bear'}">{hit_rate:.0f}%</div><div class="stat-lbl">Hit Rate</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{len(hit_list)}/{len(valid)} profitable</div></div>
+<div class="stat-card"><div class="stat-num {'bull' if beat_rate>=50 else 'bear'}">{beat_rate:.0f}%</div><div class="stat-lbl">Beat Benchmark</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">vs NIFTY 50</div></div>
+<div class="stat-card"><div class="stat-num bear">{worst_dd['max_drawdown']:.2f}%</div><div class="stat-lbl">Worst Drawdown</div><div style="font-size:10px;color:var(--text3);margin-top:4px;">{worst_dd['ticker'] if worst_dd else '—'}</div></div>
 </div>""", unsafe_allow_html=True)
 
-        rows = []
+        if best and worst:
+            st.markdown(f"""<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:20px;">
+<div class="stat-card" style="border-left:3px solid var(--bull);">
+  <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Best Call</div>
+  <div style="font-size:16px;font-weight:700;color:var(--text);">{best['ticker']} · {best.get('action_call','—')}</div>
+  <div style="font-size:22px;font-weight:700;color:var(--bull);margin:4px 0;">{best['return_pct']:+.2f}%</div>
+  <div style="font-size:11px;color:var(--text2);">Entry ₹{float(best['reference_price']):,.2f} → Current ₹{float(best['current_price']):,.2f}</div>
+</div>
+<div class="stat-card" style="border-left:3px solid var(--bear);">
+  <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Worst Call</div>
+  <div style="font-size:16px;font-weight:700;color:var(--text);">{worst['ticker']} · {worst.get('action_call','—')}</div>
+  <div style="font-size:22px;font-weight:700;color:var(--bear);margin:4px 0;">{worst['return_pct']:+.2f}%</div>
+  <div style="font-size:11px;color:var(--text2);">Entry ₹{float(worst['reference_price']):,.2f} → Current ₹{float(worst['current_price']):,.2f}</div>
+</div>
+</div>""", unsafe_allow_html=True)
+
+        # ── Per-alert cards ──
+        st.markdown('<div class="sec-hdr" style="margin-top:8px;">Individual Call Performance</div>', unsafe_allow_html=True)
+
         for r in records:
-            ref = r.get("reference_price")
-            curr = r.get("current_price")
-            ret = r.get("return_pct")
-            dd = r.get("max_drawdown")
-            rows.append({
-                "Ticker": r.get("ticker","—"),
-                "Alert": (r.get("alert_name") or "—")[:28],
-                "Call": r.get("action_call") or "—",
-                "Conv": r.get("conviction") or "—",
-                "Alert ₹": f"{float(ref):,.2f}" if ref else "—",
-                "Current ₹": f"{float(curr):,.2f}" if curr else "—",
-                "Return %": f"{ret:+.2f}%" if ret is not None else "—",
-                "Max DD": f"{dd:.2f}%" if dd is not None else "—",
-                "Updated": (r.get("last_updated") or "—")[:10],
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            ret     = r.get("return_pct")
+            ref     = r.get("reference_price")
+            curr    = r.get("current_price")
+            dd      = r.get("max_drawdown")
+            hi      = r.get("high_since")
+            lo      = r.get("low_since")
+            r1d     = r.get("return_1d")
+            r1w     = r.get("return_1w")
+            r1m     = r.get("return_1m")
+            call    = r.get("action_call") or "—"
+            conv    = r.get("conviction") or "—"
+            tgt     = r.get("target_price")
+            stp     = r.get("stop_loss")
+            ticker  = r.get("ticker") or "—"
+            direction = r.get("signal_direction", "BULLISH")
+            beats   = r.get("beats_benchmark")
+            nifty_b = r.get("nifty_benchmark_ret")
+            updated = (r.get("last_updated") or "")[:10]
+
+            ret_color = "var(--bull)" if (ret or 0) >= 0 else "var(--bear)"
+            ret_str   = f"{ret:+.2f}%" if ret is not None else "—"
+            ref_str   = f"₹{float(ref):,.2f}" if ref else "—"
+            curr_str  = f"₹{float(curr):,.2f}" if curr else "—"
+            dd_str    = f"{dd:.2f}%" if dd is not None else "—"
+            hi_str    = f"₹{float(hi):,.2f}" if hi else "—"
+            lo_str    = f"₹{float(lo):,.2f}" if lo else "—"
+            tgt_str   = f"₹{float(tgt):,.2f}" if tgt else "—"
+            stp_str   = f"₹{float(stp):,.2f}" if stp else "—"
+
+            # Period returns
+            def pr(v): return f'<span style="color:{"var(--bull)" if (v or 0)>=0 else "var(--bear)"};font-weight:600;">{v:+.2f}%</span>' if v is not None else '<span style="color:var(--text3);">—</span>'
+
+            benchmark_badge = ""
+            if beats is True:
+                benchmark_badge = '<span class="pill p-bull" style="font-size:9px;">↑ Beat NIFTY</span>'
+            elif beats is False:
+                benchmark_badge = '<span class="pill p-bear" style="font-size:9px;">↓ Lagged NIFTY</span>'
+
+            # Target/stop progress
+            progress_html = ""
+            if tgt and stp and ref and curr:
+                tgt_f, stp_f, ref_f, curr_f = float(tgt), float(stp), float(ref), float(curr)
+                if direction == "BULLISH" and tgt_f > stp_f:
+                    rng = tgt_f - stp_f
+                    prog = max(0, min(100, (curr_f - stp_f) / rng * 100)) if rng > 0 else 50
+                    progress_html = f"""<div style="margin-top:8px;">
+<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-bottom:3px;">
+  <span>SL {stp_str}</span><span>Entry {ref_str}</span><span>TGT {tgt_str}</span>
+</div>
+<div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;">
+  <div style="width:{prog:.0f}%;height:100%;background:{'var(--bull)' if prog>50 else 'var(--gold)'};border-radius:2px;transition:width .3s;"></div>
+</div></div>"""
+
+            st.markdown(f"""<div class="alert-card {'bull' if (ret or 0)>=0 else 'bear'}" style="margin-bottom:10px;">
+<div style="display:flex;justify-content:space-between;align-items:flex-start;">
+  <div>
+    <div style="font-size:18px;font-weight:700;color:var(--text);line-height:1;">{ticker}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:2px;">{call} · {conv} · {updated}</div>
+  </div>
+  <div style="text-align:right;">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:{ret_color};line-height:1;">{ret_str}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:2px;">{ref_str} → {curr_str}</div>
+  </div>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+  {benchmark_badge}
+  {'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">DD ' + dd_str + '</span>' if dd else ''}
+  {'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">H ' + hi_str + '</span>' if hi else ''}
+  {'<span class="pill" style="font-size:9px;background:var(--surface3);color:var(--text2);">L ' + lo_str + '</span>' if lo else ''}
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;">
+  <div class="det-cell"><div class="det-lbl">From Entry</div><div class="det-val" style="color:{ret_color};">{ret_str}</div></div>
+  <div class="det-cell"><div class="det-lbl">1 Day</div><div class="det-val">{pr(r1d)}</div></div>
+  <div class="det-cell"><div class="det-lbl">1 Week</div><div class="det-val">{pr(r1w)}</div></div>
+  <div class="det-cell"><div class="det-lbl">1 Month</div><div class="det-val">{pr(r1m)}</div></div>
+</div>
+{progress_html}
+</div>""", unsafe_allow_html=True)
+
 
 
 # ══════════════════════════════════════════════════════════
