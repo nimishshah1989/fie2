@@ -11,7 +11,7 @@ API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Jhaveri Intelligence", layout="wide", initial_sidebar_state="expanded")
 
-REFRESH_INTERVAL = 30
+REFRESH_INTERVAL = 3
 
 st.markdown("""
 <style>
@@ -132,18 +132,13 @@ with st.sidebar:
     ], label_visibility="collapsed")
     
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
-    sc1, sc2 = st.columns(2)
-    with sc1:
-        if st.button("Sync", use_container_width=True): st.rerun()
-    with sc2:
-        auto = st.toggle("Auto", value=True, key="auto_refresh")
     
     ist = now_ist()
     is_market_open = ist.weekday() < 5 and 9 <= ist.hour < 16
     market_indicator = "OPEN" if is_market_open else "CLOSED"
     st.markdown(f"<div style='font-size:10px; color:#475569; margin-top:8px;'>Live &middot; {ist.strftime('%d-%b-%y %I:%M:%S %p')} IST</div>", unsafe_allow_html=True)
 
-_should_auto_refresh = st.session_state.get("auto_refresh", True)
+_should_auto_refresh = True
 
 
 # ═══════════════════════════════════════════════════════════
@@ -542,21 +537,12 @@ elif page == "Integrations":
         st.markdown(f"AI Engine: {'Gemini configured' if gemini_key else 'GEMINI_API_KEY not set'}")
 
 
-# ─── AUTO REFRESH ──────────────────────────────────────────
+# ─── AUTO REFRESH (every 2 seconds on live pages) ─────────
 if _should_auto_refresh and page in ["Command Center", "Trade Desk", "Market Pulse"]:
-    components.html(f"""
+    components.html("""
     <script>
-        if (!window._fie_refresh_set) {{
-            window._fie_refresh_set = true;
-            setTimeout(function() {{
-                var buttons = window.parent.document.querySelectorAll('button');
-                for (var i = 0; i < buttons.length; i++) {{
-                    if (buttons[i].innerText.includes('Sync')) {{
-                        buttons[i].click();
-                        break;
-                    }}
-                }}
-            }}, {REFRESH_INTERVAL * 1000});
-        }}
+        setTimeout(function(){
+            window.parent.location.reload();
+        }, """ + str(REFRESH_INTERVAL * 1000) + """);
     </script>
     """, height=0)
