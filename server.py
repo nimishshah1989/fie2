@@ -143,10 +143,16 @@ def _parse_legacy(data):
 async def process_webhook(request: Request, db: Session):
     try:
         body = (await request.body()).decode("utf-8")
+        logger.info(f"WEBHOOK RECEIVED: {body[:500]}")
         try: data = json.loads(body)
-        except: data = {"message": body}
+        except:
+            logger.warning(f"Non-JSON webhook body: {body[:200]}")
+            data = {"message": body}
 
-        parsed = _parse_fie(data) if data.get("fie_version") else _parse_legacy(data)
+        is_fie = bool(data.get("fie_version"))
+        logger.info(f"Payload type: {'FIE Pine' if is_fie else 'Legacy'} | Keys: {list(data.keys())[:15]}")
+        parsed = _parse_fie(data) if is_fie else _parse_legacy(data)
+        logger.info(f"Parsed: ticker={parsed.get('ticker')} price={parsed.get('price_at_alert')} indicators={len(parsed.get('indicator_values',{}))}")
 
         if parsed.get("indicator_values"):
             try:
@@ -293,11 +299,106 @@ async def get_stats(db: Session = Depends(get_db)):
     pending = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.PENDING).count()
     return {"total_alerts": total, "pending": pending}
 
+# ═══════════════════════════════════════════════════════════
+# MARKET PULSE — Live index prices for dashboard
+# ═══════════════════════════════════════════════════════════
+
+MARKET_INSTRUMENTS = [
+    # NSE Broad Market
+    {"ticker": "NIFTY", "name": "Nifty 50", "category": "NSE Broad Market"},
+    {"ticker": "BANKNIFTY", "name": "Bank Nifty", "category": "NSE Broad Market"},
+    {"ticker": "NIFTY500", "name": "Nifty 500", "category": "NSE Broad Market"},
+    {"ticker": "NIFTYMIDCAP", "name": "Nifty Midcap 150", "category": "NSE Broad Market"},
+    {"ticker": "NIFTYSMALLCAP", "name": "Nifty Smallcap 250", "category": "NSE Broad Market"},
+    {"ticker": "NIFTYNEXT50", "name": "Nifty Next 50", "category": "NSE Broad Market"},
+    # NSE Sectoral
+    {"ticker": "NIFTYIT", "name": "Nifty IT", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYPHARMA", "name": "Nifty Pharma", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYFMCG", "name": "Nifty FMCG", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYAUTO", "name": "Nifty Auto", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYMETAL", "name": "Nifty Metal", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYREALTY", "name": "Nifty Realty", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYENERGY", "name": "Nifty Energy", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYPSUBANK", "name": "Nifty PSU Bank", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYFINSERVICE", "name": "Nifty Fin Services", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYINFRA", "name": "Nifty Infra", "category": "NSE Sectoral"},
+    {"ticker": "NIFTYMEDIA", "name": "Nifty Media", "category": "NSE Sectoral"},
+    # BSE Indices
+    {"ticker": "SENSEX", "name": "BSE Sensex", "category": "BSE Indices"},
+    # Commodities
+    {"ticker": "GOLD", "name": "Gold", "category": "Commodities"},
+    {"ticker": "SILVER", "name": "Silver", "category": "Commodities"},
+    {"ticker": "CRUDEOIL", "name": "Crude Oil", "category": "Commodities"},
+    # Currency
+    {"ticker": "USDINR", "name": "USD/INR", "category": "Currency"},
+]
+
+_market_cache = {"data": None, "updated_at": None}
+
+@app.get("/api/market-pulse")
+async def get_market_pulse():
+    """Fetch live prices for all major NSE/BSE indices, commodities, and currencies."""
+    import time as _time
+    now = _time.time()
+    # Cache for 60 seconds to avoid hammering Yahoo Finance
+    if _market_cache["data"] and _market_cache["updated_at"] and (now - _market_cache["updated_at"]) < 60:
+        return _market_cache["data"]
+    
+    results = []
+    for inst in MARKET_INSTRUMENTS:
+        try:
+            price_data = get_live_price(inst["ticker"])
+            results.append({
+                "ticker": inst["ticker"],
+                "name": inst["name"],
+                "category": inst["category"],
+                "current_price": price_data.get("current_price"),
+                "prev_close": price_data.get("prev_close"),
+                "change_pct": price_data.get("change_pct"),
+                "high": price_data.get("high"),
+                "low": price_data.get("low"),
+                "volume": price_data.get("volume"),
+            })
+        except Exception as e:
+            logger.warning(f"Market pulse error for {inst['ticker']}: {e}")
+            results.append({
+                "ticker": inst["ticker"], "name": inst["name"],
+                "category": inst["category"], "current_price": None,
+                "change_pct": None, "error": str(e),
+            })
+    
+    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    response = {
+        "indices": results,
+        "updated_at": ist_now.strftime("%d-%b-%Y %I:%M:%S %p IST"),
+        "count": len([r for r in results if r.get("current_price")]),
+    }
+    _market_cache["data"] = response
+    _market_cache["updated_at"] = now
+    return response
+
 @app.get("/api/master")
 async def get_master_alerts(limit: int = 200, status: Optional[str] = None, db: Session = Depends(get_db)):
     q = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
     if status and status != "All": q = q.filter(TradingViewAlert.status == status)
     return {"alerts": [_serialize_alert(a, db) for a in q.limit(limit).all()]}
+
+@app.get("/api/debug/latest")
+async def debug_latest(db: Session = Depends(get_db)):
+    """Debug endpoint to see raw stored data for the last 5 alerts."""
+    alerts = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at)).limit(5).all()
+    return {"alerts": [{
+        "id": a.id, "ticker": a.ticker, "exchange": a.exchange, "interval": a.interval,
+        "price_at_alert": a.price_at_alert, "alert_name": a.alert_name,
+        "alert_message": a.alert_message[:200] if a.alert_message else None,
+        "signal_direction": a.signal_direction.value if a.signal_direction else None,
+        "signal_summary": a.signal_summary[:200] if a.signal_summary else None,
+        "indicator_values": a.indicator_values,
+        "raw_payload_keys": list(a.raw_payload.keys()) if a.raw_payload else [],
+        "raw_payload_sample": {k: v for k, v in list((a.raw_payload or {}).items())[:10]},
+        "status": a.status.value if a.status else None,
+        "received_at": a.received_at.isoformat() if a.received_at else None,
+    } for a in alerts]}
 
 @app.get("/api/alerts/{alert_id}/chart")
 async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
