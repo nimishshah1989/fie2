@@ -1,0 +1,9 @@
+*.db
+*.pyc
+__pycache__/
+.claude/
+*.egg-info/
+dist/
+build/
+.env
+*.log

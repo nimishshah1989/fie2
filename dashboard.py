@@ -11,6 +11,7 @@ import html
 import os
 from datetime import datetime
 from typing import Optional
+from streamlit_autorefresh import st_autorefresh
 
 API_URL    = os.getenv("FIE_API_URL", "http://localhost:8000")
 
@@ -18,241 +19,522 @@ st.set_page_config(
     page_title="JIP — Financial Intelligence Engine",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# DESIGN SYSTEM — Dark navy + slate, clean finance terminal aesthetic
-# Accent: electric blue #2563eb  |  Bull: emerald #10b981  |  Bear: rose #f43f5e
+# DESIGN SYSTEM — Light theme, white cards, clean finance aesthetic
+# Font: Inter  |  Green: #059669  |  Red: #dc2626  |  Blue: #2563eb
 # ══════════════════════════════════════════════════════════════════════════════
 
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body, .stApp {
-    font-family: 'Geist', system-ui, sans-serif;
-    background: #0d1117;
-    color: #e2e8f0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #f5f7fa;
+    color: #1e293b;
     -webkit-font-smoothing: antialiased;
 }
 .block-container { padding: 0 !important; max-width: 100% !important; }
-section[data-testid="stSidebar"] { display: none !important; }
+/* Sidebar styling */
+section[data-testid="stSidebar"] {
+    background: #f0fdf4 !important;
+    border-right: 1px solid #d1fae5 !important;
+    width: 260px !important;
+    min-width: 260px !important;
+}
+section[data-testid="stSidebar"] > div { padding: 20px 16px !important; }
+section[data-testid="stSidebar"] [data-testid="stRadio"] > label { font-size: 0 !important; height: 0 !important; overflow: hidden !important; }
+section[data-testid="stSidebar"] [data-testid="stRadio"] label p { color: #1e293b !important; font-size: 13px !important; font-weight: 500 !important; }
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label { padding: 8px 12px !important; border-radius: 8px !important; margin: 2px 0 !important; cursor: pointer !important; }
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label:hover { background: #dcfce7 !important; }
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] { background: #bbf7d0 !important; }
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label[data-checked="true"] p { color: #059669 !important; font-weight: 600 !important; }
 #MainMenu, footer, header { display: none !important; visibility: hidden !important; }
 .stDeployButton { display: none !important; }
 
 /* ── HEADER ── */
 .jip-hdr {
-    background: #0d1117;
-    border-bottom: 1px solid #1e293b;
-    height: 50px; padding: 0 24px;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    height: 56px; padding: 0 28px;
     display: flex; align-items: center; justify-content: space-between;
     position: sticky; top: 0; z-index: 300;
 }
-.jip-brand { display: flex; align-items: center; gap: 10px; }
+.jip-brand { display: flex; align-items: center; gap: 12px; }
 .jip-brand-logo {
-    width: 28px; height: 28px; border-radius: 6px;
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, #0d9488 0%, #059669 100%);
     display: flex; align-items: center; justify-content: center;
-    font-size: 14px; flex-shrink: 0;
+    font-size: 15px; flex-shrink: 0; color: #fff;
 }
-.jip-brand-name { font-size: 13px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.05em; }
-.jip-brand-sep  { color: #334155; margin: 0 4px; }
-.jip-brand-sub  { font-size: 11px; color: #64748b; letter-spacing: 0.04em; }
-.jip-hdr-date   { font-size: 11px; color: #475569; font-family: 'Geist Mono', monospace; }
+.jip-brand-name { font-size: 15px; font-weight: 800; color: #0f172a; letter-spacing: 0.03em; }
+.jip-brand-sep  { color: #cbd5e1; margin: 0 2px; font-size: 16px; font-weight: 300; }
+.jip-brand-sub  { font-size: 10px; color: #94a3b8; letter-spacing: 0.08em; font-weight: 600; text-transform: uppercase; }
+.jip-hdr-date   { font-size: 13px; color: #64748b; font-weight: 400; }
 
 /* ── STATS ROW ── */
 .stats-row {
-    display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
-    padding: 16px 24px 0;
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+    padding: 16px 28px 12px;
 }
 .stat {
-    background: #111827; border: 1px solid #1e293b; border-radius: 6px;
-    padding: 10px 12px;
+    background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 16px 20px;
 }
-.stat-lbl { font-size: 9px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
-.stat-val { font-size: 20px; font-weight: 700; color: #e2e8f0; line-height: 1; }
-.stat-val.g { color: #10b981; }
-.stat-val.r { color: #f43f5e; }
-.stat-val.y { color: #f59e0b; }
-.stat-sub { font-size: 9px; color: #475569; margin-top: 3px; }
+.stat-lbl { font-size: 12px; font-weight: 500; color: #94a3b8; margin-bottom: 8px; }
+.stat-val { font-size: 30px; font-weight: 700; color: #1e293b; line-height: 1; letter-spacing: -0.02em; }
+.stat-val.g { color: #059669; }
+.stat-val.r { color: #dc2626; }
+.stat-val.y { color: #d97706; }
+.stat-sub { font-size: 11px; color: #b0b8c4; margin-top: 6px; font-weight: 400; }
 
 /* ── PAGE CONTENT ── */
-.jip-content { padding: 16px 24px 40px; }
+.jip-content { padding: 16px 28px 20px; }
+
+/* ── CARD GRID (Command Center) ── */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+@media (max-width: 1100px) {
+    .card-grid { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(3, 1fr); }
+}
 
 /* ── ALERT CARD ── */
 .ac {
-    background: #111827;
-    border: 1px solid #1e293b;
-    border-radius: 6px;
-    margin-bottom: 6px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
     overflow: hidden;
 }
 .ac.bull { border-left: 3px solid #10b981; }
-.ac.bear { border-left: 3px solid #f43f5e; }
+.ac.bear { border-left: 3px solid #ef4444; }
 .ac-main {
-    padding: 10px 14px;
-    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    padding: 12px 16px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
 }
 .ac-left { flex: 1; min-width: 0; }
 .ac-right { text-align: right; flex-shrink: 0; }
 .ac-ticker {
-    font-size: 15px; font-weight: 700; color: #f1f5f9;
+    font-size: 14px; font-weight: 700; color: #0f172a;
     display: flex; align-items: center; gap: 8px; line-height: 1.2;
 }
-.ac-name   { font-size: 10px; color: #64748b; margin-top: 2px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ac-meta   { font-size: 9px; color: #475569; margin-top: 5px; display: flex; align-items: center; gap: 6px; }
-.ac-itv    { background: #1e293b; color: #94a3b8; border-radius: 3px; padding: 1px 6px; font-family: 'Geist Mono', monospace; font-size: 9px; }
-.ac-price-lbl { font-size: 9px; color: #475569; text-transform: uppercase; letter-spacing: 0.06em; }
-.ac-price { font-size: 17px; font-weight: 700; color: #60a5fa; line-height: 1.1; font-family: 'Geist Mono', monospace; }
-.ac-ts    { font-size: 9px; color: #475569; margin-top: 2px; }
+.ac-name   { font-size: 11px; color: #94a3b8; margin-top: 2px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-meta   { font-size: 10px; color: #94a3b8; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.ac-itv    { background: #f1f5f9; color: #64748b; border-radius: 4px; padding: 1px 6px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; font-weight: 500; }
+.ac-price-lbl { font-size: 10px; color: #94a3b8; letter-spacing: 0.03em; }
+.ac-price { font-size: 16px; font-weight: 700; color: #2563eb; line-height: 1.2; font-family: 'SF Mono', 'Fira Code', monospace; }
+.ac-ts    { font-size: 9px; color: #b0b8c4; margin-top: 3px; }
 .ac-ts span { display: block; }
 
 /* OHLCV strip */
 .ac-ohlcv {
     display: flex; gap: 0;
-    border-top: 1px solid #1e293b;
-    background: #0d1117;
-    padding: 6px 14px;
+    border-top: 1px solid #f1f5f9;
+    background: #f8fafc;
+    padding: 5px 16px;
 }
-.ac-o-item { flex: 1; text-align: center; padding: 0 4px; border-right: 1px solid #1e293b; }
+.ac-o-item { flex: 1; text-align: center; padding: 0 2px; border-right: 1px solid #e5e7eb; }
 .ac-o-item:last-child { border-right: none; }
-.ac-o-lbl { font-size: 8px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.07em; }
-.ac-o-val { font-size: 10px; font-weight: 500; color: #94a3b8; font-family: 'Geist Mono', monospace; margin-top: 1px; }
+.ac-o-lbl { font-size: 9px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.ac-o-val { font-size: 11px; font-weight: 600; color: #475569; font-family: 'SF Mono', 'Fira Code', monospace; margin-top: 1px; }
 
 /* alert message text */
 .ac-msg {
-    font-size: 10px; color: #64748b;
-    background: #0a0f1a; border-top: 1px solid #1e293b;
-    padding: 7px 14px; line-height: 1.5;
-    max-height: 52px; overflow: hidden;
+    font-size: 11px; color: #64748b;
+    background: #f8fafc; border-top: 1px solid #f1f5f9;
+    padding: 7px 16px; line-height: 1.5;
+    max-height: 44px; overflow: hidden;
 }
 
 /* ── CHIPS ── */
-.chip { display: inline-block; border-radius: 3px; font-size: 9px; font-weight: 600; padding: 2px 6px; letter-spacing: 0.04em; text-transform: uppercase; }
-.chip-bull { background: #064e3b; color: #34d399; }
-.chip-bear { background: #4c0519; color: #fb7185; }
-.chip-app  { background: #064e3b; color: #34d399; }
-.chip-den  { background: #4c0519; color: #fb7185; }
-.chip-imm  { background: #451a03; color: #fb923c; }
-.chip-wk   { background: #1e1b4b; color: #818cf8; }
-.chip-mo   { background: #1a1a2e; color: #a78bfa; }
+.chip { display: inline-block; border-radius: 4px; font-size: 10px; font-weight: 600; padding: 2px 8px; letter-spacing: 0.02em; text-transform: uppercase; }
+.chip-bull { background: #ecfdf5; color: #059669; }
+.chip-bear { background: #fef2f2; color: #dc2626; }
+.chip-app  { background: #ecfdf5; color: #059669; }
+.chip-den  { background: #fef2f2; color: #dc2626; }
+.chip-imm  { background: #fff7ed; color: #ea580c; }
+.chip-wk   { background: #eef2ff; color: #4f46e5; }
+.chip-mo   { background: #f5f3ff; color: #7c3aed; }
 
 /* ── FM DECISION STRIP ── */
 .fm-strip {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-    padding: 7px 14px; background: #0d1117; border-top: 1px solid #1e293b;
+    padding: 8px 16px; background: #f8fafc; border-top: 1px solid #f1f5f9;
 }
-.fm-lbl    { font-size: 8px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.08em; }
-.fm-action { font-size: 13px; font-weight: 800; color: #f1f5f9; }
-.fm-ratio  { font-size: 9px; color: #64748b; width: 100%; padding-top: 3px; }
+.fm-lbl    { font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; }
+.fm-action { font-size: 13px; font-weight: 800; color: #0f172a; }
+.fm-ratio  { font-size: 10px; color: #64748b; width: 100%; padding-top: 3px; }
 
-/* ── CLAUDE ANALYSIS BLOCK ── */
-.cl-block {
-    border-top: 1px solid #1d3a57;
-    background: #0a1929;
-    padding: 10px 14px 12px;
+/* ── CLAUDE ANALYSIS BLOCK (collapsible) ── */
+.cl-details {
+    border-top: 1px solid #dbeafe;
+    background: #f8fafc;
 }
-.cl-title {
-    font-size: 9px; font-weight: 700; color: #3b82f6;
-    text-transform: uppercase; letter-spacing: 0.09em; margin-bottom: 8px;
+.cl-details[open] { background: #eff6ff; }
+.cl-summary {
+    font-size: 10px; font-weight: 700; color: #2563eb;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 10px 16px; cursor: pointer;
     display: flex; align-items: center; gap: 5px;
+    list-style: none; user-select: none;
 }
-.cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 20px; }
+.cl-summary::-webkit-details-marker { display: none; }
+.cl-summary::before {
+    content: "▶"; font-size: 8px; color: #93c5fd; transition: transform 0.15s;
+    display: inline-block; margin-right: 4px;
+}
+.cl-details[open] > .cl-summary::before { transform: rotate(90deg); }
+.cl-summary:hover { background: #eff6ff; }
+.cl-block {
+    background: #eff6ff;
+    padding: 8px 16px 14px;
+}
+.cl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
 .cl-bullet {
     display: flex; align-items: flex-start; gap: 6px;
-    font-size: 10px; color: #93c5fd; line-height: 1.45; padding: 2px 0;
+    font-size: 11px; color: #1e40af; line-height: 1.45; padding: 2px 0;
 }
-.cl-n { font-size: 8px; font-weight: 700; color: #2563eb; min-width: 13px; flex-shrink: 0; margin-top: 2px; }
+.cl-n { font-size: 9px; font-weight: 700; color: #2563eb; min-width: 14px; flex-shrink: 0; margin-top: 2px; }
 
 /* ── EMPTY STATE ── */
 .empty {
-    text-align: center; padding: 48px 24px; color: #334155;
+    text-align: center; padding: 60px 24px; color: #94a3b8;
+    background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px;
+    margin-top: 4px;
 }
-.empty-icon { font-size: 32px; margin-bottom: 8px; }
-.empty h3 { font-size: 13px; font-weight: 600; color: #475569; }
-.empty p  { font-size: 11px; margin-top: 4px; color: #334155; }
+.empty-icon { font-size: 40px; margin-bottom: 12px; opacity: 0.6; }
+.empty h3 { font-size: 15px; font-weight: 600; color: #475569; margin: 0; }
+.empty p  { font-size: 13px; margin-top: 6px; color: #94a3b8; }
 
 /* ── API KEY BANNER ── */
 .api-warn {
-    background: #1c1206; border: 1px solid #78350f; border-radius: 5px;
-    padding: 8px 14px; margin: 10px 24px 0;
-    font-size: 11px; color: #fbbf24;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 10px 16px; margin: 12px 28px 0;
+    font-size: 12px; color: #92400e;
     display: flex; align-items: center; gap: 8px;
 }
-.api-warn code { background: #292107; padding: 1px 5px; border-radius: 3px; font-size: 10px; }
+.api-warn code { background: #fef3c7; padding: 2px 6px; border-radius: 4px; font-size: 11px; color: #78350f; }
+
+/* ── TIGHTER STREAMLIT SPACING ── */
+div[data-testid="stVerticalBlock"] { gap: 0rem !important; }
+div[data-testid="stVerticalBlock"] > div { margin-top: 0 !important; padding-top: 0 !important; }
+div[data-testid="stVerticalBlockBorderWrapper"] { padding: 0 !important; margin: 0 !important; }
+div[data-testid="stHorizontalBlock"] { gap: 16px !important; align-items: end !important; }
+div.stMarkdown { margin-bottom: 0 !important; }
+div[data-testid="stCaptionContainer"] { margin-top: 2px !important; margin-bottom: 4px !important; }
+div[data-testid="stElementContainer"] { margin: 0 !important; padding: 0 !important; }
+div[data-testid="stColumn"] { padding: 0 4px !important; }
+/* Target Streamlit's main inner block gap */
+section.main .block-container > div { gap: 0 !important; }
+section.main .block-container > div > div { gap: 0 !important; }
+section.main .block-container > div > div > div { gap: 0 !important; }
+div[data-testid="stVerticalBlock"] > div[style*="flex"] { gap: 0 !important; }
+/* Reduce select/input vertical footprint */
+div[data-testid="stSelectbox"], div[data-testid="stTextInput"] { margin-bottom: 0 !important; padding-bottom: 0 !important; }
 
 /* ── STREAMLIT WIDGET OVERRIDES ── */
 div[data-testid="stButton"] > button {
-    background: #1e293b !important;
-    color: #94a3b8 !important;
-    border: 1px solid #334155 !important;
-    border-radius: 5px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    padding: 5px 14px !important;
-    transition: background 0.15s, color 0.15s !important;
+    background: #ffffff !important;
+    color: #475569 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 20px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 6px 20px !important;
+    height: 36px !important;
+    transition: all 0.15s !important;
     box-shadow: none !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+    white-space: nowrap !important;
 }
 div[data-testid="stButton"] > button:hover {
-    background: #273549 !important;
-    color: #e2e8f0 !important;
-    border-color: #475569 !important;
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
 }
 div[data-testid="stButton"] > button[kind="primary"] {
-    background: #1d4ed8 !important;
-    color: #eff6ff !important;
-    border-color: #2563eb !important;
+    background: #059669 !important;
+    color: #ffffff !important;
+    border-color: #059669 !important;
 }
 div[data-testid="stButton"] > button[kind="primary"]:hover {
-    background: #2563eb !important;
+    background: #047857 !important;
     color: #fff !important;
 }
 div[data-testid="stSelectbox"] label,
 div[data-testid="stTextInput"] label,
-div[data-testid="stFileUploader"] label { font-size: 10px !important; color: #64748b !important; font-weight: 600 !important; text-transform: uppercase !important; letter-spacing: 0.05em !important; }
+div[data-testid="stFileUploader"] label {
+    font-size: 11px !important; color: #64748b !important;
+    font-weight: 600 !important; text-transform: uppercase !important;
+    letter-spacing: 0.03em !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+}
 div[data-testid="stSelectbox"] > div > div {
-    background: #111827 !important; border: 1px solid #1e293b !important;
-    border-radius: 5px !important; font-size: 12px !important; color: #e2e8f0 !important;
+    background: #ffffff !important; border: 1px solid #d1d5db !important;
+    border-radius: 8px !important; font-size: 13px !important; color: #1e293b !important;
 }
 div[data-testid="stTextInput"] input {
-    background: #111827 !important; border: 1px solid #1e293b !important;
-    border-radius: 5px !important; font-size: 12px !important; color: #e2e8f0 !important;
+    background: #ffffff !important; border: 1px solid #d1d5db !important;
+    border-radius: 8px !important; font-size: 13px !important; color: #1e293b !important;
 }
 div[data-testid="stFileUploader"] {
-    background: #111827 !important; border: 1px dashed #334155 !important;
-    border-radius: 6px !important;
+    background: #ffffff !important; border: 1px dashed #d1d5db !important;
+    border-radius: 6px !important; padding: 2px !important;
 }
+div[data-testid="stFileUploader"] > div { padding: 4px 8px !important; }
 div[data-testid="stFileUploader"] button {
-    background: #1e293b !important; color: #94a3b8 !important;
-    border: 1px solid #334155 !important; border-radius: 4px !important;
+    background: #f8fafc !important; color: #475569 !important;
+    border: 1px solid #d1d5db !important; border-radius: 6px !important;
+    font-size: 11px !important; padding: 3px 10px !important; height: 26px !important;
 }
+div[data-testid="stFileUploader"] small,
+div[data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] { font-size: 10px !important; }
+div[data-testid="stFileUploader"] section { padding: 4px !important; }
 div[data-testid="stExpander"] {
-    background: #111827 !important;
-    border: 1px solid #1e293b !important;
-    border-radius: 5px !important;
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
 }
 div[data-testid="stExpander"] summary {
-    font-size: 11px !important; font-weight: 600 !important;
-    color: #94a3b8 !important;
-    background: #111827 !important;
-    border-radius: 5px !important;
-    padding: 8px 14px !important;
+    font-size: 12px !important; font-weight: 600 !important;
+    color: #475569 !important;
+    background: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 10px 16px !important;
 }
-div[data-testid="stExpander"] summary:hover { color: #e2e8f0 !important; }
-div[data-testid="stInfo"] { background: #0a1929 !important; border-color: #1d4ed8 !important; color: #93c5fd !important; font-size: 11px !important; }
-div[data-testid="stSuccess"] { background: #052e16 !important; border-color: #16a34a !important; color: #86efac !important; font-size: 11px !important; }
-div[data-testid="stError"] { background: #1c0a0a !important; border-color: #dc2626 !important; color: #fca5a5 !important; font-size: 11px !important; }
-div[data-testid="stCaption"] { color: #475569 !important; font-size: 9px !important; }
-div[data-testid="stImage"] img { border-radius: 5px; }
+div[data-testid="stExpander"] summary:hover { color: #1e293b !important; }
+div[data-testid="stInfo"] { background: #eff6ff !important; border-color: #2563eb !important; color: #1e40af !important; font-size: 12px !important; border-radius: 8px !important; }
+div[data-testid="stSuccess"] { background: #ecfdf5 !important; border-color: #059669 !important; color: #065f46 !important; font-size: 12px !important; border-radius: 8px !important; }
+div[data-testid="stError"] { background: #fef2f2 !important; border-color: #dc2626 !important; color: #991b1b !important; font-size: 12px !important; border-radius: 8px !important; }
+div[data-testid="stCaption"] { color: #94a3b8 !important; font-size: 11px !important; }
+div[data-testid="stImage"] img { border-radius: 8px; }
 .stTabs [data-baseweb="tab-list"] { display: none; }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #0d1117; }
-::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── GLOBAL STREAMLIT COMPACTNESS ── */
+.stApp > div > div > div > div { padding-top: 0 !important; }
+section.main > div.block-container { padding-top: 0 !important; padding-bottom: 0 !important; }
+div[data-testid="stAppViewBlockContainer"] { padding: 0 !important; }
+div[data-testid="stMainBlockContainer"] { padding: 0 !important; }
+/* Force zero gap on Streamlit emotion-cache flex containers */
+div[class*="st-emotion-cache"][style*="flex-direction: column"] { gap: 0 !important; }
+div[class*="e1f1d6gn"] { gap: 0 !important; }
+div[class*="e17vllj"] { gap: 0 !important; }
+div[class*="ea3mdgi"] { gap: 0 !important; }
+/* Kill all Streamlit-generated vertical gaps */
+.stApp [class*="st-emotion-cache"] { gap: 0 !important; row-gap: 0 !important; }
+/* Keep horizontal gaps for columns */
+div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
+
+/* ── APPROVED CARD WRAPPER ── */
+.approved-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.approved-card .ac {
+    border: none;
+    border-radius: 0;
+    margin: 0;
+}
+.approved-card .ac.bull { border-left: 3px solid #10b981; border-radius: 0; }
+.approved-card .ac.bear { border-left: 3px solid #ef4444; border-radius: 0; }
+
+/* ── COMPACT CARD (Trade Center 3-col) ── */
+.ac-sm .ac-main { padding: 10px 12px; gap: 10px; }
+.ac-sm .ac-ticker { font-size: 13px; }
+.ac-sm .ac-name { font-size: 10px; max-width: 180px; }
+.ac-sm .ac-meta { font-size: 9px; }
+.ac-sm .ac-price { font-size: 14px; }
+.ac-sm .ac-price-lbl { font-size: 9px; }
+.ac-sm .ac-ohlcv { padding: 4px 12px; }
+.ac-sm .ac-o-lbl { font-size: 8px; }
+.ac-sm .ac-o-val { font-size: 10px; }
+.ac-sm .ac-msg { font-size: 10px; padding: 5px 12px; max-height: 36px; }
+.ac-sm .ac-ts { font-size: 8px; }
+
+/* ── INDEX / PERFORMANCE TABLE ── */
+.idx-table {
+    width: 100%; border-collapse: collapse;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 12px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+}
+.idx-table thead th {
+    background: #f8fafc; color: #64748b;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 10px 12px; text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    white-space: nowrap;
+}
+.idx-table tbody td {
+    padding: 10px 12px; border-bottom: 1px solid #f1f5f9;
+    color: #1e293b; font-size: 12px; white-space: nowrap;
+}
+.idx-table tbody tr:hover { background: #f8fafc; }
+.idx-table .mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+.idx-table .g { color: #059669; font-weight: 600; }
+.idx-table .r { color: #dc2626; font-weight: 600; }
+.idx-table .signal-ow { background: #ecfdf5; color: #059669; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 10px; }
+.idx-table .signal-uw { background: #fef2f2; color: #dc2626; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 10px; }
+.idx-table .signal-base { background: #eef2ff; color: #4f46e5; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 10px; }
+.idx-table .signal-n { background: #f1f5f9; color: #64748b; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 10px; }
+.idx-table .sector-hdr td {
+    background: #f0fdf4; color: #059669; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 12px;
+    border-bottom: 2px solid #a7f3d0; border-top: 1px solid #d1fae5;
+}
+
+/* ── CHART LIGHTBOX ── */
+input.chart-toggle { display: none !important; }
+.chart-lightbox {
+    display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0,0,0,0.82); z-index: 9999;
+    align-items: center; justify-content: center; cursor: pointer;
+}
+input.chart-toggle:checked + .chart-lightbox { display: flex !important; }
+.chart-lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.chart-lightbox-close {
+    position: absolute; top: 16px; right: 24px; color: #fff;
+    font-size: 28px; cursor: pointer; z-index: 10000;
+    width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.15); border-radius: 50%;
+}
+.chart-thumb {
+    cursor: pointer; border-radius: 6px; border: 1px solid #e5e7eb;
+    transition: opacity 0.15s;
+}
+.chart-thumb:hover { opacity: 0.85; }
+
+/* ── NO-BLACK: Force light theme on ALL interactive elements ── */
+/* Dropdown popover / menu — ultra-high specificity */
+body [data-baseweb="popover"],
+body div[data-baseweb="popover"],
+[data-baseweb="popover"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+}
+body [data-baseweb="menu"],
+body [data-baseweb="menu"] ul,
+[data-baseweb="menu"],
+[data-baseweb="menu"] ul,
+[role="listbox"],
+[role="listbox"] ul {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+body [data-baseweb="menu"] li,
+body [role="listbox"] li,
+[data-baseweb="menu"] li,
+[data-baseweb="menu"] [role="option"],
+[role="listbox"] [role="option"],
+[role="listbox"] li {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #374151 !important;
+    font-size: 13px !important;
+}
+body [data-baseweb="menu"] li:hover,
+body [role="listbox"] li:hover,
+[data-baseweb="menu"] li:hover,
+[role="listbox"] li:hover,
+[data-baseweb="menu"] [role="option"]:hover,
+[role="listbox"] [role="option"]:hover {
+    background: #f0fdf4 !important;
+    background-color: #f0fdf4 !important;
+    color: #059669 !important;
+}
+body [data-baseweb="menu"] li[aria-selected="true"],
+body [role="listbox"] li[aria-selected="true"],
+[data-baseweb="menu"] li[aria-selected="true"],
+[role="listbox"] li[aria-selected="true"],
+[data-baseweb="menu"] [role="option"][aria-selected="true"],
+[role="listbox"] [role="option"][aria-selected="true"] {
+    background: #ecfdf5 !important;
+    background-color: #ecfdf5 !important;
+    color: #059669 !important;
+    font-weight: 600 !important;
+}
+/* Select trigger */
+[data-baseweb="select"] > div,
+body [data-baseweb="select"] > div {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border-color: #d1d5db !important;
+    color: #374151 !important;
+}
+[data-baseweb="select"] span,
+[data-baseweb="select"] div[class*="value"] {
+    color: #374151 !important;
+}
+[data-baseweb="select"] svg {
+    color: #9ca3af !important;
+}
+/* Text inputs */
+[data-baseweb="input"],
+body [data-baseweb="input"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border-color: #d1d5db !important;
+}
+[data-baseweb="input"] input,
+body [data-baseweb="input"] input {
+    color: #374151 !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
+/* Tags */
+[data-baseweb="tag"] {
+    background: #ecfdf5 !important;
+    color: #059669 !important;
+}
+/* Expander icons/text */
+div[data-testid="stExpander"] summary svg {
+    color: #9ca3af !important;
+}
+/* Radio buttons */
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] label div {
+    color: #374151 !important;
+}
+/* Ensure no dark focus outlines */
+*:focus-visible {
+    outline-color: #059669 !important;
+}
+/* Override dark backgrounds on Streamlit widgets */
+div[data-testid="stSelectbox"] [data-baseweb="select"] > div > div {
+    color: #374151 !important;
+    background: #ffffff !important;
+}
+/* Kill any remaining dark overlays from Streamlit theme */
+div[data-baseweb="popover"] > div,
+div[data-baseweb="popover"] > div > div,
+div[data-baseweb="popover"] > div > div > ul {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -293,7 +575,7 @@ def sig_chip(sig: str) -> str:
     s = (sig or "").upper()
     if s == "BULLISH": return '<span class="chip chip-bull">▲ Bull</span>'
     if s == "BEARISH": return '<span class="chip chip-bear">▼ Bear</span>'
-    return ""  # No neutral chip
+    return ""
 
 def prio_chip(p: str) -> str:
     if not p: return ""
@@ -303,6 +585,125 @@ def prio_chip(p: str) -> str:
         "WITHIN_A_MONTH": ('<span class="chip chip-mo">🟣 Month</span>'),
     }
     return m.get(p, esc(p))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INDEX SECTOR CLASSIFICATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+TOP_25_INDICES = [
+    "NIFTY 50", "NIFTY BANK", "NIFTY IT", "NIFTY NEXT 50", "NIFTY FINANCIAL SERVICES",
+    "NIFTY MIDCAP SELECT", "NIFTY 100", "NIFTY 500", "NIFTY PHARMA", "NIFTY AUTO",
+    "NIFTY FMCG", "NIFTY METAL", "NIFTY REALTY", "NIFTY ENERGY", "NIFTY MIDCAP 50",
+    "NIFTY MIDCAP 100", "NIFTY SMALLCAP 100", "NIFTY SMALLCAP 250", "NIFTY PSU BANK",
+    "NIFTY PRIVATE BANK", "NIFTY HEALTHCARE INDEX", "NIFTY CONSUMER DURABLES",
+    "NIFTY OIL & GAS", "NIFTY MEDIA", "INDIA VIX",
+]
+_TOP_25_SET = set(TOP_25_INDICES)
+
+INDEX_SECTOR_MAP = {
+    # Broad Market
+    "NIFTY 50": "Broad Market", "NIFTY NEXT 50": "Broad Market", "NIFTY 100": "Broad Market",
+    "NIFTY 200": "Broad Market", "NIFTY 500": "Broad Market", "NIFTY TOTAL MARKET": "Broad Market",
+    "NIFTY MIDCAP SELECT": "Broad Market", "NIFTY500 MULTICAP 50:25:25": "Broad Market",
+    "NIFTY LARGEMIDCAP 250": "Broad Market",
+    # Banking & Financial
+    "NIFTY BANK": "Banking & Financial", "NIFTY FINANCIAL SERVICES": "Banking & Financial",
+    "NIFTY PSU BANK": "Banking & Financial", "NIFTY PRIVATE BANK": "Banking & Financial",
+    "NIFTY FINANCIAL SERVICES 25/50": "Banking & Financial",
+    "NIFTY FINANCIAL SERVICES EX-BANK": "Banking & Financial",
+    "NIFTY MIDSMALL FINANCIAL SERVICES": "Banking & Financial",
+    "NIFTY CAPITAL MARKETS": "Banking & Financial",
+    # IT & Technology
+    "NIFTY IT": "IT & Technology", "NIFTY MIDSMALL IT & TELECOM": "IT & Technology",
+    "NIFTY INDIA DIGITAL": "IT & Technology", "NIFTY INDIA INTERNET": "IT & Technology",
+    # Pharma & Healthcare
+    "NIFTY PHARMA": "Pharma & Healthcare", "NIFTY HEALTHCARE INDEX": "Pharma & Healthcare",
+    "NIFTY MIDSMALL HEALTHCARE": "Pharma & Healthcare", "NIFTY500 HEALTHCARE": "Pharma & Healthcare",
+    # Auto & Mobility
+    "NIFTY AUTO": "Auto & Mobility", "NIFTY EV & NEW AGE AUTOMOTIVE": "Auto & Mobility",
+    "NIFTY MOBILITY": "Auto & Mobility", "NIFTY TRANSPORTATION & LOGISTICS": "Auto & Mobility",
+    # Consumer & FMCG
+    "NIFTY FMCG": "Consumer & FMCG", "NIFTY CONSUMER DURABLES": "Consumer & FMCG",
+    "NIFTY INDIA CONSUMPTION": "Consumer & FMCG", "NIFTY INDIA NEW AGE CONSUMPTION": "Consumer & FMCG",
+    "NIFTY MIDSMALL INDIA CONSUMPTION": "Consumer & FMCG", "NIFTY NON-CYCLICAL CONSUMER": "Consumer & FMCG",
+    # Commodities & Energy
+    "NIFTY METAL": "Commodities & Energy", "NIFTY ENERGY": "Commodities & Energy",
+    "NIFTY OIL & GAS": "Commodities & Energy", "NIFTY COMMODITIES": "Commodities & Energy",
+    "NIFTY CHEMICALS": "Commodities & Energy",
+    # Infra & Realty
+    "NIFTY REALTY": "Infra & Realty", "NIFTY INFRASTRUCTURE": "Infra & Realty",
+    "NIFTY CORE HOUSING": "Infra & Realty", "NIFTY HOUSING": "Infra & Realty",
+    "NIFTY INDIA INFRASTRUCTURE & LOGISTICS": "Infra & Realty",
+    "NIFTY500 MULTICAP INFRASTRUCTURE 50:30:20": "Infra & Realty",
+    # Mid & Small Cap
+    "NIFTY MIDCAP 50": "Mid & Small Cap", "NIFTY MIDCAP 100": "Mid & Small Cap",
+    "NIFTY MIDCAP 150": "Mid & Small Cap", "NIFTY SMALLCAP 50": "Mid & Small Cap",
+    "NIFTY SMALLCAP 100": "Mid & Small Cap", "NIFTY SMALLCAP 250": "Mid & Small Cap",
+    "NIFTY MIDSMALLCAP 400": "Mid & Small Cap", "NIFTY MICROCAP 250": "Mid & Small Cap",
+    # Thematic
+    "NIFTY MEDIA": "Thematic", "NIFTY MNC": "Thematic", "NIFTY CPSE": "Thematic",
+    "NIFTY PSE": "Thematic", "NIFTY SERVICES SECTOR": "Thematic",
+    "NIFTY INDIA MANUFACTURING": "Thematic", "NIFTY500 MULTICAP INDIA MANUFACTURING 50:30:20": "Thematic",
+    "NIFTY INDIA DEFENCE": "Thematic", "NIFTY INDIA TOURISM": "Thematic",
+    "NIFTY RURAL": "Thematic", "NIFTY INDIA RAILWAYS PSU": "Thematic",
+    "NIFTY CONGLOMERATE 50": "Thematic", "NIFTY IPO": "Thematic",
+    "NIFTY INDIA CORPORATE GROUP INDEX - TATA GROUP 25% CAP": "Thematic",
+    "NIFTY INDIA SELECT 5 CORPORATE GROUPS (MAATR)": "Thematic",
+    # Strategy & Factor
+    "NIFTY ALPHA 50": "Strategy", "NIFTY50 VALUE 20": "Strategy",
+    "NIFTY100 QUALITY 30": "Strategy", "NIFTY50 EQUAL WEIGHT": "Strategy",
+    "NIFTY100 EQUAL WEIGHT": "Strategy", "NIFTY100 LOW VOLATILITY 30": "Strategy",
+    "NIFTY200 QUALITY 30": "Strategy", "NIFTY200 MOMENTUM 30": "Strategy",
+    "NIFTY200 ALPHA 30": "Strategy", "NIFTY200 VALUE 30": "Strategy",
+    "NIFTY ALPHA LOW-VOLATILITY 30": "Strategy", "NIFTY MIDCAP150 QUALITY 50": "Strategy",
+    "NIFTY MIDCAP150 MOMENTUM 50": "Strategy", "NIFTY500 MOMENTUM 50": "Strategy",
+    "NIFTY DIVIDEND OPPORTUNITIES 50": "Strategy", "NIFTY GROWTH SECTORS 15": "Strategy",
+    "NIFTY HIGH BETA 50": "Strategy", "NIFTY LOW VOLATILITY 50": "Strategy",
+    "NIFTY QUALITY LOW-VOLATILITY 30": "Strategy", "NIFTY SMALLCAP250 QUALITY 50": "Strategy",
+    "NIFTY SMALLCAP250 MOMENTUM QUALITY 100": "Strategy",
+    "NIFTY MIDSMALLCAP400 MOMENTUM QUALITY 100": "Strategy",
+    "NIFTY500 EQUAL WEIGHT": "Strategy", "NIFTY500 VALUE 50": "Strategy",
+    "NIFTY500 QUALITY 50": "Strategy", "NIFTY500 LOW VOLATILITY 50": "Strategy",
+    "NIFTY WAVES": "Strategy", "NIFTY TOP 10 EQUAL WEIGHT": "Strategy",
+    "NIFTY TOP 15 EQUAL WEIGHT": "Strategy", "NIFTY TOP 20 EQUAL WEIGHT": "Strategy",
+    "NIFTY500 MULTICAP MOMENTUM QUALITY 50": "Strategy",
+    "NIFTY ALPHA QUALITY LOW-VOLATILITY 30": "Strategy",
+    "NIFTY ALPHA QUALITY VALUE LOW-VOLATILITY 30": "Strategy",
+    "NIFTY100 ALPHA 30": "Strategy", "NIFTY500 MULTIFACTOR MQVLV 50": "Strategy",
+    "NIFTY500 FLEXICAP QUALITY 30": "Strategy",
+    "NIFTY TOTAL MARKET MOMENTUM QUALITY 50": "Strategy",
+    # Fixed Income
+    "NIFTY 8-13 YR G-SEC": "Fixed Income", "NIFTY 10 YR BENCHMARK G-SEC": "Fixed Income",
+    "NIFTY 10 YR BENCHMARK G-SEC (CLEAN PRICE)": "Fixed Income",
+    "NIFTY 4-8 YR G-SEC INDEX": "Fixed Income", "NIFTY 11-15 YR G-SEC INDEX": "Fixed Income",
+    "NIFTY 15 YR AND ABOVE G-SEC INDEX": "Fixed Income",
+    "NIFTY COMPOSITE G-SEC INDEX": "Fixed Income",
+    "NIFTY BHARAT BOND INDEX - APRIL 2030": "Fixed Income",
+    "NIFTY BHARAT BOND INDEX - APRIL 2031": "Fixed Income",
+    "NIFTY BHARAT BOND INDEX - APRIL 2032": "Fixed Income",
+    "NIFTY BHARAT BOND INDEX - APRIL 2033": "Fixed Income",
+    # Volatility
+    "INDIA VIX": "Volatility",
+    # ESG & Shariah
+    "NIFTY100 ESG SECTOR LEADERS": "ESG & Shariah", "NIFTY100 ESG": "ESG & Shariah",
+    "NIFTY100 ENHANCED ESG": "ESG & Shariah", "NIFTY SHARIAH 25": "ESG & Shariah",
+    "NIFTY50 SHARIAH": "ESG & Shariah", "NIFTY500 SHARIAH": "ESG & Shariah",
+    # Leveraged / Derived
+    "NIFTY50 TR 2X LEVERAGE": "Leveraged", "NIFTY50 PR 2X LEVERAGE": "Leveraged",
+    "NIFTY50 TR 1X INVERSE": "Leveraged", "NIFTY50 PR 1X INVERSE": "Leveraged",
+    "NIFTY50 DIVIDEND POINTS": "Leveraged", "NIFTY50 USD": "Leveraged",
+}
+
+SECTOR_ORDER = [
+    "Broad Market", "Banking & Financial", "IT & Technology", "Pharma & Healthcare",
+    "Auto & Mobility", "Consumer & FMCG", "Commodities & Energy", "Infra & Realty",
+    "Mid & Small Cap", "Thematic", "Strategy", "Fixed Income", "Volatility",
+    "ESG & Shariah", "Leveraged", "Other",
+]
+
+def _get_sector(nse_name):
+    return INDEX_SECTOR_MAP.get(nse_name, "Other")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -336,7 +737,8 @@ def to_b64(f) -> str:
 # ALERT CARD
 # ══════════════════════════════════════════════════════════════════════════════
 
-def card(a: dict, mode: str = "view", first: bool = False):
+def card_html(a: dict) -> str:
+    """Return HTML string for an alert card (no Streamlit widgets)."""
     sig    = (a.get("signal_direction") or "").upper()
     bcls   = {"BULLISH": "bull", "BEARISH": "bear"}.get(sig, "")
     ticker = esc(a.get("ticker") or "—")
@@ -354,10 +756,7 @@ def card(a: dict, mode: str = "view", first: bool = False):
     if t1 != "—": ts_html += f'<span>Alert: {t1}</span>'
     if t2 != "—": ts_html += f'<span>Recv: {t2}</span>'
 
-    action = a.get("action") or {}
-
-    st.markdown(f"""
-<div class="ac {bcls}">
+    return f"""<div class="ac {bcls}">
   <div class="ac-main">
     <div class="ac-left">
       <div class="ac-ticker">{ticker} {sig_chip(sig)}</div>
@@ -378,7 +777,14 @@ def card(a: dict, mode: str = "view", first: bool = False):
     <div class="ac-o-item"><div class="ac-o-lbl">Vol</div><div class="ac-o-val">{fv(a.get('volume'))}</div></div>
   </div>
   {f'<div class="ac-msg">{msg}</div>' if msg else ""}
-</div>""", unsafe_allow_html=True)
+</div>"""
+
+
+def card(a: dict, mode: str = "view", first: bool = False):
+    """Render an alert card with optional Streamlit widgets for action/approved modes."""
+    # Approved mode renders its own cohesive card block
+    if mode != "approved":
+        st.markdown(card_html(a), unsafe_allow_html=True)
 
     # ── TRADE CENTER action panel ──────────────────────────
     if mode == "action" and a.get("status") == "PENDING":
@@ -431,48 +837,71 @@ def card(a: dict, mode: str = "view", first: bool = False):
                     else: st.error(f"Error: {res.get('error','Unknown')}")
 
     # ── APPROVED ALERTS view ───────────────────────────────
-    if mode == "approved" and action:
-        legs_html = ""
-        if action.get("is_ratio"):
-            legs = [l for l in [action.get("ratio_long"), action.get("ratio_short")] if l]
-            if legs: legs_html = f'<div class="fm-ratio">{"  ·  ".join(esc(l) for l in legs)}</div>'
+    if mode == "approved":
+        action = a.get("action") or {}
+        if action:
+            # Build entire approved card as one cohesive HTML block
+            parts = ['<div class="approved-card">']
+            # Re-render card HTML inside wrapper (strip outer .ac border since wrapper handles it)
+            parts.append(card_html(a))
 
-        d = action.get("decision", "")
-        dcls = "chip-app" if d == "APPROVED" else "chip-den"
-        st.markdown(f"""
-<div class="fm-strip">
+            # FM decision strip
+            legs_html = ""
+            if action.get("is_ratio"):
+                legs = [l for l in [action.get("ratio_long"), action.get("ratio_short")] if l]
+                if legs: legs_html = f'<div class="fm-ratio">{"  &middot;  ".join(esc(l) for l in legs)}</div>'
+            d = action.get("decision", "")
+            dcls = "chip-app" if d == "APPROVED" else "chip-den"
+            parts.append(f"""<div class="fm-strip">
   <span class="fm-lbl">FM</span>
   <span class="chip {dcls}">{esc(d)}</span>
   <span class="fm-action">{esc(action.get('action_call') or '—')}</span>
   {prio_chip(action.get('priority',''))}
   {legs_html}
-</div>""", unsafe_allow_html=True)
+</div>""")
 
-        analysis = action.get("chart_analysis")
-        if analysis:
-            valid = [b for b in analysis if b and b != "—"]
-            if valid:
-                left  = valid[:4]
-                right = valid[4:8]
-                lh = "".join(f'<div class="cl-bullet"><span class="cl-n">{i+1}.</span><span>{esc(b)}</span></div>' for i,b in enumerate(left))
-                rh = "".join(f'<div class="cl-bullet"><span class="cl-n">{i+5}.</span><span>{esc(b)}</span></div>' for i,b in enumerate(right))
-                mode_label = "🔭 Vision" if action.get("has_chart") else "📝 Text"
-                st.markdown(f"""
-<div class="cl-block">
-  <div class="cl-title">🤖 Claude Analysis &nbsp;·&nbsp; {mode_label}</div>
-  <div class="cl-grid"><div>{lh}</div><div>{rh}</div></div>
-</div>""", unsafe_allow_html=True)
-        elif action.get("has_chart"):
-            st.caption("⏳ Analysis pending")
+            # Claude analysis (collapsible)
+            analysis = action.get("chart_analysis")
+            if analysis:
+                valid = [b for b in analysis if b and b != "—"]
+                if valid:
+                    left  = valid[:4]
+                    right = valid[4:8]
+                    lh = "".join(f'<div class="cl-bullet"><span class="cl-n">{i+1}.</span><span>{esc(b)}</span></div>' for i,b in enumerate(left))
+                    rh = "".join(f'<div class="cl-bullet"><span class="cl-n">{i+5}.</span><span>{esc(b)}</span></div>' for i,b in enumerate(right))
+                    mode_label = "🔭 Vision" if action.get("has_chart") else "📝 Text"
+                    parts.append(f"""<details class="cl-details">
+  <summary class="cl-summary">Claude Analysis &middot; {mode_label} &middot; {len(valid)} points</summary>
+  <div class="cl-block"><div class="cl-grid"><div>{lh}</div><div>{rh}</div></div></div>
+</details>""")
+            elif action.get("has_chart"):
+                parts.append('<div style="padding:6px 16px;font-size:11px;color:#94a3b8;">⏳ Analysis pending</div>')
 
-        if action.get("has_chart"):
-            with st.expander("📊 View Chart"):
+            # Chart thumbnail with lightbox
+            if action.get("has_chart"):
                 try:
                     r = requests.get(f"{API_URL}/api/alerts/{a['id']}/chart", timeout=8)
-                    b64 = r.json().get("chart_image_b64","")
-                    if b64: st.image(base64.b64decode(b64), use_column_width=True)
-                except Exception as e:
-                    st.warning(str(e))
+                    b64_data = r.json().get("chart_image_b64", "")
+                    if b64_data:
+                        if not b64_data.startswith("data:"):
+                            b64_data = "data:image/png;base64," + b64_data
+                        uid = f"lb_{a['id']}"
+                        parts.append(f"""<div style="padding:8px 16px;border-top:1px solid #f1f5f9;">
+  <label for="{uid}" style="cursor:pointer;display:inline-block;">
+    <img src="{b64_data}" class="chart-thumb" style="width:260px;" alt="Chart"/>
+    <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Click to expand</div>
+  </label>
+</div>
+<input type="checkbox" id="{uid}" class="chart-toggle"/>
+<label for="{uid}" class="chart-lightbox">
+  <span class="chart-lightbox-close">&times;</span>
+  <img src="{b64_data}" alt="Full chart"/>
+</label>""")
+                except Exception:
+                    pass
+
+            parts.append('</div>')
+            st.markdown('\n'.join(parts), unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -480,8 +909,8 @@ def card(a: dict, mode: str = "view", first: bool = False):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main():
-    if "tab" not in st.session_state:
-        st.session_state.tab = "command"
+    # Auto-refresh every 30 seconds — Streamlit preserves widget state across reruns
+    st_autorefresh(interval=30000, key="auto_refresh")
 
     alerts   = get_alerts()
     pending  = [a for a in alerts if a.get("status") == "PENDING"]
@@ -492,106 +921,172 @@ def main():
         key=lambda a: (a.get("action") or {}).get("decision_at") or a.get("received_at") or "",
         reverse=True
     )
-    np = len(pending)
-
-    # ── HEADER ──────────────────────────────────────────────
-    now = datetime.now().strftime("%d %b %Y  %H:%M")
-    st.markdown(f"""
-<div class="jip-hdr">
-  <div class="jip-brand">
-    <div class="jip-brand-logo">⚡</div>
-    <span class="jip-brand-name">JHAVERI</span>
-    <span class="jip-brand-sep">|</span>
-    <span class="jip-brand-sub">Intelligence Platform</span>
-  </div>
-  <div class="jip-hdr-date">{now}</div>
-</div>""", unsafe_allow_html=True)
-
-    # ── API key warning ──────────────────────────────────────
-    if not os.getenv("ANTHROPIC_API_KEY", "").strip():
-        st.markdown("""
-<div class="api-warn">
-  ⚠️ <strong>ANTHROPIC_API_KEY not set</strong> — Claude analysis disabled.
-  Add it in Railway: <code>ANTHROPIC_API_KEY=sk-ant-...</code>
-</div>""", unsafe_allow_html=True)
-
-    # ── STATS ────────────────────────────────────────────────
+    np_count = len(pending)
     bull = sum(1 for a in alerts if a.get("signal_direction") == "BULLISH")
     bear = sum(1 for a in alerts if a.get("signal_direction") == "BEARISH")
-    st.markdown(f"""
+
+    # ── SIDEBAR ─────────────────────────────────────────────
+    with st.sidebar:
+        st.markdown(f"""
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+    <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#0d9488,#059669);display:flex;align-items:center;justify-content:center;font-size:17px;color:#fff;flex-shrink:0;">⚡</div>
+    <div>
+        <div style="font-size:15px;font-weight:800;color:#0f172a;letter-spacing:0.03em;">JHAVERI</div>
+        <div style="font-size:9px;color:#94a3b8;letter-spacing:0.08em;font-weight:600;text-transform:uppercase;">Intelligence Platform</div>
+    </div>
+</div>""", unsafe_allow_html=True)
+
+        st.markdown(f"""
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:12px 0 16px;">
+    <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:#1e293b;">{len(alerts)}</div>
+        <div style="font-size:9px;color:#94a3b8;font-weight:500;">Total</div>
+    </div>
+    <div style="background:#fff7ed;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:#d97706;">{np_count}</div>
+        <div style="font-size:9px;color:#d97706;font-weight:500;">Pending</div>
+    </div>
+    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;padding:8px 10px;text-align:center;">
+        <div style="font-size:18px;font-weight:700;color:#059669;">{len(approved)}</div>
+        <div style="font-size:9px;color:#059669;font-weight:500;">Approved</div>
+    </div>
+</div>""", unsafe_allow_html=True)
+
+        nav_options = [
+            "Command Center",
+            "Trade Center",
+            "Approved Cards",
+            "Market Pulse",
+            "Performance",
+        ]
+        nav_keys = ["command", "trade", "approved", "pulse", "perf"]
+
+        selected = st.radio("Navigation", nav_options, key="nav_radio", label_visibility="collapsed")
+        t = nav_keys[nav_options.index(selected)]
+
+        if np_count and t == "trade":
+            st.caption(f"{np_count} pending")
+
+        st.markdown(f'<div style="font-size:10px;color:#b0b8c4;margin-top:16px;text-align:center;">{datetime.now().strftime("%A, %d %b %Y")}<br/>Auto-refreshing</div>', unsafe_allow_html=True)
+
+    # ── API key warning ──
+    try:
+        _status = requests.get(f"{API_URL}/api/status", timeout=3).json()
+        if not _status.get("analysis_enabled"):
+            st.markdown("""
+<div class="api-warn">
+  ⚠️ <strong>Claude analysis disabled</strong> — Set ANTHROPIC_API_KEY on the server.
+  <code>ANTHROPIC_API_KEY=sk-ant-...</code>
+</div>""", unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ══════════════════════════════
+    # COMMAND CENTER — Grid layout
+    # ══════════════════════════════
+    if t == "command":
+        # Stats row
+        st.markdown(f"""
 <div class="stats-row">
-  <div class="stat"><div class="stat-lbl">Total</div><div class="stat-val">{len(alerts)}</div><div class="stat-sub">Alerts</div></div>
-  <div class="stat"><div class="stat-lbl">Pending</div><div class="stat-val y">{np}</div><div class="stat-sub">Awaiting action</div></div>
+  <div class="stat"><div class="stat-lbl">Total Alerts</div><div class="stat-val">{len(alerts)}</div><div class="stat-sub">All signals</div></div>
+  <div class="stat"><div class="stat-lbl">Pending</div><div class="stat-val y">{np_count}</div><div class="stat-sub">Awaiting action</div></div>
   <div class="stat"><div class="stat-lbl">Approved</div><div class="stat-val g">{len(approved)}</div><div class="stat-sub">Actioned</div></div>
   <div class="stat"><div class="stat-lbl">Denied</div><div class="stat-val r">{len(denied)}</div><div class="stat-sub">Passed</div></div>
   <div class="stat"><div class="stat-lbl">Bullish ▲</div><div class="stat-val g">{bull}</div><div class="stat-sub">Signals</div></div>
   <div class="stat"><div class="stat-lbl">Bearish ▼</div><div class="stat-val r">{bear}</div><div class="stat-sub">Signals</div></div>
 </div>""", unsafe_allow_html=True)
 
-    # ── TAB NAV ──────────────────────────────────────────────
-    tc_lbl = f"📋 Trade Center ({np})" if np else "📋 Trade Center"
-    t = st.session_state.tab
-    nc1, nc2, nc3, nc4, _ = st.columns([1.1, 1.3, 1.3, 0.5, 4])
-    with nc1:
-        if st.button("⚡ Command Center", use_container_width=True,
-                     type="primary" if t=="command" else "secondary"):
-            st.session_state.tab = "command"; st.rerun()
-    with nc2:
-        if st.button(tc_lbl, use_container_width=True,
-                     type="primary" if t=="trade" else "secondary"):
-            st.session_state.tab = "trade"; st.rerun()
-    with nc3:
-        if st.button("✅ Approved Alerts", use_container_width=True,
-                     type="primary" if t=="approved" else "secondary"):
-            st.session_state.tab = "approved"; st.rerun()
-    with nc4:
-        if st.button("↺", use_container_width=True, help="Refresh"):
-            st.rerun()
+        st.markdown(f'<div style="text-align:right;padding:2px 28px 8px;font-size:11px;color:#94a3b8;">Last refreshed: {datetime.now().strftime("%d-%b-%y %I:%M %p")}</div>', unsafe_allow_html=True)
 
-    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
-
-    # ══════════════════════════════
-    # COMMAND CENTER
-    # ══════════════════════════════
-    if t == "command":
         st.markdown('<div class="jip-content">', unsafe_allow_html=True)
-        if not alerts:
-            st.markdown('<div class="empty"><div class="empty-icon">📡</div><h3>No alerts yet</h3><p>Waiting for TradingView webhooks</p></div>', unsafe_allow_html=True)
+        if not pending:
+            st.markdown('<div class="empty"><div class="empty-icon">📡</div><h3>No pending alerts</h3><p>Waiting for incoming TradingView webhooks</p></div>', unsafe_allow_html=True)
         else:
             f1, f2, _ = st.columns([2, 2, 6])
             with f1: sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="cc_s")
             with f2: so = st.selectbox("Sort", ["Newest First","Oldest First"], key="cc_o")
-            fl = alerts if sf == "All" else [a for a in alerts if a.get("signal_direction") == sf]
+            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+            fl = pending if sf == "All" else [a for a in pending if a.get("signal_direction") == sf]
             if so == "Oldest First": fl = list(reversed(fl))
-            st.caption(f"{len(fl)} alerts")
-            for a in fl[:50]: card(a, mode="view")
+            st.caption(f"{len(fl)} pending alerts")
+            cards_html = "".join(card_html(a) for a in fl[:50])
+            st.markdown(f'<div class="card-grid">{cards_html}</div>', unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
-    # TRADE CENTER
+    # TRADE CENTER — 3 Column Grid
     # ══════════════════════════════
     elif t == "trade":
         st.markdown('<div class="jip-content">', unsafe_allow_html=True)
-        st.caption(f"{np} pending alerts · Upload a chart screenshot to enable Claude vision analysis")
+        st.caption(f"{np_count} pending alerts · Upload a chart screenshot to enable Claude vision analysis")
         if not pending:
             st.markdown('<div class="empty"><div class="empty-icon">✅</div><h3>All caught up</h3><p>No pending alerts</p></div>', unsafe_allow_html=True)
         else:
+            cols = st.columns(3)
             for i, a in enumerate(pending):
-                card(a, mode="action", first=(i == 0))
+                with cols[i % 3]:
+                    st.markdown(f'<div class="ac-sm">{card_html(a)}</div>', unsafe_allow_html=True)
+                    with st.expander(f"Action #{a['id']}", expanded=(i == 0)):
+                        act  = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{a['id']}")
+                        prio = st.selectbox("Priority", ["IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key=f"pr_{a['id']}")
+                        cf = st.file_uploader("Chart", type=["png","jpg","jpeg","webp"], key=f"cf_{a['id']}")
+                        if cf:
+                            cf.seek(0)
+                            st.image(cf.read(), caption="Chart ready", use_column_width=True)
+
+                        is_ratio = (act == "RATIO")
+                        rl = rs = rnt = rdt = None
+                        if is_ratio:
+                            rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key=f"rl_{a['id']}")
+                            rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{a['id']}")
+                            rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key=f"rnt_{a['id']}")
+                            rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{a['id']}")
+
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if st.button("Approve", key=f"app_{a['id']}", use_container_width=True, type="primary"):
+                                b64 = None
+                                if cf:
+                                    cf.seek(0)
+                                    b64 = base64.b64encode(cf.read()).decode("utf-8")
+                                if b64:
+                                    st.info("Sending chart to Claude...")
+                                else:
+                                    st.info("Running text analysis...")
+                                res = post_action({
+                                    "alert_id": a["id"], "decision": "APPROVED",
+                                    "action_call": act, "is_ratio": is_ratio,
+                                    "ratio_long": rl if is_ratio else None,
+                                    "ratio_short": rs if is_ratio else None,
+                                    "ratio_numerator_ticker": rnt if is_ratio else None,
+                                    "ratio_denominator_ticker": rdt if is_ratio else None,
+                                    "priority": prio, "chart_image_b64": b64,
+                                })
+                                if res.get("success"):
+                                    st.success("Approved")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Error: {res.get('error','Unknown')}")
+                        with b2:
+                            if st.button("Deny", key=f"den_{a['id']}", use_container_width=True):
+                                res = post_action({"alert_id": a["id"], "decision": "DENIED"})
+                                if res.get("success"): st.rerun()
+                                else: st.error(f"Error: {res.get('error','Unknown')}")
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
-    # APPROVED ALERTS
+    # APPROVED CARDS
     # ══════════════════════════════
     elif t == "approved":
         st.markdown('<div class="jip-content">', unsafe_allow_html=True)
-        st.caption("FM decisions + Claude analysis · Approved and denied alerts")
+        st.caption("FM decisions + Claude analysis")
         if not actioned:
             st.markdown('<div class="empty"><div class="empty-icon">🗄️</div><h3>No actioned alerts</h3><p>Approved alerts with Claude analysis appear here</p></div>', unsafe_allow_html=True)
         else:
             f1, f2, _ = st.columns([2, 2, 6])
             with f1: sf = st.selectbox("Status", ["All","APPROVED","DENIED"], key="db_s")
             with f2: tk = st.text_input("Search", placeholder="NIFTY, BITCOIN…", key="db_t")
+            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
             fl = actioned
             if sf != "All": fl = [a for a in fl if a.get("status") == sf]
             if tk: fl = [a for a in fl if tk.upper() in (a.get("ticker") or "").upper()]
@@ -599,8 +1094,295 @@ def main():
             for a in fl[:100]: card(a, mode="approved")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Auto-refresh every 30s
-    st.markdown("<script>setTimeout(()=>window.location.reload(),2000)</script>", unsafe_allow_html=True)
+    # ══════════════════════════════
+    # MARKET PULSE — Full Index Table
+    # ══════════════════════════════
+    elif t == "pulse":
+        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
+
+        c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 2])
+        with c1:
+            base_idx = st.selectbox("Base Index", [
+                "NIFTY", "SENSEX", "BANKNIFTY", "NIFTYIT", "NIFTYPHARMA",
+                "NIFTYFMCG", "NIFTYAUTO", "NIFTYMETAL",
+            ], key="pulse_base")
+        with c2:
+            period_filter = st.selectbox("Return Period", ["1D", "1W", "1M", "3M", "6M", "12M"], key="pulse_period")
+        with c3:
+            sector_options = ["All Indices", "Top 25"] + SECTOR_ORDER
+            sector_filter = st.selectbox("Sector", sector_options, key="pulse_sector")
+        with c4:
+            st.markdown('<div style="height:25px;"></div>', unsafe_allow_html=True)
+            if st.button("Refresh", use_container_width=True, type="primary"):
+                st.rerun()
+
+        st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+
+        # Fetch live index data from NSE via nsetools
+        try:
+            idx_resp = requests.get(f"{API_URL}/api/indices/live", params={"base": base_idx}, timeout=30).json()
+        except Exception:
+            idx_resp = {"indices": [], "success": False}
+
+        idx_list = idx_resp.get("indices", [])
+
+        if idx_list:
+            api_ts = idx_resp.get("timestamp", "")
+            try:
+                ts_dt = datetime.fromisoformat(api_ts)
+                ts_str = ts_dt.strftime("%d-%b-%y %I:%M %p")
+            except Exception:
+                ts_str = datetime.now().strftime("%d-%b-%y %I:%M %p")
+
+            # ── Sort and filter by sector ──
+            def _sort_key(item):
+                name = item.get("nse_name") or item.get("index_name", "")
+                is_top = name in _TOP_25_SET
+                sector = _get_sector(name)
+                try:
+                    sect_idx = SECTOR_ORDER.index(sector)
+                except ValueError:
+                    sect_idx = len(SECTOR_ORDER)
+                if is_top:
+                    try:
+                        top_idx = TOP_25_INDICES.index(name)
+                    except ValueError:
+                        top_idx = 999
+                    return (0, top_idx, name)
+                return (1, sect_idx, name)
+
+            # Apply sector filter
+            if sector_filter == "Top 25":
+                filtered = [i for i in idx_list if (i.get("nse_name") or i.get("index_name", "")) in _TOP_25_SET]
+            elif sector_filter != "All Indices":
+                filtered = [i for i in idx_list if _get_sector(i.get("nse_name") or i.get("index_name", "")) == sector_filter]
+            else:
+                filtered = list(idx_list)
+
+            filtered.sort(key=_sort_key)
+
+            st.caption(f"Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {base_idx}")
+            st.markdown(f'<div style="text-align:right;font-size:11px;color:#94a3b8;margin:-4px 0 8px;">Last updated: {ts_str}</div>', unsafe_allow_html=True)
+
+            def _signal_badge(sig):
+                if not sig:
+                    return ""
+                if sig == "BASE":
+                    return '<span class="signal-base">BASE</span>'
+                if "OW" in sig:
+                    return '<span class="signal-ow">' + esc(sig) + '</span>'
+                if "UW" in sig:
+                    return '<span class="signal-uw">' + esc(sig) + '</span>'
+                return '<span class="signal-n">' + esc(sig) + '</span>'
+
+            def _ratio_rec(ratio, sig):
+                if sig == "BASE":
+                    return '<span style="color:#4f46e5;font-weight:500;">Benchmark</span>'
+                if ratio is None:
+                    return "—"
+                if ratio > 1.05:
+                    return '<span style="color:#059669;">Strong relative strength</span>'
+                elif ratio > 1.0:
+                    return '<span style="color:#059669;">Outperforming base</span>'
+                elif ratio < 0.95:
+                    return '<span style="color:#dc2626;">Weak relative strength</span>'
+                elif ratio < 1.0:
+                    return '<span style="color:#dc2626;">Underperforming base</span>'
+                return '<span style="color:#64748b;">In-line with base</span>'
+
+            def _period_return(item, period_key):
+                """Get ratio-based period return from API data."""
+                ratio_returns = item.get("ratio_returns", {})
+                return ratio_returns.get(period_key.lower())
+
+            rows_html = ""
+            current_sector = None
+            for idx in filtered:
+                close = idx.get("last")
+                if close is None:
+                    continue
+                idx_name_raw = idx.get("nse_name") or idx.get("index_name", "")
+                sector = _get_sector(idx_name_raw)
+                is_top = idx_name_raw in _TOP_25_SET
+
+                # Sector header row
+                if sector_filter == "All Indices":
+                    if is_top and current_sector != "__top25__":
+                        current_sector = "__top25__"
+                        rows_html += '<tr class="sector-hdr"><td colspan="7">Top 25 Indices</td></tr>'
+                    elif not is_top and current_sector != sector:
+                        current_sector = sector
+                        rows_html += f'<tr class="sector-hdr"><td colspan="7">{esc(sector)}</td></tr>'
+
+                close_str = "{:,.2f}".format(close) if close > 100 else "{:.4f}".format(close)
+                ratio = idx.get("ratio")
+                ratio_str = "{:.2f}".format(ratio) if ratio is not None else "—"
+                signal = idx.get("signal", "NEUTRAL")
+                chg = idx.get("percentChange")
+                chg_str = "{:+.2f}%".format(chg) if chg is not None else "—"
+                chg_cls = "g" if (chg or 0) >= 0 else "r"
+
+                pret = _period_return(idx, period_filter)
+                pret_str = "{:+.2f}%".format(pret) if pret is not None else "—"
+                pret_cls = "g" if (pret or 0) >= 0 else "r"
+
+                idx_name = esc(idx_name_raw)
+
+                rows_html += f"""<tr>
+                    <td style="font-weight:600;">{idx_name}</td>
+                    <td class="mono">{close_str}</td>
+                    <td class="mono">{ratio_str}</td>
+                    <td>{_signal_badge(signal)}</td>
+                    <td class="mono {chg_cls}">{chg_str}</td>
+                    <td class="mono {pret_cls}">{pret_str}</td>
+                    <td style="font-size:11px;max-width:180px;white-space:normal;">{_ratio_rec(ratio, signal)}</td>
+                </tr>"""
+
+            st.markdown(f"""
+<table class="idx-table">
+    <thead><tr>
+        <th>Index Name</th>
+        <th>Latest Price</th>
+        <th>Ratio to {esc(base_idx)}</th>
+        <th>Signal</th>
+        <th>Daily Chg%</th>
+        <th>{esc(period_filter)} Ratio Return</th>
+        <th>Recommendation</th>
+    </tr></thead>
+    <tbody>{rows_html}</tbody>
+</table>""", unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="empty"><div class="empty-icon">📊</div><h3>Loading index data</h3><p>Fetching live prices from NSE...</p></div>', unsafe_allow_html=True)
+
+        # ── Signal heatmap ──
+        st.markdown('<div style="font-size:12px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.06em;margin:20px 0 8px;">Alert Signal Distribution</div>', unsafe_allow_html=True)
+        tickers_seen = {}
+        for a in alerts:
+            tk = a.get("ticker", "—")
+            sig = a.get("signal_direction", "NEUTRAL")
+            if tk not in tickers_seen:
+                tickers_seen[tk] = {"BULLISH": 0, "BEARISH": 0, "NEUTRAL": 0, "total": 0, "latest": a}
+            tickers_seen[tk][sig] = tickers_seen[tk].get(sig, 0) + 1
+            tickers_seen[tk]["total"] += 1
+
+        sorted_tickers = sorted(tickers_seen.items(), key=lambda x: x[1]["total"], reverse=True)
+
+        heat_html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">'
+        for tk, info in sorted_tickers[:20]:
+            bull_pct = (info["BULLISH"] / info["total"] * 100) if info["total"] else 0
+            bear_pct = (info["BEARISH"] / info["total"] * 100) if info["total"] else 0
+            bg = "#ecfdf5" if bull_pct > bear_pct else ("#fef2f2" if bear_pct > bull_pct else "#f8fafc")
+            border = "#10b981" if bull_pct > bear_pct else ("#ef4444" if bear_pct > bull_pct else "#e5e7eb")
+            latest = info["latest"]
+            latest_price = latest.get("price_at_alert") or latest.get("price_close")
+            price_str = fp(latest_price) if latest_price else "—"
+            heat_html += f"""<div style="background:{bg};border:1px solid {border};border-radius:8px;padding:10px 12px;">
+                <div style="font-size:13px;font-weight:700;color:#0f172a;">{esc(tk)}</div>
+                <div style="font-size:11px;color:#64748b;margin-top:2px;">{price_str}</div>
+                <div style="display:flex;gap:8px;margin-top:6px;">
+                    <span style="font-size:10px;color:#059669;font-weight:600;">▲ {info['BULLISH']}</span>
+                    <span style="font-size:10px;color:#dc2626;font-weight:600;">▼ {info['BEARISH']}</span>
+                    <span style="font-size:10px;color:#94a3b8;">{info['total']} total</span>
+                </div>
+            </div>"""
+        heat_html += '</div>'
+        st.markdown(heat_html, unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ══════════════════════════════
+    # PERFORMANCE — Table Format
+    # ══════════════════════════════
+    elif t == "perf":
+        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
+
+        if not approved:
+            st.markdown('<div class="empty"><div class="empty-icon">📈</div><h3>No approved trades</h3><p>Approve alerts in Trade Center to track performance</p></div>', unsafe_allow_html=True)
+        else:
+            try:
+                perf_data = requests.get(f"{API_URL}/api/performance", timeout=30).json().get("performance", [])
+            except Exception:
+                perf_data = []
+
+            if perf_data:
+                # ── Summary stats ──
+                returns = [p["return_pct"] for p in perf_data if p.get("return_pct") is not None]
+                winners = [r for r in returns if r > 0]
+                losers = [r for r in returns if r < 0]
+                avg_return = sum(returns) / len(returns) if returns else 0
+                hit_rate = (len(winners) / len(returns) * 100) if returns else 0
+                best = max(returns) if returns else 0
+                worst = min(returns) if returns else 0
+
+                st.markdown(f"""<div class="stats-row" style="grid-template-columns: repeat(5, 1fr);">
+                    <div class="stat"><div class="stat-lbl">Avg Return</div><div class="stat-val {'g' if avg_return >= 0 else 'r'}" style="font-size:24px;">{avg_return:+.2f}%</div><div class="stat-sub">Across {len(returns)} trades</div></div>
+                    <div class="stat"><div class="stat-lbl">Hit Rate</div><div class="stat-val" style="font-size:24px;">{hit_rate:.0f}%</div><div class="stat-sub">{len(winners)}W / {len(losers)}L</div></div>
+                    <div class="stat"><div class="stat-lbl">Best Trade</div><div class="stat-val g" style="font-size:24px;">{best:+.2f}%</div><div class="stat-sub">Top performer</div></div>
+                    <div class="stat"><div class="stat-lbl">Worst Trade</div><div class="stat-val r" style="font-size:24px;">{worst:+.2f}%</div><div class="stat-sub">Bottom performer</div></div>
+                    <div class="stat"><div class="stat-lbl">Active Trades</div><div class="stat-val" style="font-size:24px;">{len(perf_data)}</div><div class="stat-sub">Being tracked</div></div>
+                </div>""", unsafe_allow_html=True)
+
+                # ── Performance table ──
+                perf_rows = ""
+                for p in perf_data:
+                    sig = (p.get("signal_direction") or "").upper()
+                    sig_badge = '<span class="chip chip-bull">BULL</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">BEAR</span>' if sig == "BEARISH" else "—")
+                    trigger = p.get("trigger_price")
+                    entry = p.get("entry_price")
+                    curr = p.get("current_price")
+                    ret_pct = p.get("return_pct")
+                    ret_abs = p.get("return_abs")
+                    days = p.get("days_since")
+                    action = p.get("action") or {}
+                    action_call = action.get("action_call", "—")
+                    prio = action.get("priority", "")
+
+                    trigger_str = fp(trigger) if trigger else "—"
+                    entry_str = fp(entry) if entry else "—"
+                    curr_str = fp(curr) if curr else "—"
+                    ret_str = f"{ret_pct:+.2f}%" if ret_pct is not None else "—"
+                    ret_cls = "g" if (ret_pct or 0) >= 0 else "r"
+                    abs_str = f"{ret_abs:+.2f}" if ret_abs is not None else "—"
+                    abs_cls = "g" if (ret_abs or 0) >= 0 else "r"
+                    days_str = f"{days}d" if days is not None else "—"
+
+                    is_ratio = p.get("is_ratio_trade")
+                    ratio_info = p.get("ratio_data")
+                    ticker_label = esc(p.get("ticker", "—"))
+                    if is_ratio and ratio_info:
+                        ticker_label += f'<div style="font-size:9px;color:#64748b;">{esc(ratio_info.get("numerator_ticker",""))} / {esc(ratio_info.get("denominator_ticker",""))}</div>'
+
+                    prio_str = ""
+                    if prio == "IMMEDIATELY": prio_str = '<span class="chip chip-imm">Now</span>'
+                    elif prio == "WITHIN_A_WEEK": prio_str = '<span class="chip chip-wk">Week</span>'
+                    elif prio == "WITHIN_A_MONTH": prio_str = '<span class="chip chip-mo">Month</span>'
+
+                    perf_rows += f"""<tr>
+                        <td style="font-weight:600;">{ticker_label}</td>
+                        <td>{sig_badge}</td>
+                        <td class="mono">{trigger_str}</td>
+                        <td class="mono">{entry_str}</td>
+                        <td class="mono" style="color:#2563eb;font-weight:600;">{curr_str}</td>
+                        <td class="mono {ret_cls}">{ret_str}</td>
+                        <td class="mono {abs_cls}">{abs_str}</td>
+                        <td class="mono">{days_str}</td>
+                        <td>{esc(action_call)}</td>
+                        <td>{prio_str}</td>
+                    </tr>"""
+
+                st.markdown(f"""
+<table class="idx-table">
+    <thead><tr>
+        <th>Ticker</th><th>Signal</th><th>Trigger</th><th>Entry</th><th>Current</th>
+        <th>Return%</th><th>Abs</th><th>Days</th><th>Action</th><th>Priority</th>
+    </tr></thead>
+    <tbody>{perf_rows}</tbody>
+</table>""", unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="empty"><div class="empty-icon">⏳</div><h3>Loading performance data</h3><p>Fetching live prices…</p></div>', unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
 
 
 if __name__ == "__main__":

@@ -96,6 +96,8 @@ class AlertAction(Base):
     is_ratio     = Column(Boolean, default=False)
     ratio_long   = Column(String(100), nullable=True)   # "LONG 60% RELIANCE"
     ratio_short  = Column(String(100), nullable=True)   # "SHORT 40% HDFCBANK"
+    ratio_numerator_ticker   = Column(String(50), nullable=True)   # proxy ticker for numerator
+    ratio_denominator_ticker = Column(String(50), nullable=True)   # proxy ticker for denominator
 
     # Priority
     priority     = Column(SQLEnum(ActionPriority), nullable=True)
@@ -110,6 +112,27 @@ class AlertAction(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     alert = relationship("TradingViewAlert", back_populates="action")
+
+
+# ─── Index Prices (EOD) ────────────────────────────────
+
+class IndexPrice(Base):
+    __tablename__ = "index_prices"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    date        = Column(String(10), nullable=False)   # "YYYY-MM-DD"
+    index_name  = Column(String(50), nullable=False)   # e.g. "NIFTY", "BANKNIFTY"
+    close_price = Column(Float, nullable=True)
+    open_price  = Column(Float, nullable=True)
+    high_price  = Column(Float, nullable=True)
+    low_price   = Column(Float, nullable=True)
+    volume      = Column(Float, nullable=True)
+    fetched_at  = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index('idx_indexprice_date_name', 'date', 'index_name', unique=True),
+        Index('idx_indexprice_name', 'index_name'),
+    )
 
 
 # ─── Init ───────────────────────────────────────────────
@@ -131,6 +154,8 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN action_call VARCHAR(50)",
         "ALTER TABLE alert_actions ADD COLUMN chart_analysis TEXT",
         "ALTER TABLE tradingview_alerts ADD COLUMN price_at_alert FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN ratio_numerator_ticker VARCHAR(50)",
+        "ALTER TABLE alert_actions ADD COLUMN ratio_denominator_ticker VARCHAR(50)",
     ]
     for sql in migrations:
         try:

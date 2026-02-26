@@ -16,3 +16,5 @@ httpx
 websockets
 apscheduler
 psycopg2-binary
+nselib>=2.4
+streamlit-autorefresh
