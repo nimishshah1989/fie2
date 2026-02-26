@@ -1,19 +1,17 @@
 """
-FIE — Financial Intelligence Engine Dashboard
-Jhaveri Securities Intelligence Platform
-5-Tab Streamlit Frontend: Command Center | Trade Center | Alert Database | Performance | Market Pulse
+FIE — Financial Intelligence Engine Dashboard v3
+Jhaveri Securities · 5-Tab Streamlit Frontend
+Fixes: grid card layout, Trade Center approval flow, yfinance-only Market Pulse
 """
 
 import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timezone, timedelta
-import json
 import base64
 import os
 import pytz
 
-# ─── Config ────────────────────────────────────────────
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 IST = pytz.timezone("Asia/Kolkata")
 
@@ -24,339 +22,213 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ─── CSS ───────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# GLOBAL CSS
+# ══════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
 
 :root {
-    --bg: #F4F5F7;
-    --surface: #FFFFFF;
-    --surface2: #F8F9FB;
-    --border: #E2E4E9;
-    --border2: #CDD1DA;
-    --text: #0F1117;
-    --text2: #4A5568;
-    --text3: #8892A4;
-    --bull: #0A8A4E;
-    --bull-bg: #E8F7EF;
-    --bear: #D92B2B;
-    --bear-bg: #FEF0F0;
-    --neutral: #6B7280;
-    --neutral-bg: #F3F4F6;
-    --accent: #1A56DB;
-    --accent-bg: #EBF1FF;
-    --gold: #B7791F;
-    --gold-bg: #FEFCE8;
-    --radius: 10px;
-    --shadow: 0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+  --bg:        #0D0F14;
+  --surface:   #161920;
+  --surface2:  #1E2230;
+  --surface3:  #252A3A;
+  --border:    #2A2F42;
+  --border2:   #3A4060;
+  --text:      #E8ECF4;
+  --text2:     #8B92A8;
+  --text3:     #555D75;
+  --bull:      #00C896;
+  --bull-dim:  #003D2E;
+  --bear:      #FF4757;
+  --bear-dim:  #3D0010;
+  --neutral:   #8B92A8;
+  --accent:    #4A7AFF;
+  --accent-dim:#0D1A40;
+  --gold:      #FFB830;
+  --gold-dim:  #2D2000;
+  --radius:    8px;
+  --radius-lg: 12px;
 }
 
-* { font-family: 'IBM Plex Sans', -apple-system, sans-serif !important; }
-code, .mono { font-family: 'IBM Plex Mono', monospace !important; }
+*, *::before, *::after {
+  font-family: 'Space Grotesk', -apple-system, sans-serif !important;
+  box-sizing: border-box;
+}
 
-.stApp { background: var(--bg) !important; }
-.main .block-container { padding: 0 1.5rem 2rem 1.5rem !important; max-width: 1500px !important; }
-#MainMenu, footer, .stDeployButton, div[data-testid="stToolbar"],
-div[data-testid="stDecoration"], div[data-testid="stStatusWidget"] { display: none !important; }
-header[data-testid="stHeader"] { background: var(--surface) !important; border-bottom: 1px solid var(--border) !important; }
+.stApp { background: var(--bg) !important; color: var(--text) !important; }
+.main .block-container { padding: 0 20px 40px 20px !important; max-width: 1400px !important; }
+#MainMenu, footer, .stDeployButton,
+div[data-testid="stToolbar"], div[data-testid="stDecoration"],
+div[data-testid="stStatusWidget"] { display: none !important; }
+header[data-testid="stHeader"] { height: 0 !important; min-height: 0 !important; }
 section[data-testid="stSidebar"] { display: none !important; }
+div[data-testid="stMarkdownContainer"] p { color: var(--text) !important; }
 
-/* ── Top Nav Header ── */
-.fie-header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 1.5rem;
-    margin: 0 -1.5rem 1.5rem -1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 2rem;
-    height: 56px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    box-shadow: 0 1px 0 var(--border);
+/* ── Top header ── */
+.top-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  margin: 0 -20px 20px -20px;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 52px;
 }
-.fie-brand {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--text);
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+.top-brand {
+  font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text); display: flex; align-items: center; gap: 10px;
 }
-.fie-brand span.bolt { color: var(--accent); font-size: 18px; }
-.fie-live-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--bull);
-    display: inline-block;
-    animation: pulse-dot 2s infinite;
+.live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--bull);
+  animation: blink 2s infinite;
 }
-@keyframes pulse-dot {
-    0%,100% { opacity:1; transform: scale(1); }
-    50% { opacity:0.5; transform: scale(0.8); }
-}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+.top-stats { display: flex; gap: 24px; }
+.top-stat { font-size: 12px; color: var(--text2); }
+.top-stat strong { color: var(--text); font-weight: 600; }
 
-/* ── Tab Navigation ── */
+/* ── Tabs ── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 0 !important;
-    background: transparent !important;
-    border-bottom: 2px solid var(--border) !important;
-    padding: 0 !important;
+  gap: 0 !important; background: var(--surface) !important;
+  border-bottom: 1px solid var(--border) !important;
+  padding: 0 20px !important;
+  margin: 0 -20px 24px -20px !important;
 }
 .stTabs [data-baseweb="tab"] {
-    padding: 10px 20px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    color: var(--text3) !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
-    margin-bottom: -2px !important;
-    letter-spacing: 0.01em !important;
+  padding: 12px 18px !important; font-size: 11px !important;
+  font-weight: 700 !important; letter-spacing: 0.08em !important;
+  text-transform: uppercase !important; color: var(--text3) !important;
+  border-radius: 0 !important; background: transparent !important;
+  border: none !important; border-bottom: 2px solid transparent !important;
+  margin-bottom: -1px !important;
 }
-.stTabs [aria-selected="true"] {
-    color: var(--accent) !important;
-    border-bottom: 2px solid var(--accent) !important;
-    background: transparent !important;
-}
-.stTabs [data-baseweb="tab-panel"] { padding: 1.5rem 0 0 0 !important; }
+.stTabs [aria-selected="true"] { color: var(--accent) !important; border-bottom: 2px solid var(--accent) !important; }
+.stTabs [data-baseweb="tab-panel"] { padding: 0 !important; }
 
-/* ── Cards ── */
+/* ── Stat row ── */
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+.stat-num { font-family: 'JetBrains Mono', monospace !important; font-size: 24px; font-weight: 600; color: var(--text); line-height: 1; }
+.stat-num.bull { color: var(--bull); }
+.stat-num.bear { color: var(--bear); }
+.stat-lbl { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); margin-top: 4px; }
+
+/* ── Card grid ── */
+.card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+/* ── Alert card ── */
 .alert-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 18px 20px;
-    margin-bottom: 12px;
-    box-shadow: var(--shadow);
-    position: relative;
-    overflow: hidden;
-    transition: box-shadow 0.15s;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+  position: relative; overflow: hidden;
+  transition: border-color .15s, transform .1s;
 }
-.alert-card:hover { box-shadow: var(--shadow-md); }
-.alert-card.bull { border-left: 4px solid var(--bull); }
-.alert-card.bear { border-left: 4px solid var(--bear); }
-.alert-card.neutral { border-left: 4px solid var(--neutral); }
-.alert-card.approved { border-left: 4px solid var(--bull); }
-.alert-card.denied { border-left: 4px solid var(--bear); }
+.alert-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+.alert-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+}
+.alert-card.bull::before { background: var(--bull); }
+.alert-card.bear::before { background: var(--bear); }
+.alert-card.neutral::before { background: var(--neutral); }
+.alert-card.approved::before { background: var(--bull); }
+.alert-card.denied::before { background: var(--bear); }
 
-.card-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    margin-bottom: 12px;
-    gap: 12px;
-}
-.card-ticker {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text);
-    letter-spacing: -0.01em;
-    line-height: 1;
-}
-.card-name { font-size: 11px; color: var(--text3); margin-top: 3px; letter-spacing: 0.02em; }
-.card-price {
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--text);
-    text-align: right;
-    line-height: 1;
-}
-.card-price-label { font-size: 10px; color: var(--text3); text-align: right; margin-top: 2px; letter-spacing: 0.04em; text-transform: uppercase; }
-.card-ts { font-size: 11px; color: var(--text3); font-family: 'IBM Plex Mono', monospace !important; text-align: right; }
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.card-ticker { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; line-height: 1; }
+.card-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.card-price { font-family: 'JetBrains Mono', monospace !important; font-size: 18px; font-weight: 500; color: var(--text); text-align: right; line-height: 1; }
+.card-ts { font-family: 'JetBrains Mono', monospace !important; font-size: 10px; color: var(--text3); text-align: right; margin-top: 3px; }
 
 /* ── Pills ── */
-.pill {
-    display: inline-flex;
-    align-items: center;
-    padding: 3px 10px;
-    border-radius: 100px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    line-height: 1.6;
-}
-.pill-bull { background: var(--bull-bg); color: var(--bull); }
-.pill-bear { background: var(--bear-bg); color: var(--bear); }
-.pill-neutral { background: var(--neutral-bg); color: var(--neutral); }
-.pill-pending { background: #FFF7ED; color: #C05621; }
-.pill-approved { background: var(--bull-bg); color: var(--bull); }
-.pill-denied { background: var(--bear-bg); color: var(--bear); }
-.pill-blue { background: var(--accent-bg); color: var(--accent); }
-.pill-gold { background: var(--gold-bg); color: var(--gold); }
-.pill-high { background: #FEF0F0; color: #C53030; }
-.pill-medium { background: #FFFBEB; color: #B7791F; }
-.pill-low { background: var(--bull-bg); color: var(--bull); }
+.pills { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+.pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.6; }
+.p-bull { background: var(--bull-dim); color: var(--bull); border: 1px solid #00C89630; }
+.p-bear { background: var(--bear-dim); color: var(--bear); border: 1px solid #FF475730; }
+.p-neutral { background: var(--surface3); color: var(--neutral); border: 1px solid var(--border); }
+.p-pending { background: var(--gold-dim); color: var(--gold); border: 1px solid #FFB83030; }
+.p-approved { background: var(--bull-dim); color: var(--bull); border: 1px solid #00C89630; }
+.p-denied { background: var(--bear-dim); color: var(--bear); border: 1px solid #FF475730; }
+.p-accent { background: var(--accent-dim); color: var(--accent); border: 1px solid #4A7AFF30; }
+.p-high { background: var(--bear-dim); color: var(--bear); border: 1px solid #FF475730; }
+.p-medium { background: var(--gold-dim); color: var(--gold); border: 1px solid #FFB83030; }
+.p-low { background: var(--bull-dim); color: var(--bull); border: 1px solid #00C89630; }
 
-/* ── Indicator Chips ── */
-.ind-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
-.ind-chip {
-    font-family: 'IBM Plex Mono', monospace !important;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text2);
-    white-space: nowrap;
-}
-.ind-chip.red { background: var(--bear-bg); border-color: #FCA5A5; color: var(--bear); }
-.ind-chip.green { background: var(--bull-bg); border-color: #6EE7B7; color: var(--bull); }
-.ind-chip.amber { background: #FFFBEB; border-color: #FCD34D; color: #92400E; }
+/* ── Chips ── */
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.chip { font-family: 'JetBrains Mono', monospace !important; font-size: 10px; padding: 2px 7px; border-radius: 3px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); white-space: nowrap; }
+.chip.c-bull { background: var(--bull-dim); border-color: #00C89625; color: var(--bull); }
+.chip.c-bear { background: var(--bear-dim); border-color: #FF475725; color: var(--bear); }
+.chip.c-warn { background: var(--gold-dim); border-color: #FFB83025; color: var(--gold); }
 
-/* ── Confluence Bar ── */
-.confluence-bar-wrap { margin: 10px 0 6px 0; }
-.confluence-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
-.confluence-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; position: relative; }
-.confluence-fill-bull { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #0A8A4E, #34D399); }
-.confluence-fill-bear { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #D92B2B, #F87171); float: right; }
+/* ── Confluence bar ── */
+.conf-wrap { margin: 6px 0 4px; }
+.conf-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); margin-bottom: 3px; }
+.conf-track { height: 3px; border-radius: 2px; background: var(--surface3); display: flex; overflow: hidden; }
+.conf-bull { background: var(--bull); border-radius: 2px 0 0 2px; }
+.conf-bear { background: var(--bear); border-radius: 0 2px 2px 0; }
 
-/* ── AI Commentary ── */
-.ai-commentary {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    margin: 10px 0 0 0;
-    font-size: 13px;
-    line-height: 1.65;
-    color: var(--text2);
-}
-.ai-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+/* ── AI box ── */
+.ai-box { background: var(--surface2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 10px 12px; margin-top: 8px; font-size: 12px; line-height: 1.7; color: var(--text2); }
+.ai-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
 
-/* ── Stat Cards ── */
-.stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 16px 20px;
-    box-shadow: var(--shadow);
-}
-.stat-value {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--text);
-    line-height: 1;
-}
-.stat-label { font-size: 11px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
+/* ── Section header ── */
+.sec-hdr { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
 
-/* ── Filter Bar ── */
-.filter-bar {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    margin-bottom: 16px;
-    box-shadow: var(--shadow);
-}
+/* ── Detail grid ── */
+.det-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 10px 0; }
+.det-cell { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.det-lbl { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); margin-bottom: 3px; }
+.det-val { font-family: 'JetBrains Mono', monospace !important; font-size: 12px; font-weight: 500; color: var(--text); }
 
-/* ── Section Header ── */
-.section-header {
-    font-family: 'Syne', sans-serif !important;
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text3);
-    padding: 0 0 10px 0;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 16px;
-}
+/* ── Action panel ── */
+.action-panel { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.action-hdr { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); margin-bottom: 10px; }
 
-/* ── Market Pulse Table ── */
-.pulse-table { width: 100%; border-collapse: collapse; }
-.pulse-table th {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text3);
-    padding: 8px 12px;
-    border-bottom: 2px solid var(--border);
-    text-align: right;
-}
-.pulse-table th:first-child { text-align: left; }
-.pulse-table td {
-    font-size: 13px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    color: var(--text);
-    text-align: right;
-    font-family: 'IBM Plex Mono', monospace !important;
-}
-.pulse-table td:first-child { text-align: left; font-family: 'IBM Plex Sans', sans-serif !important; font-size: 13px; font-weight: 500; }
-.pulse-table tr:hover td { background: var(--surface2); }
-.chg-pos { color: var(--bull) !important; }
-.chg-neg { color: var(--bear) !important; }
-.chg-neutral { color: var(--neutral) !important; }
+/* ── Streamlit overrides ── */
+div[data-testid="stExpander"] { background: var(--surface) !important; border: 1px solid var(--border) !important; border-radius: var(--radius) !important; }
+div[data-testid="stExpanderDetails"] { background: var(--surface) !important; }
+.stSelectbox div[data-baseweb="select"] > div { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; border-radius: 6px !important; font-size: 13px !important; }
+.stTextInput input, .stNumberInput input, .stTextArea textarea { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; border-radius: 6px !important; font-size: 13px !important; }
+label[data-testid] { color: var(--text2) !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.06em !important; text-transform: uppercase !important; }
+.stButton button { border-radius: 6px !important; font-size: 12px !important; font-weight: 600 !important; letter-spacing: 0.04em !important; border: none !important; }
+.stButton button[kind="primary"] { background: var(--accent) !important; color: #fff !important; }
+.stButton button[kind="secondary"] { background: var(--surface3) !important; color: var(--text) !important; border: 1px solid var(--border) !important; }
+div[data-testid="stFileUploader"] > div { background: var(--surface2) !important; border-color: var(--border) !important; border-radius: 6px !important; }
+.stDataFrame { background: var(--surface) !important; }
+div[data-testid="stCaption"] { color: var(--text3) !important; font-size: 11px !important; }
+hr { border-color: var(--border) !important; margin: 10px 0 !important; }
+p, li { color: var(--text) !important; }
 
-/* ── Performance Table ── */
-.perf-pos { color: var(--bull); font-weight: 600; }
-.perf-neg { color: var(--bear); font-weight: 600; }
+/* ── Market Pulse table ── */
+.pt { width: 100%; border-collapse: collapse; margin-bottom: 2px; }
+.pt-cat { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text3); padding: 16px 10px 8px; }
+.pt th { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text3); padding: 8px 10px; border-bottom: 1px solid var(--border2); text-align: right; background: var(--surface2); }
+.pt th:first-child { text-align: left; }
+.pt td { font-family: 'JetBrains Mono', monospace !important; font-size: 12px; padding: 9px 10px; border-bottom: 1px solid var(--border); color: var(--text); text-align: right; }
+.pt td:first-child { font-family: 'Space Grotesk', sans-serif !important; font-size: 13px; font-weight: 500; text-align: left; color: var(--text); }
+.pt tr:hover td { background: var(--surface2); }
+.up { color: var(--bull) !important; font-weight: 600; }
+.dn { color: var(--bear) !important; font-weight: 600; }
+.flat { color: var(--text3) !important; }
 
-/* ── Action Button Overrides ── */
-.stButton button {
-    border-radius: 8px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    padding: 6px 16px !important;
-    transition: all 0.15s !important;
-    letter-spacing: 0.01em !important;
-}
-.stButton button:hover { transform: translateY(-1px) !important; }
-
-/* ── Form elements ── */
-.stSelectbox div[data-baseweb="select"] > div { border-radius: 8px !important; background: var(--surface) !important; border-color: var(--border) !important; }
-.stTextInput input, .stTextArea textarea { border-radius: 8px !important; font-size: 13px !important; }
-.stFileUploader { border-radius: 8px !important; }
-
-/* ── No data state ── */
-.no-data {
-    text-align: center;
-    padding: 48px 24px;
-    color: var(--text3);
-    font-size: 14px;
-}
-.no-data-icon { font-size: 32px; margin-bottom: 12px; }
-
-/* ── Divider ── */
-.card-divider { height: 1px; background: var(--border); margin: 12px 0; }
-
-/* ── Detail Grid ── */
-.detail-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 12px 0; }
-.detail-cell { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
-.detail-cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 4px; }
-.detail-cell-value { font-family: 'IBM Plex Mono', monospace !important; font-size: 13px; font-weight: 500; color: var(--text); }
-
-/* ── Chart Image ── */
-.chart-img-wrap { border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-top: 10px; }
-.chart-img-wrap img { width: 100%; display: block; }
-
-/* ── Expander ── */
-.stExpander { border: 1px solid var(--border) !important; border-radius: var(--radius) !important; background: var(--surface) !important; box-shadow: var(--shadow) !important; }
-.stExpander header { font-weight: 500 !important; font-size: 14px !important; }
+/* ── No data ── */
+.no-data { text-align: center; padding: 60px 24px; color: var(--text3); font-size: 13px; }
+.no-data-icon { font-size: 28px; margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ─── Utilities ─────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# HELPERS
+# ══════════════════════════════════════════════════════════
 
 def api_get(path, params=None):
     try:
         r = requests.get(f"{API_BASE}{path}", params=params, timeout=10)
         r.raise_for_status()
         return r.json()
-    except Exception as e:
+    except:
         return None
 
 def api_post(path, payload):
@@ -367,232 +239,205 @@ def api_post(path, payload):
     except Exception as e:
         return {"error": str(e)}
 
+def api_delete(path):
+    try:
+        r = requests.delete(f"{API_BASE}{path}", timeout=10)
+        return r.status_code == 200
+    except:
+        return False
+
 def fmt_ist(dt_str):
-    """Format UTC ISO string to dd-Mon-YY HH:MM AM/PM IST"""
-    if not dt_str:
-        return "—"
+    if not dt_str: return "—"
     try:
         dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        ist_dt = dt.astimezone(IST)
-        return ist_dt.strftime("%d-%b-%y %I:%M %p IST")
+        if dt.tzinfo is None: dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(IST).strftime("%d-%b-%y %I:%M %p IST")
     except:
         return dt_str[:16] if dt_str else "—"
 
 def price_fmt(p):
-    if p is None:
-        return "—"
+    if p is None: return "—"
     try:
         v = float(p)
-        if v >= 10000:
-            return f"₹{v:,.0f}"
-        elif v >= 100:
-            return f"₹{v:,.2f}"
-        else:
-            return f"₹{v:.4f}"
-    except:
-        return "—"
+        if v >= 10000: return f"₹{v:,.0f}"
+        elif v >= 100: return f"₹{v:,.2f}"
+        else: return f"₹{v:.4f}"
+    except: return "—"
 
-def signal_pill(direction):
-    d = (direction or "NEUTRAL").upper()
-    if d == "BULLISH":
-        return '<span class="pill pill-bull">▲ Bullish</span>'
-    elif d == "BEARISH":
-        return '<span class="pill pill-bear">▼ Bearish</span>'
-    else:
-        return '<span class="pill pill-neutral">◆ Neutral</span>'
-
-def status_pill(status):
-    s = (status or "PENDING").upper()
-    cls_map = {"PENDING": "pill-pending", "APPROVED": "pill-approved", "DENIED": "pill-denied", "REVIEW_LATER": "pill-blue"}
-    return f'<span class="pill {cls_map.get(s, "pill-neutral")}">{s}</span>'
-
-def conviction_pill(c):
-    c = (c or "MEDIUM").upper()
-    cls = {"HIGH": "pill-high", "MEDIUM": "pill-medium", "LOW": "pill-low"}
-    return f'<span class="pill {cls.get(c, "pill-neutral")}">{c}</span>'
-
-def card_class(direction):
+def card_cls(direction):
     d = (direction or "NEUTRAL").upper()
     return {"BULLISH": "bull", "BEARISH": "bear"}.get(d, "neutral")
 
-def ind_chips_html(indicators, compact=False):
-    """Build indicator chip row HTML."""
-    if not indicators:
-        return ""
-    chips = []
+def sig_pill(d):
+    d = (d or "NEUTRAL").upper()
+    if d == "BULLISH": return '<span class="pill p-bull">▲ Bullish</span>'
+    if d == "BEARISH": return '<span class="pill p-bear">▼ Bearish</span>'
+    return '<span class="pill p-neutral">◆ Neutral</span>'
 
-    rsi = indicators.get("rsi")
+def status_pill(s):
+    s = (s or "PENDING").upper()
+    cls = {"PENDING": "p-pending", "APPROVED": "p-approved", "DENIED": "p-denied", "REVIEW_LATER": "p-accent"}
+    return f'<span class="pill {cls.get(s,"p-neutral")}">{s}</span>'
+
+def conv_pill(c):
+    c = (c or "MEDIUM").upper()
+    cls = {"HIGH": "p-high", "MEDIUM": "p-medium", "LOW": "p-low"}
+    return f'<span class="pill {cls.get(c,"p-neutral")}">{c}</span>'
+
+TF_MAP = {"1":"1m","3":"3m","5":"5m","15":"15m","30":"30m","60":"1H","D":"Daily","W":"Weekly"}
+def tf_label(i): return TF_MAP.get(str(i or ""), str(i or "—"))
+
+def display_name(a):
+    aname = (a.get("alert_name") or "").strip()
+    ticker = a.get("ticker") or "—"
+    return aname if aname and aname not in ("System Trigger", "Manual Alert") else f"{ticker} Signal"
+
+def chips_html(ind, full=False):
+    if not ind: return ""
+    c = []
+    rsi = ind.get("rsi")
     if rsi is not None:
         v = float(rsi)
-        cls = "red" if v > 70 else "green" if v < 30 else ""
-        chips.append(f'<span class="ind-chip {cls}">RSI {v:.0f}</span>')
-
-    macd_hist = indicators.get("macd_hist")
-    if macd_hist is not None:
-        v = float(macd_hist)
-        cls = "green" if v > 0 else "red"
-        chips.append(f'<span class="ind-chip {cls}">MACD {"+" if v>0 else ""}{v:.4f}</span>')
-
-    st = indicators.get("supertrend_dir")
-    if st:
-        cls = "green" if st == "BULLISH" else "red"
-        chips.append(f'<span class="ind-chip {cls}">ST {st[:4]}</span>')
-
-    adx = indicators.get("adx")
+        cls = "c-bear" if v > 70 else "c-bull" if v < 30 else ""
+        c.append(f'<span class="chip {cls}">RSI {v:.0f}</span>')
+    mh = ind.get("macd_hist")
+    if mh is not None:
+        v = float(mh)
+        c.append(f'<span class="chip {"c-bull" if v>0 else "c-bear"}">MACD {v:+.4f}</span>')
+    st_ = ind.get("supertrend_dir")
+    if st_:
+        c.append(f'<span class="chip {"c-bull" if st_=="BULLISH" else "c-bear"}">ST {st_[:4]}</span>')
+    adx = ind.get("adx")
     if adx is not None:
         v = float(adx)
-        cls = "amber" if v > 25 else ""
-        chips.append(f'<span class="ind-chip {cls}">ADX {v:.0f}</span>')
-
-    ma = indicators.get("ma_alignment")
+        c.append(f'<span class="chip {"c-warn" if v>25 else ""}">ADX {v:.0f}</span>')
+    ma = ind.get("ma_alignment")
     if ma:
-        cls = "green" if ma == "BULL" else "red" if ma == "BEAR" else ""
-        chips.append(f'<span class="ind-chip {cls}">MA {ma}</span>')
-
-    htf = indicators.get("htf_trend")
+        cls = "c-bull" if "BULL" in ma else "c-bear" if "BEAR" in ma else ""
+        c.append(f'<span class="chip {cls}">MA {ma}</span>')
+    htf = ind.get("htf_trend")
     if htf:
-        cls = "green" if htf == "BULLISH" else "red" if htf == "BEARISH" else ""
-        chips.append(f'<span class="ind-chip {cls}">HTF {htf[:4]}</span>')
-
-    if not compact:
-        bb = indicators.get("bb_pctb")
+        c.append(f'<span class="chip {"c-bull" if htf=="BULLISH" else "c-bear" if htf=="BEARISH" else ""}">HTF {htf[:4]}</span>')
+    if full:
+        bb = ind.get("bb_pctb")
         if bb is not None:
             v = float(bb)
-            cls = "red" if v > 0.8 else "green" if v < 0.2 else ""
-            chips.append(f'<span class="ind-chip {cls}">BB%B {v:.2f}</span>')
-
-        vr = indicators.get("vol_ratio")
+            c.append(f'<span class="chip {"c-bear" if v>0.8 else "c-bull" if v<0.2 else ""}">BB%B {v:.2f}</span>')
+        vr = ind.get("vol_ratio")
         if vr is not None:
             v = float(vr)
-            cls = "amber" if v > 1.5 else ""
-            chips.append(f'<span class="ind-chip {cls}">Vol {v:.1f}x</span>')
-
-        cp = indicators.get("candle_pattern")
+            c.append(f'<span class="chip {"c-warn" if v>1.5 else ""}">Vol {v:.1f}x</span>')
+        cp = ind.get("candle_pattern")
         if cp and cp.upper() not in ("NONE", ""):
-            chips.append(f'<span class="ind-chip amber">{cp}</span>')
+            c.append(f'<span class="chip c-warn">{cp}</span>')
+    return f'<div class="chips">{"".join(c)}</div>'
 
-    return f'<div class="ind-row">{"".join(chips)}</div>'
-
-def confluence_bar_html(indicators):
-    if not indicators:
-        return ""
-    bull = indicators.get("confluence_bull_score") or indicators.get("confluence_bull") or 0
-    bear = indicators.get("confluence_bear_score") or indicators.get("confluence_bear") or 0
+def conf_bar_html(ind):
+    if not ind: return ""
+    bull = ind.get("confluence_bull_score") or ind.get("confluence_bull") or 0
+    bear = ind.get("confluence_bear_score") or ind.get("confluence_bear") or 0
     try:
         bull, bear = float(bull), float(bear)
         total = bull + bear
-        if total == 0:
-            return ""
-        bull_pct = (bull / total) * 100
-        bear_pct = (bear / total) * 100
-        return f"""<div class="confluence-bar-wrap">
-<div class="confluence-label">Confluence — Bull {bull:.0f} vs Bear {bear:.0f}</div>
-<div class="confluence-bar">
-  <div class="confluence-fill-bull" style="width:{bull_pct:.1f}%;float:left;"></div>
-  <div class="confluence-fill-bear" style="width:{bear_pct:.1f}%;"></div>
+        if total == 0: return ""
+        bp, brp = (bull/total)*100, (bear/total)*100
+        return f"""<div class="conf-wrap">
+<div class="conf-lbl">Confluence — Bull {bull:.0f} vs Bear {bear:.0f}</div>
+<div class="conf-track">
+  <div class="conf-bull" style="width:{bp:.1f}%"></div>
+  <div class="conf-bear" style="width:{brp:.1f}%"></div>
 </div></div>"""
-    except:
-        return ""
+    except: return ""
+
+def fv(ind, k, dec=2):
+    v = (ind or {}).get(k)
+    if v is None: return "—"
+    try: return f"{float(v):.{dec}f}"
+    except: return str(v)
 
 
-# ─── Header ────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# HEADER
+# ══════════════════════════════════════════════════════════
 stats = api_get("/api/stats") or {}
-pending = stats.get("pending", 0)
-total = stats.get("total_alerts", 0)
+pending_ct = stats.get("pending", 0)
+total_ct = stats.get("total_alerts", 0)
 
 st.markdown(f"""
-<div class="fie-header">
-  <div class="fie-brand">
-    <span class="bolt">⚡</span> FIE &nbsp;·&nbsp; JHAVERI SECURITIES
-    <div class="fie-live-dot"></div>
+<div class="top-bar">
+  <div class="top-brand">⚡ FIE · Jhaveri Securities <div class="live-dot"></div></div>
+  <div class="top-stats">
+    <div class="top-stat">Pending <strong>{pending_ct}</strong></div>
+    <div class="top-stat">Total <strong>{total_ct}</strong></div>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-
-# ─── Tabs ───────────────────────────────────────────────
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "⚡ Command Center",
-    "🎯 Trade Center",
-    "📁 Alert Database",
-    "📊 Performance",
-    "🌐 Market Pulse",
+    "⚡  Command Center",
+    "🎯  Trade Center",
+    "📁  Alert Database",
+    "📊  Performance",
+    "🌐  Market Pulse",
 ])
 
 
 # ══════════════════════════════════════════════════════════
 # TAB 1 — COMMAND CENTER
+# Auto-refreshes every 3s via st.fragment — no page reload
 # ══════════════════════════════════════════════════════════
 with tab1:
     @st.fragment(run_every=3)
     def command_center():
         data = api_get("/api/alerts", {"status": "PENDING", "limit": 50}) or {}
         alerts = data.get("alerts", [])
+        bull_ct = sum(1 for a in alerts if (a.get("signal_direction","") or "").upper() == "BULLISH")
+        bear_ct = sum(1 for a in alerts if (a.get("signal_direction","") or "").upper() == "BEARISH")
 
-        # Stats row
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.markdown(f'<div class="stat-card"><div class="stat-value">{len(alerts)}</div><div class="stat-label">Pending Alerts</div></div>', unsafe_allow_html=True)
-        with c2:
-            bull_count = sum(1 for a in alerts if (a.get("signal_direction","") or "").upper() == "BULLISH")
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:var(--bull)">{bull_count}</div><div class="stat-label">Bullish Signals</div></div>', unsafe_allow_html=True)
-        with c3:
-            bear_count = sum(1 for a in alerts if (a.get("signal_direction","") or "").upper() == "BEARISH")
-            st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:var(--bear)">{bear_count}</div><div class="stat-label">Bearish Signals</div></div>', unsafe_allow_html=True)
-        with c4:
-            st.markdown(f'<div class="stat-card"><div class="stat-value">{total}</div><div class="stat-label">Total Alerts</div></div>', unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(f"""<div class="stat-row">
+<div class="stat-card"><div class="stat-num">{len(alerts)}</div><div class="stat-lbl">Pending</div></div>
+<div class="stat-card"><div class="stat-num bull">{bull_ct}</div><div class="stat-lbl">Bullish</div></div>
+<div class="stat-card"><div class="stat-num bear">{bear_ct}</div><div class="stat-lbl">Bearish</div></div>
+<div class="stat-card"><div class="stat-num">{total_ct}</div><div class="stat-lbl">All Time</div></div>
+</div>""", unsafe_allow_html=True)
 
         if not alerts:
-            st.markdown('<div class="no-data"><div class="no-data-icon">📭</div>No pending alerts. System is monitoring.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="no-data"><div class="no-data-icon">📭</div>No pending alerts. System monitoring active.</div>', unsafe_allow_html=True)
             return
 
-        st.markdown(f'<div class="section-header">Live Pending Alerts · {len(alerts)} signals</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sec-hdr">Live Feed · {len(alerts)} signals</div>', unsafe_allow_html=True)
 
+        # Render cards in a 2-column grid
+        st.markdown('<div class="card-grid">', unsafe_allow_html=True)
         for a in alerts:
-            direction = (a.get("signal_direction") or "NEUTRAL").upper()
+            d = (a.get("signal_direction") or "NEUTRAL").upper()
             ind = a.get("indicators") or {}
-            cls = card_class(direction)
-
+            cls = card_cls(d)
             ts = fmt_ist(a.get("received_at"))
             price = price_fmt(a.get("price_at_alert"))
+            ticker = a.get("ticker") or "—"
+            dname = display_name(a)
+            tf = tf_label(a.get("interval"))
+            asset = a.get("asset_class") or "—"
             summary = a.get("signal_summary") or a.get("alert_message") or "Signal received."
 
-            chips_html = ind_chips_html(ind, compact=True)
-            conf_html = confluence_bar_html(ind)
-            sig_pill = signal_pill(direction)
-            s_pill = status_pill("PENDING")
-
-            asset = a.get("asset_class") or "—"
-            interval = a.get("interval") or "—"
-            tf_map = {"1":"1m","3":"3m","5":"5m","15":"15m","30":"30m","60":"1H","D":"Daily","W":"Weekly"}
-            tf = tf_map.get(str(interval), f"{interval}")
-
-            st.markdown(f"""
-<div class="alert-card {cls}">
-  <div class="card-header">
+            st.markdown(f"""<div class="alert-card {cls}">
+  <div class="card-top">
     <div>
-      <div class="card-ticker">{a.get('ticker','—')}</div>
-      <div class="card-name">{a.get('alert_name','—')} &nbsp;·&nbsp; {tf} &nbsp;·&nbsp; {asset}</div>
-      <div style="margin-top:6px;display:flex;gap:6px;">{sig_pill}{s_pill}</div>
+      <div class="card-ticker">{ticker}</div>
+      <div class="card-sub">{dname} · {tf} · {asset}</div>
     </div>
-    <div style="text-align:right;">
+    <div>
       <div class="card-price">{price}</div>
-      <div class="card-price-label">Alert Price</div>
       <div class="card-ts">{ts}</div>
     </div>
   </div>
-  {conf_html}
-  {chips_html}
-  <div class="ai-commentary">
-    <div class="ai-label">🤖 AI Analysis</div>
-    {summary}
-  </div>
-</div>
-""", unsafe_allow_html=True)
+  <div class="pills">{sig_pill(d)} {status_pill("PENDING")}</div>
+  {conf_bar_html(ind)}
+  {chips_html(ind)}
+  <div class="ai-box"><div class="ai-lbl">AI Analysis</div>{summary}</div>
+</div>""", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
     command_center()
 
@@ -602,274 +447,251 @@ with tab1:
 # ══════════════════════════════════════════════════════════
 with tab2:
     data = api_get("/api/alerts", {"status": "PENDING", "limit": 50}) or {}
-    alerts = data.get("alerts", [])
+    tc_alerts = data.get("alerts", [])
 
-    if not alerts:
-        st.markdown('<div class="no-data"><div class="no-data-icon">✅</div>No pending alerts to action. All clear!</div>', unsafe_allow_html=True)
+    if not tc_alerts:
+        st.markdown('<div class="no-data"><div class="no-data-icon">✅</div>No pending alerts to action.</div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="section-header">Trade Center · {len(alerts)} Awaiting Action</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="sec-hdr">Trade Center · {len(tc_alerts)} awaiting action</div>', unsafe_allow_html=True)
 
-        for a in alerts:
-            direction = (a.get("signal_direction") or "NEUTRAL").upper()
+        for a in tc_alerts:
+            d = (a.get("signal_direction") or "NEUTRAL").upper()
             ind = a.get("indicators") or {}
-            cls = card_class(direction)
+            cls = card_cls(d)
             ts = fmt_ist(a.get("received_at"))
             price = price_fmt(a.get("price_at_alert"))
+            ticker = a.get("ticker") or "—"
+            dname = display_name(a)
+            tf = tf_label(a.get("interval"))
+            asset = a.get("asset_class") or "—"
             summary = a.get("signal_summary") or a.get("alert_message") or ""
             alert_id = a.get("id")
 
-            with st.expander(f"#{alert_id} · {a.get('ticker','—')} · {a.get('alert_name','Signal')} · {price} · {ts}", expanded=False):
+            # Clean expander label (no overlapping emojis)
+            exp_label = f"#{alert_id}  {ticker}  ·  {dname}  ·  {price}  ·  {ts}"
 
-                # Full detail card inside expander
-                col_l, col_r = st.columns([3, 2])
+            with st.expander(exp_label, expanded=False):
+                col_info, col_act = st.columns([3, 2])
 
-                with col_l:
-                    # Signal + metadata
-                    sig_pill = signal_pill(direction)
-                    asset = a.get("asset_class") or "—"
-                    interval = a.get("interval") or "—"
-                    tf_map = {"1":"1m","3":"3m","5":"5m","15":"15m","30":"30m","60":"1H","D":"Daily","W":"Weekly"}
-                    tf = tf_map.get(str(interval), f"{interval}")
-                    sector = a.get("sector") or "—"
-
-                    st.markdown(f"""
-<div class="alert-card {cls}" style="margin-bottom:0">
-  <div class="card-header">
+                with col_info:
+                    st.markdown(f"""<div class="alert-card {cls}" style="margin:0">
+  <div class="card-top">
     <div>
-      <div class="card-ticker">{a.get('ticker','—')}</div>
-      <div class="card-name">{a.get('alert_name','—')} &nbsp;·&nbsp; {tf} &nbsp;·&nbsp; {asset}</div>
-      <div style="margin-top:6px;">{sig_pill} <span class="pill pill-blue">{sector}</span></div>
+      <div class="card-ticker">{ticker}</div>
+      <div class="card-sub">{dname} · {tf} · {asset}</div>
     </div>
-    <div style="text-align:right;">
+    <div>
       <div class="card-price">{price}</div>
       <div class="card-ts">{ts}</div>
     </div>
   </div>
-  {confluence_bar_html(ind)}
-  {ind_chips_html(ind, compact=False)}
-</div>
-""", unsafe_allow_html=True)
+  <div class="pills">{sig_pill(d)}</div>
+  {conf_bar_html(ind)}
+  {chips_html(ind, full=True)}
+</div>""", unsafe_allow_html=True)
 
-                    # Extended indicator grid
                     if ind:
-                        def ic(k):
-                            v = ind.get(k)
-                            return f"{float(v):.4f}" if v is not None and isinstance(v, (int, float)) else (str(v) if v else "—")
+                        st.markdown(f"""<div class="det-grid">
+  <div class="det-cell"><div class="det-lbl">RSI-14</div><div class="det-val">{fv(ind,'rsi',1)}</div></div>
+  <div class="det-cell"><div class="det-lbl">MACD Hist</div><div class="det-val">{fv(ind,'macd_hist',4)}</div></div>
+  <div class="det-cell"><div class="det-lbl">SuperTrend</div><div class="det-val">{ind.get('supertrend_dir','—')}</div></div>
+  <div class="det-cell"><div class="det-lbl">ADX</div><div class="det-val">{fv(ind,'adx',1)}</div></div>
+  <div class="det-cell"><div class="det-lbl">MA Align</div><div class="det-val">{ind.get('ma_alignment','—')}</div></div>
+  <div class="det-cell"><div class="det-lbl">BB %B</div><div class="det-val">{fv(ind,'bb_pctb',2)}</div></div>
+  <div class="det-cell"><div class="det-lbl">Vol Ratio</div><div class="det-val">{fv(ind,'vol_ratio',1)}x</div></div>
+  <div class="det-cell"><div class="det-lbl">ATR%</div><div class="det-val">{fv(ind,'atr_pct',3)}%</div></div>
+  <div class="det-cell"><div class="det-lbl">HTF Trend</div><div class="det-val">{ind.get('htf_trend','—')}</div></div>
+  <div class="det-cell"><div class="det-lbl">Candle</div><div class="det-val">{ind.get('candle_pattern','—')}</div></div>
+</div>""", unsafe_allow_html=True)
 
-                        st.markdown(f"""
-<div class="detail-grid">
-  <div class="detail-cell"><div class="detail-cell-label">RSI-14</div><div class="detail-cell-value">{ic('rsi')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">MACD Hist</div><div class="detail-cell-value">{ic('macd_hist')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">SuperTrend</div><div class="detail-cell-value">{ind.get('supertrend_dir','—')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">ADX</div><div class="detail-cell-value">{ic('adx')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">MA Align</div><div class="detail-cell-value">{ind.get('ma_alignment','—')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">BB %B</div><div class="detail-cell-value">{ic('bb_pctb')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">Vol Ratio</div><div class="detail-cell-value">{ic('vol_ratio')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">ATR%</div><div class="detail-cell-value">{ic('atr_pct')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">HTF Trend</div><div class="detail-cell-value">{ind.get('htf_trend','—')}</div></div>
-  <div class="detail-cell"><div class="detail-cell-label">Candle Pat</div><div class="detail-cell-value">{ind.get('candle_pattern','—')}</div></div>
-</div>
-""", unsafe_allow_html=True)
-
-                    # AI Commentary
                     if summary:
-                        st.markdown(f'<div class="ai-commentary"><div class="ai-label">🤖 AI Analysis</div>{summary}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="ai-box"><div class="ai-lbl">AI Analysis</div>{summary}</div>', unsafe_allow_html=True)
 
-                with col_r:
-                    st.markdown("**Take Action**")
-
-                    action_key = f"action_{alert_id}"
+                with col_act:
+                    action_key = f"tc_{alert_id}"
                     if action_key not in st.session_state:
                         st.session_state[action_key] = None
 
-                    btn_col1, btn_col2, btn_col3 = st.columns(3)
-                    with btn_col1:
-                        if st.button("✅ Approve", key=f"btn_approve_{alert_id}", use_container_width=True, type="primary"):
+                    st.markdown('<div class="action-panel"><div class="action-hdr">Take Action</div>', unsafe_allow_html=True)
+
+                    b1, b2, b3 = st.columns(3)
+                    with b1:
+                        if st.button("Approve", key=f"appr_{alert_id}", use_container_width=True, type="primary"):
                             st.session_state[action_key] = "APPROVE"
-                    with btn_col2:
-                        if st.button("❌ Deny", key=f"btn_deny_{alert_id}", use_container_width=True):
-                            # Immediate deny — no fields needed
-                            result = api_post(f"/api/alerts/{alert_id}/action", {"alert_id": alert_id, "decision": "DENIED"})
-                            if result and not result.get("error"):
-                                st.success("Denied.")
+                            st.rerun()
+                    with b2:
+                        if st.button("Deny", key=f"deny_{alert_id}", use_container_width=True):
+                            r = api_post(f"/api/alerts/{alert_id}/action", {"alert_id": alert_id, "decision": "DENIED"})
+                            if r and not r.get("error"):
+                                st.session_state.pop(action_key, None)
                                 st.rerun()
                             else:
-                                st.error(f"Error: {result.get('error','Unknown')}")
-                    with btn_col3:
-                        if st.button("🔁 Later", key=f"btn_later_{alert_id}", use_container_width=True):
-                            result = api_post(f"/api/alerts/{alert_id}/action", {"alert_id": alert_id, "decision": "REVIEW_LATER"})
-                            if result and not result.get("error"):
-                                st.info("Marked for review.")
+                                st.error(f"Error: {(r or {}).get('error','Unknown')}")
+                    with b3:
+                        if st.button("Later", key=f"latr_{alert_id}", use_container_width=True):
+                            r = api_post(f"/api/alerts/{alert_id}/action", {"alert_id": alert_id, "decision": "REVIEW_LATER"})
+                            if r and not r.get("error"):
+                                st.session_state.pop(action_key, None)
                                 st.rerun()
                             else:
-                                st.error(f"Error: {result.get('error','Unknown')}")
+                                st.error(f"Error: {(r or {}).get('error','Unknown')}")
 
-                    # Approve form
-                    if st.session_state.get(action_key) == "APPROVE":
-                        st.markdown('<div class="card-divider"></div>', unsafe_allow_html=True)
-                        st.markdown("**Approval Details**")
+                    st.markdown('</div>', unsafe_allow_html=True)
 
-                        call_options = ["BUY", "STRONG_BUY", "SELL", "STRONG_SELL", "HOLD", "ACCUMULATE", "REDUCE", "WATCH", "EXIT"]
-                        primary_call = st.selectbox("Call Type", call_options, key=f"call_{alert_id}")
-                        conviction = st.selectbox("Conviction", ["HIGH", "MEDIUM", "LOW"], index=1, key=f"conv_{alert_id}")
+                # Approval form — full width below, only when Approve clicked
+                if st.session_state.get(action_key) == "APPROVE":
+                    st.markdown("---")
+                    st.markdown("**Approval Details**")
+                    fc1, fc2 = st.columns(2)
+                    with fc1:
+                        call_opts = ["BUY", "STRONG_BUY", "SELL", "STRONG_SELL", "HOLD", "ACCUMULATE", "REDUCE", "WATCH", "EXIT"]
+                        p_call = st.selectbox("Call Type", call_opts, key=f"call_{alert_id}")
+                    with fc2:
+                        conv = st.selectbox("Conviction", ["HIGH", "MEDIUM", "LOW"], index=1, key=f"conv_{alert_id}")
 
-                        st.markdown("**Optional — Pricing**")
-                        p1, p2 = st.columns(2)
-                        with p1:
-                            target = st.number_input("Target Price", min_value=0.0, value=0.0, key=f"tp_{alert_id}", format="%.2f")
-                        with p2:
-                            stop = st.number_input("Stop Loss", min_value=0.0, value=0.0, key=f"sl_{alert_id}", format="%.2f")
+                    fp1, fp2 = st.columns(2)
+                    with fp1:
+                        tgt = st.number_input("Target Price ₹", min_value=0.0, value=0.0, key=f"tgt_{alert_id}", format="%.2f")
+                    with fp2:
+                        stp = st.number_input("Stop Loss ₹", min_value=0.0, value=0.0, key=f"stp_{alert_id}", format="%.2f")
 
-                        fm_rationale = st.text_area("FM Rationale", placeholder="Brief thesis / key reason for this call...", key=f"rat_{alert_id}", height=80)
+                    rationale = st.text_area(
+                        "FM Rationale (shown in Alert Database)",
+                        placeholder="Brief thesis — why this call? Will be visible to all stakeholders...",
+                        key=f"rat_{alert_id}",
+                        height=80
+                    )
+                    chart_file = st.file_uploader(
+                        "Chart Screenshot (stored, shown in Alert Database)",
+                        type=["png", "jpg", "jpeg", "webp"],
+                        key=f"chart_{alert_id}"
+                    )
+                    chart_b64 = None
+                    if chart_file:
+                        chart_b64 = base64.b64encode(chart_file.read()).decode("utf-8")
 
-                        chart_file = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key=f"chart_{alert_id}")
-                        chart_b64 = None
-                        if chart_file:
-                            chart_b64 = base64.b64encode(chart_file.read()).decode("utf-8")
-
-                        if st.button("🚀 Submit Approval", key=f"submit_{alert_id}", type="primary", use_container_width=True):
+                    s1, s2 = st.columns(2)
+                    with s1:
+                        if st.button("Submit Approval", key=f"sub_{alert_id}", type="primary", use_container_width=True):
                             payload = {
                                 "alert_id": alert_id,
                                 "decision": "APPROVED",
-                                "primary_call": primary_call,
-                                "conviction": conviction,
-                                "fm_rationale_text": fm_rationale or None,
-                                "target_price": target if target > 0 else None,
-                                "stop_loss": stop if stop > 0 else None,
+                                "primary_call": p_call,
+                                "conviction": conv,
+                                "fm_rationale_text": rationale or None,
+                                "target_price": tgt if tgt > 0 else None,
+                                "stop_loss": stp if stp > 0 else None,
                                 "chart_image_b64": chart_b64,
                             }
-                            result = api_post(f"/api/alerts/{alert_id}/action", payload)
-                            if result and not result.get("error"):
-                                st.success(f"✅ Approved as {primary_call} with {conviction} conviction.")
-                                st.session_state[action_key] = None
+                            res = api_post(f"/api/alerts/{alert_id}/action", payload)
+                            if res and not res.get("error"):
+                                st.success(f"Approved: {p_call} / {conv}")
+                                st.session_state.pop(action_key, None)
                                 st.rerun()
                             else:
-                                st.error(f"Error: {result.get('error','Unknown')}")
+                                st.error(f"Error: {(res or {}).get('error','Unknown error')}")
+                    with s2:
+                        if st.button("Cancel", key=f"can_{alert_id}", use_container_width=True):
+                            st.session_state.pop(action_key, None)
+                            st.rerun()
 
 
 # ══════════════════════════════════════════════════════════
 # TAB 3 — ALERT DATABASE
 # ══════════════════════════════════════════════════════════
 with tab3:
-    st.markdown('<div class="section-header">Alert Database · Complete Record</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">Alert Database · Complete Record</div>', unsafe_allow_html=True)
 
-    # Filters
-    with st.container():
-        st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
-        f1, f2, f3, f4, f5 = st.columns([2, 2, 2, 2, 3])
-        with f1:
-            filter_status = st.selectbox("Status", ["All", "APPROVED", "DENIED", "REVIEW_LATER"], key="db_status")
-        with f2:
-            filter_signal = st.selectbox("Signal", ["All", "BULLISH", "BEARISH", "NEUTRAL"], key="db_signal")
-        with f3:
-            filter_asset = st.selectbox("Asset Class", ["All", "INDEX", "EQUITY", "COMMODITY", "CURRENCY"], key="db_asset")
-        with f4:
-            filter_call = st.selectbox("Call Type", ["All", "BUY", "STRONG_BUY", "SELL", "STRONG_SELL", "HOLD", "ACCUMULATE", "REDUCE", "WATCH", "EXIT"], key="db_call")
-        with f5:
-            filter_search = st.text_input("Search ticker / alert name", placeholder="e.g. NIFTY, BANKNIFTY...", key="db_search")
-        st.markdown('</div>', unsafe_allow_html=True)
+    f1, f2, f3, f4, f5 = st.columns([1.5, 1.5, 1.5, 1.5, 3])
+    with f1: db_status = st.selectbox("Status", ["All", "APPROVED", "DENIED", "PENDING", "REVIEW_LATER"], key="db_s")
+    with f2: db_signal = st.selectbox("Signal", ["All", "BULLISH", "BEARISH", "NEUTRAL"], key="db_sig")
+    with f3: db_asset = st.selectbox("Asset", ["All", "INDEX", "EQUITY", "COMMODITY", "CURRENCY"], key="db_as")
+    with f4: db_call = st.selectbox("Call", ["All", "BUY", "STRONG_BUY", "SELL", "STRONG_SELL", "HOLD", "ACCUMULATE", "REDUCE", "WATCH", "EXIT"], key="db_c")
+    with f5: db_search = st.text_input("Search", placeholder="Ticker or alert name...", key="db_q")
 
     all_data = api_get("/api/master", {"limit": 200}) or {}
     all_alerts = all_data.get("alerts", [])
 
-    # Apply filters
     filtered = all_alerts
-    if filter_status != "All":
-        filtered = [a for a in filtered if (a.get("status") or "").upper() == filter_status]
-    if filter_signal != "All":
-        filtered = [a for a in filtered if (a.get("signal_direction") or "").upper() == filter_signal]
-    if filter_asset != "All":
-        filtered = [a for a in filtered if (a.get("asset_class") or "").upper() == filter_asset]
-    if filter_call != "All":
-        filtered = [a for a in filtered if a.get("action") and (a["action"].get("call") or "").upper() == filter_call]
-    if filter_search:
-        q = filter_search.upper()
+    if db_status != "All":
+        filtered = [a for a in filtered if (a.get("status") or "").upper() == db_status]
+    if db_signal != "All":
+        filtered = [a for a in filtered if (a.get("signal_direction") or "").upper() == db_signal]
+    if db_asset != "All":
+        filtered = [a for a in filtered if (a.get("asset_class") or "").upper() == db_asset]
+    if db_call != "All":
+        filtered = [a for a in filtered if a.get("action") and (a["action"].get("call") or "").upper() == db_call]
+    if db_search:
+        q = db_search.upper()
         filtered = [a for a in filtered if q in (a.get("ticker") or "").upper() or q in (a.get("alert_name") or "").upper()]
 
-    if not filtered:
-        st.markdown('<div class="no-data"><div class="no-data-icon">🔍</div>No alerts match the selected filters.</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f"**{len(filtered)} alerts**", unsafe_allow_html=False)
+    st.caption(f"{len(filtered)} alerts")
 
+    if not filtered:
+        st.markdown('<div class="no-data"><div class="no-data-icon">🔍</div>No alerts match filters.</div>', unsafe_allow_html=True)
+    else:
         for a in filtered:
-            direction = (a.get("signal_direction") or "NEUTRAL").upper()
+            d = (a.get("signal_direction") or "NEUTRAL").upper()
             status = (a.get("status") or "PENDING").upper()
             ind = a.get("indicators") or {}
             ts = fmt_ist(a.get("received_at"))
             price = price_fmt(a.get("price_at_alert"))
-            summary = a.get("signal_summary") or a.get("alert_message") or ""
-            action = a.get("action") or {}
-            cls = "approved" if status == "APPROVED" else "denied" if status == "DENIED" else card_class(direction)
+            ticker = a.get("ticker") or "—"
+            dname = display_name(a)
+            cls = "approved" if status == "APPROVED" else "denied" if status == "DENIED" else card_cls(d)
             alert_id = a.get("id")
+            action = a.get("action") or {}
+            summary = a.get("signal_summary") or a.get("alert_message") or ""
 
-            with st.expander(f"#{alert_id} · {a.get('ticker','—')} · {status} · {a.get('alert_name','—')} · {ts}", expanded=False):
-                left, right = st.columns([3, 2])
+            with st.expander(f"#{alert_id}  {ticker}  ·  {status}  ·  {dname}  ·  {ts}", expanded=False):
+                dl, dr = st.columns([3, 2])
 
-                with left:
-                    sig_pill = signal_pill(direction)
-                    s_pill = status_pill(status)
-
-                    st.markdown(f"""
-<div class="alert-card {cls}" style="margin-bottom:0">
-  <div class="card-header">
+                with dl:
+                    st.markdown(f"""<div class="alert-card {cls}" style="margin:0">
+  <div class="card-top">
     <div>
-      <div class="card-ticker">{a.get('ticker','—')}</div>
-      <div class="card-name">{a.get('alert_name','—')} &nbsp;·&nbsp; {a.get('interval','—')} &nbsp;·&nbsp; {a.get('asset_class','—')}</div>
-      <div style="margin-top:6px;">{sig_pill} {s_pill}</div>
+      <div class="card-ticker">{ticker}</div>
+      <div class="card-sub">{dname} · {tf_label(a.get('interval'))} · {a.get('asset_class','—')}</div>
     </div>
-    <div style="text-align:right;">
+    <div>
       <div class="card-price">{price}</div>
       <div class="card-ts">{ts}</div>
     </div>
   </div>
-  {ind_chips_html(ind, compact=False)}
-</div>
-""", unsafe_allow_html=True)
-
+  <div class="pills">{sig_pill(d)} {status_pill(status)}</div>
+  {chips_html(ind, full=True)}
+</div>""", unsafe_allow_html=True)
                     if summary:
-                        st.markdown(f'<div class="ai-commentary"><div class="ai-label">🤖 AI Analysis</div>{summary}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="ai-box"><div class="ai-lbl">AI Analysis</div>{summary}</div>', unsafe_allow_html=True)
 
-                with right:
+                with dr:
                     if action:
                         call = action.get("call") or "—"
                         conv = action.get("conviction") or "MEDIUM"
-                        remarks = action.get("fm_remarks") or action.get("remarks") or ""
-                        decision_at = fmt_ist(action.get("decision_at"))
-
-                        st.markdown(f"""
-**FM Decision**
-
-{conviction_pill(conv)} &nbsp; **{call}**
-
-Decided: {decision_at}
-""", unsafe_allow_html=True)
+                        remarks = action.get("remarks") or ""
+                        dec_at = fmt_ist(action.get("decision_at"))
+                        st.markdown(f"""<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px;">
+  <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">FM Decision</div>
+  <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px;">{call}</div>
+  <div class="pills">{conv_pill(conv)}</div>
+  <div style="font-size:11px;color:var(--text3);margin-top:8px;font-family:'JetBrains Mono',monospace">{dec_at}</div>
+</div>""", unsafe_allow_html=True)
 
                         if remarks:
-                            st.markdown(f"""
-<div class="ai-commentary">
-  <div class="ai-label">💬 FM Rationale</div>
-  {remarks}
-</div>
-""", unsafe_allow_html=True)
+                            st.markdown(f'<div class="ai-box" style="margin-top:10px;border-left-color:var(--gold)"><div class="ai-lbl">FM Rationale</div>{remarks}</div>', unsafe_allow_html=True)
 
-                        # Chart image
                         if action.get("has_chart"):
                             chart_data = api_get(f"/api/alerts/{alert_id}/chart")
                             if chart_data and chart_data.get("chart_image_b64"):
-                                img_b64 = chart_data["chart_image_b64"]
-                                st.markdown(f'<div class="chart-img-wrap"><img src="data:image/jpeg;base64,{img_b64}" /></div>', unsafe_allow_html=True)
+                                img = chart_data["chart_image_b64"]
+                                st.markdown(f'<div style="border-radius:6px;overflow:hidden;border:1px solid var(--border);margin-top:10px;"><img src="data:image/jpeg;base64,{img}" style="width:100%;display:block"/></div>', unsafe_allow_html=True)
                     else:
-                        st.markdown("*No action taken yet.*")
+                        st.caption("No action taken yet.")
 
-                    # Delete button
-                    if st.button("🗑 Delete Alert", key=f"del_{alert_id}"):
-                        result = api_post(f"/api/alerts/{alert_id}/action", {"alert_id": alert_id, "decision": "DENIED"})
-                        # Actually call delete endpoint
-                        try:
-                            requests.delete(f"{API_BASE}/api/alerts/{alert_id}", timeout=10)
-                            st.success("Deleted.")
+                    if st.button("Delete Alert", key=f"del_{alert_id}"):
+                        if api_delete(f"/api/alerts/{alert_id}"):
                             st.rerun()
-                        except:
+                        else:
                             st.error("Delete failed.")
 
 
@@ -877,159 +699,192 @@ Decided: {decision_at}
 # TAB 4 — PERFORMANCE
 # ══════════════════════════════════════════════════════════
 with tab4:
-    st.markdown('<div class="section-header">Performance Tracker · Approved Alerts</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-hdr">Performance Tracker</div>', unsafe_allow_html=True)
 
-    col_refresh, col_spacer = st.columns([1, 4])
-    with col_refresh:
-        if st.button("🔄 Refresh Prices", type="primary"):
+    rc, _ = st.columns([1, 4])
+    with rc:
+        if st.button("Refresh Prices", type="primary", use_container_width=True):
             r = api_post("/api/performance/refresh", {})
             if r and not r.get("error"):
-                st.success(f"Updated {r.get('updated_count', 0)} positions.")
+                st.success(f"Updated {r.get('updated_count', 0)} records.")
             else:
-                st.error("Refresh failed.")
+                st.error("Refresh failed — check backend logs.")
 
     perf_data = api_get("/api/performance") or {}
     records = perf_data.get("performance", [])
 
     if not records:
-        st.markdown('<div class="no-data"><div class="no-data-icon">📊</div>No performance data yet. Approve some alerts first.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="no-data"><div class="no-data-icon">📊</div>No data yet.<br>Approve an alert then click Refresh Prices.</div>', unsafe_allow_html=True)
     else:
-        # Summary stats
         valid = [r for r in records if r.get("return_pct") is not None]
         if valid:
-            avg_ret = sum(r["return_pct"] for r in valid) / len(valid)
-            hit_rate = sum(1 for r in valid if r["return_pct"] > 0) / len(valid) * 100
+            avg_r = sum(r["return_pct"] for r in valid) / len(valid)
+            hit = sum(1 for r in valid if r["return_pct"] > 0) / len(valid) * 100
             best = max(valid, key=lambda x: x["return_pct"])
             worst = min(valid, key=lambda x: x["return_pct"])
+            st.markdown(f"""<div class="stat-row">
+<div class="stat-card"><div class="stat-num {'bull' if avg_r>=0 else 'bear'}">{avg_r:+.2f}%</div><div class="stat-lbl">Avg Return</div></div>
+<div class="stat-card"><div class="stat-num">{hit:.0f}%</div><div class="stat-lbl">Hit Rate</div></div>
+<div class="stat-card"><div class="stat-num bull">{best['return_pct']:+.2f}%</div><div class="stat-lbl">Best · {best['ticker']}</div></div>
+<div class="stat-card"><div class="stat-num bear">{worst['return_pct']:+.2f}%</div><div class="stat-lbl">Worst · {worst['ticker']}</div></div>
+</div>""", unsafe_allow_html=True)
 
-            s1, s2, s3, s4 = st.columns(4)
-            with s1:
-                color = "var(--bull)" if avg_ret >= 0 else "var(--bear)"
-                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:{color}">{avg_ret:+.2f}%</div><div class="stat-label">Avg Return</div></div>', unsafe_allow_html=True)
-            with s2:
-                st.markdown(f'<div class="stat-card"><div class="stat-value">{hit_rate:.0f}%</div><div class="stat-label">Hit Rate</div></div>', unsafe_allow_html=True)
-            with s3:
-                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:var(--bull)">{best["return_pct"]:+.2f}%</div><div class="stat-label">Best: {best["ticker"]}</div></div>', unsafe_allow_html=True)
-            with s4:
-                st.markdown(f'<div class="stat-card"><div class="stat-value" style="color:var(--bear)">{worst["return_pct"]:+.2f}%</div><div class="stat-label">Worst: {worst["ticker"]}</div></div>', unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # Build table
         rows = []
         for r in records:
-            ret = r.get("return_pct")
             ref = r.get("reference_price")
             curr = r.get("current_price")
+            ret = r.get("return_pct")
             dd = r.get("max_drawdown")
             rows.append({
-                "ID": r.get("alert_id"),
-                "Ticker": r.get("ticker", "—"),
-                "Alert": (r.get("alert_name") or "—")[:30],
+                "Ticker": r.get("ticker","—"),
+                "Alert": (r.get("alert_name") or "—")[:28],
                 "Call": r.get("action_call") or "—",
-                "Conviction": r.get("conviction") or "—",
-                "Alert Price": f"₹{float(ref):,.2f}" if ref else "—",
-                "Current Price": f"₹{float(curr):,.2f}" if curr else "—",
-                "Return %": ret,
-                "Max DD%": dd,
+                "Conv": r.get("conviction") or "—",
+                "Alert ₹": f"{float(ref):,.2f}" if ref else "—",
+                "Current ₹": f"{float(curr):,.2f}" if curr else "—",
+                "Return %": f"{ret:+.2f}%" if ret is not None else "—",
+                "Max DD": f"{dd:.2f}%" if dd is not None else "—",
                 "Updated": (r.get("last_updated") or "—")[:10],
             })
-
-        df = pd.DataFrame(rows)
-
-        def color_ret(val):
-            if val is None or not isinstance(val, (int, float)):
-                return "color: gray"
-            return f"color: {'#0A8A4E' if val >= 0 else '#D92B2B'}; font-weight: 600"
-
-        def fmt_ret(val):
-            if val is None or not isinstance(val, (int, float)):
-                return "—"
-            return f"{val:+.2f}%"
-
-        df_display = df.copy()
-        df_display["Return %"] = df_display["Return %"].apply(fmt_ret)
-        df_display["Max DD%"] = df_display["Max DD%"].apply(lambda v: f"{v:.2f}%" if v is not None else "—")
-
-        st.dataframe(
-            df_display.drop(columns=["ID"]),
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 # ══════════════════════════════════════════════════════════
 # TAB 5 — MARKET PULSE
+# Pure yfinance batch download — no nsetools dependency
+# Auto-refreshes every 60s via st.fragment
 # ══════════════════════════════════════════════════════════
 with tab5:
     @st.fragment(run_every=60)
     def market_pulse():
-        st.markdown('<div class="section-header">Market Pulse · NSE · BSE · Commodities · Currencies</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-hdr">Market Pulse · NSE Indices + Commodities + FX</div>', unsafe_allow_html=True)
 
-        pulse_data = api_get("/api/market-pulse")
+        NSE_UNIVERSE = [
+            # ── NSE Broad ──
+            ("NIFTY 50",           "^NSEI",       "NSE Broad Market"),
+            ("NIFTY NEXT 50",      "^NSMIDCP",    "NSE Broad Market"),
+            ("NIFTY MIDCAP 50",    "^NSEMDCP50",  "NSE Broad Market"),
+            ("NIFTY SMALLCAP 100", "^CNXSC",      "NSE Broad Market"),
+            # ── NSE Sectoral ──
+            ("NIFTY BANK",         "^NSEBANK",    "NSE Sectoral"),
+            ("NIFTY IT",           "^CNXIT",      "NSE Sectoral"),
+            ("NIFTY PHARMA",       "^CNXPHARMA",  "NSE Sectoral"),
+            ("NIFTY AUTO",         "^CNXAUTO",    "NSE Sectoral"),
+            ("NIFTY FMCG",         "^CNXFMCG",    "NSE Sectoral"),
+            ("NIFTY METAL",        "^CNXMETAL",   "NSE Sectoral"),
+            ("NIFTY REALTY",       "^CNXREALTY",  "NSE Sectoral"),
+            ("NIFTY ENERGY",       "^CNXENERGY",  "NSE Sectoral"),
+            ("NIFTY PSU BANK",     "^CNXPSUBANK", "NSE Sectoral"),
+            ("NIFTY INFRA",        "^CNXINFRA",   "NSE Sectoral"),
+            ("NIFTY MEDIA",        "^CNXMEDIA",   "NSE Sectoral"),
+            # ── Other ──
+            ("SENSEX",             "^BSESN",      "BSE"),
+            ("GOLD (MCX)",         "GC=F",        "Commodities"),
+            ("CRUDE OIL (MCX)",    "CL=F",        "Commodities"),
+            ("USD/INR",            "USDINR=X",    "FX"),
+        ]
 
-        if not pulse_data:
-            st.warning("Unable to fetch market data. Check backend connectivity.")
+        symbols = [s for _, s, _ in NSE_UNIVERSE]
+        price_cache = {}
+
+        try:
+            import yfinance as yf
+            # Batch download — much faster than individual calls
+            raw = yf.download(
+                tickers=" ".join(symbols),
+                period="5d",
+                auto_adjust=True,
+                progress=False,
+                threads=True,
+            )
+
+            for (name, sym, cat) in NSE_UNIVERSE:
+                try:
+                    # Multi-ticker download: raw["Close"][sym]
+                    if len(symbols) > 1:
+                        closes = raw["Close"][sym].dropna()
+                        highs = raw["High"][sym].dropna()
+                        lows = raw["Low"][sym].dropna()
+                    else:
+                        closes = raw["Close"].dropna()
+                        highs = raw["High"].dropna()
+                        lows = raw["Low"].dropna()
+
+                    if closes.empty:
+                        price_cache[sym] = None
+                        continue
+
+                    curr = float(closes.iloc[-1])
+                    prev = float(closes.iloc[-2]) if len(closes) > 1 else None
+                    chg = round(((curr - prev) / prev) * 100, 2) if prev else None
+                    price_cache[sym] = {
+                        "price": curr,
+                        "chg": chg,
+                        "high": float(highs.iloc[-1]) if not highs.empty else None,
+                        "low": float(lows.iloc[-1]) if not lows.empty else None,
+                    }
+                except:
+                    price_cache[sym] = None
+
+        except Exception as e:
+            st.error(f"Market data fetch failed: {e}")
+            st.caption("Tip: Ensure yfinance is installed and Railway has internet access.")
             return
 
-        indices = pulse_data.get("indices", [])
-        updated_at = pulse_data.get("updated_at", "—")
-        st.caption(f"Last updated: {updated_at}")
+        ist_now = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
+        live_count = sum(1 for v in price_cache.values() if v is not None)
+        st.caption(f"Data via Yahoo Finance · {live_count}/{len(NSE_UNIVERSE)} indices loaded · {ist_now} · Refreshes every 60s")
 
-        # Group by category
-        categories = {}
-        for idx in indices:
-            cat = idx.get("category", "Other")
-            categories.setdefault(cat, []).append(idx)
+        # Group and render
+        cats_order = ["NSE Broad Market", "NSE Sectoral", "BSE", "Commodities", "FX"]
+        cats_map = {}
+        for name, sym, cat in NSE_UNIVERSE:
+            cats_map.setdefault(cat, []).append((name, sym))
 
-        cat_order = ["NSE Broad Market", "NSE Sectoral", "BSE Indices", "Commodities", "Currency"]
-        for cat in cat_order:
-            items = categories.get(cat, [])
-            if not items:
-                continue
-
-            st.markdown(f'<div class="section-header" style="margin-top:20px;">{cat}</div>', unsafe_allow_html=True)
+        for cat in cats_order:
+            items = cats_map.get(cat)
+            if not items: continue
 
             rows_html = ""
-            for idx in items:
-                name = idx.get("name", idx.get("ticker", "—"))
-                price = idx.get("current_price")
-                chg = idx.get("change_pct")
-                high = idx.get("high")
-                low = idx.get("low")
-                prev_close = idx.get("prev_close")
-
-                price_str = f"₹{float(price):,.2f}" if price else "—"
-                high_str = f"₹{float(high):,.2f}" if high else "—"
-                low_str = f"₹{float(low):,.2f}" if low else "—"
-                prev_str = f"₹{float(prev_close):,.2f}" if prev_close else "—"
-
-                if chg is not None:
-                    chg_cls = "chg-pos" if chg > 0 else "chg-neg" if chg < 0 else "chg-neutral"
-                    chg_arrow = "▲" if chg > 0 else "▼" if chg < 0 else "◆"
-                    chg_str = f'<span class="{chg_cls}">{chg_arrow} {abs(chg):.2f}%</span>'
+            for name, sym in items:
+                d = price_cache.get(sym)
+                if d is None:
+                    p_str, chg_str, h_str, l_str = "—", '<span class="flat">N/A</span>', "—", "—"
                 else:
-                    chg_str = '<span class="chg-neutral">—</span>'
+                    p = d.get("price")
+                    chg = d.get("chg")
+                    h = d.get("high")
+                    lo = d.get("low")
+                    p_str = f"{p:,.2f}" if p else "—"
+                    h_str = f"{h:,.2f}" if h else "—"
+                    l_str = f"{lo:,.2f}" if lo else "—"
+                    if chg is not None:
+                        arrow = "▲" if chg > 0 else "▼" if chg < 0 else "◆"
+                        cls = "up" if chg > 0 else "dn" if chg < 0 else "flat"
+                        chg_str = f'<span class="{cls}">{arrow} {abs(chg):.2f}%</span>'
+                    else:
+                        chg_str = '<span class="flat">—</span>'
 
                 rows_html += f"""<tr>
-  <td>{name}</td>
-  <td>{price_str}</td>
-  <td>{chg_str}</td>
-  <td>{high_str}</td>
-  <td>{low_str}</td>
-  <td>{prev_str}</td>
+<td>{name}</td>
+<td>{p_str}</td>
+<td>{chg_str}</td>
+<td>{h_str}</td>
+<td>{l_str}</td>
 </tr>"""
 
             st.markdown(f"""
-<table class="pulse-table">
-<thead><tr>
+<table class="pt">
+<thead>
+<tr><td colspan="5" class="pt-cat">{cat}</td></tr>
+<tr>
   <th>Index / Instrument</th>
   <th>Last Price</th>
   <th>Change %</th>
-  <th>High</th>
-  <th>Low</th>
-  <th>Prev Close</th>
-</tr></thead>
+  <th>Day High</th>
+  <th>Day Low</th>
+</tr>
+</thead>
 <tbody>{rows_html}</tbody>
 </table>
 """, unsafe_allow_html=True)
