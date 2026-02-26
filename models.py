@@ -54,7 +54,8 @@ class TradingViewAlert(Base):
     price_open  = Column(Float, nullable=True)
     price_high  = Column(Float, nullable=True)
     price_low   = Column(Float, nullable=True)
-    price_close = Column(Float, nullable=True)   # price at alert trigger
+    price_close    = Column(Float, nullable=True)
+    price_at_alert = Column(Float, nullable=True)   # = price_close at trigger time
     volume      = Column(Float, nullable=True)
 
     # {{strategy.order.alert_message}} — the "data" field
@@ -129,6 +130,7 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN priority VARCHAR(30)",
         "ALTER TABLE alert_actions ADD COLUMN action_call VARCHAR(50)",
         "ALTER TABLE alert_actions ADD COLUMN chart_analysis TEXT",
+        "ALTER TABLE tradingview_alerts ADD COLUMN price_at_alert FLOAT",
     ]
     for sql in migrations:
         try:
