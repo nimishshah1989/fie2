@@ -114,6 +114,23 @@ def _extract_standard_fields(data: dict, result: dict):
     if result["price_at_alert"] is None and result["price_close"] is not None:
         result["price_at_alert"] = result["price_close"]
 
+    # ─── Ticker fallback from alert_message ───
+    # TradingView horizontal line / condition alerts send message like:
+    # "BTCUSD/NYA, 1 Crossing Horizontal Line" — extract ticker from that
+    if not result.get("ticker"):
+        msg = str(data.get("message") or data.get("alert_message") or "").strip()
+        if msg:
+            # Pattern: "TICKER, ..." or "TICKER " at start
+            import re as _re
+            m = _re.match(r'^([A-Z][A-Z0-9/]{1,19})[\s,]', msg)
+            if m:
+                result["ticker"] = m.group(1).replace("/", "")
+        # Also try {{ticker}} placeholder if TV didn't substitute it
+        if not result.get("ticker"):
+            raw_ticker = str(data.get("ticker") or data.get("symbol") or "").strip()
+            if raw_ticker and not raw_ticker.startswith("{{"):
+                result["ticker"] = raw_ticker
+
     # ─── Alert Name Resolution (priority order) ───
     # Handles {{strategy.order.comment}}, direct alert_name, nested strategy objects
     PLACEHOLDER_JUNK = {"YOUR_ALERT_NAME", "YOUR_ALERT_NAME_HERE", "YOUR_NAME", "null", "None", ""}
