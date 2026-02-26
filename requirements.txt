@@ -8,6 +8,8 @@ plotly
 streamlit>=1.39.0
 google-generativeai==0.8.3
 yfinance
+nsetools
+pytz
 aiosqlite
 python-dateutil
 httpx
