@@ -200,9 +200,12 @@ def _serialize_alert(a, db=None):
     if a.action:
         action_data = {
             "call": a.action.primary_call.value if a.action.primary_call else None,
-            "conviction": a.action.conviction, "remarks": a.action.fm_remarks,
+            "conviction": a.action.conviction,
+            "remarks": a.action.fm_remarks,
             "has_chart": bool(a.action.chart_image_b64),
             "decision_at": a.action.decision_at.isoformat() if a.action.decision_at else None,
+            "target_price": a.action.primary_target_price,
+            "stop_loss": a.action.primary_stop_loss,
         }
     perf_data = None
     if db:
@@ -217,7 +220,7 @@ def _serialize_alert(a, db=None):
         "id": a.id, "ticker": a.ticker or "—", "exchange": a.exchange or "—",
         "interval": a.interval or "—",
         "price_at_alert": a.price_at_alert, "volume": a.volume,
-        "alert_name": a.alert_name or "System Trigger",
+        "alert_name": a.alert_name or "",
         "alert_message": a.alert_message,
         "signal_direction": a.signal_direction.value if a.signal_direction else "NEUTRAL",
         "signal_strength": a.signal_strength, "signal_summary": a.signal_summary,
@@ -227,15 +230,27 @@ def _serialize_alert(a, db=None):
         "action": action_data, "performance": perf_data,
         "indicators": {
             "rsi": ind.get("rsi"), "macd_hist": ind.get("macd_hist"),
-            "supertrend_dir": ind.get("supertrend_dir"), "adx": ind.get("adx"),
+            "macd_line": ind.get("macd_line"), "macd_signal": ind.get("macd_signal"),
+            "supertrend_dir": ind.get("supertrend_dir"),
+            "adx": ind.get("adx"), "di_plus": ind.get("di_plus"), "di_minus": ind.get("di_minus"),
             "bb_pctb": ind.get("bb_pctb"), "vol_ratio": ind.get("vol_ratio"),
-            "ma_alignment": ind.get("ma_alignment"), "candle_pattern": ind.get("candle_pattern"),
+            "vol_spike": ind.get("vol_spike"),
+            "ma_alignment": ind.get("ma_alignment"),
+            "ema_9": ind.get("ema_9"), "ema_20": ind.get("ema_20"),
+            "ema_50": ind.get("ema_50"), "ema_200": ind.get("ema_200"),
+            "vwap": ind.get("vwap"),
+            "candle_pattern": ind.get("candle_pattern"),
             "confluence_bias": ind.get("confluence_bias"),
             "confluence_bull_score": ind.get("confluence_bull_score"),
             "confluence_bear_score": ind.get("confluence_bear_score"),
-            "confluence_signal_strength": ind.get("confluence_signal_strength"),
-            "htf_trend": ind.get("htf_trend"), "atr_pct": ind.get("atr_pct"),
+            "confluence_net_score": ind.get("confluence_net_score"),
+            "htf_trend": ind.get("htf_trend"), "htf_rsi": ind.get("htf_rsi"),
+            "atr_pct": ind.get("atr_pct"), "atr": ind.get("atr"),
             "dist_vwap_pct": ind.get("dist_vwap_pct"),
+            "stoch_k": ind.get("stoch_k"), "stoch_d": ind.get("stoch_d"),
+            "cci": ind.get("cci"), "mfi": ind.get("mfi"),
+            "pivot_pp": ind.get("pivot_pp"),
+            "high_20": ind.get("high_20"), "low_20": ind.get("low_20"),
         } if ind else None,
     }
 
@@ -259,6 +274,8 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
         except: action.primary_call = None
     if req.fm_rationale_text: action.fm_remarks = req.fm_rationale_text
     if req.chart_image_b64: action.chart_image_b64 = req.chart_image_b64
+    if req.target_price: action.primary_target_price = req.target_price
+    if req.stop_loss: action.primary_stop_loss = req.stop_loss
     if not action.id: db.add(action)
     alert.status = decision
     if decision == AlertStatus.APPROVED:
