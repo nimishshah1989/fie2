@@ -751,6 +751,30 @@ async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
 
             item["ratio_returns"] = ratio_returns
 
+            # Index's own period returns (not ratio-based)
+            index_returns = {}
+            pct_chg = item.get("percentChange")
+            if pct_chg is not None:
+                try:
+                    index_returns["1d"] = round(float(pct_chg), 2)
+                except (ValueError, TypeError):
+                    pass
+            # Compute from historical data for all periods
+            if close:
+                for pk in period_map:
+                    old_prices = historical_prices.get(pk, {})
+                    old_idx = old_prices.get(idx_name)
+                    if old_idx and old_idx > 0:
+                        index_returns[pk] = round(((close / old_idx) - 1) * 100, 2)
+                    elif pk not in index_returns:
+                        # Fallback: use nsetools reference values
+                        ref_key = nse_ref_fields.get(pk)
+                        if ref_key:
+                            old_val = item.get(ref_key)
+                            if old_val and old_val > 0:
+                                index_returns[pk] = round(((close / old_val) - 1) * 100, 2)
+            item["index_returns"] = index_returns
+
         return {
             "success": True, "count": len(data), "base": base,
             "indices": data, "timestamp": datetime.now().isoformat(),

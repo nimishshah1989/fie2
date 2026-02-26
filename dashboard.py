@@ -99,13 +99,35 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
 /* ── CARD GRID (Command Center) ── */
 .card-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
 }
 @media (max-width: 1100px) {
-    .card-grid { grid-template-columns: 1fr; }
+    .card-grid { grid-template-columns: 1fr 1fr; }
     .stats-row { grid-template-columns: repeat(3, 1fr); }
 }
+@media (max-width: 768px) {
+    .card-grid { grid-template-columns: 1fr; }
+}
+/* ── PERFORMANCE CARD-ROWS ── */
+.perf-card {
+    background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 16px 20px; margin-bottom: 10px;
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
+    align-items: center; gap: 12px;
+}
+.perf-card:hover { background: #f8fafc; }
+.perf-card .pc-ticker { font-size: 14px; font-weight: 700; color: #0f172a; }
+.perf-card .pc-sub { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+.perf-card .pc-val { font-size: 13px; font-weight: 600; color: #1e293b; font-family: 'SF Mono','Fira Code',monospace; }
+.perf-card .pc-lbl { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.perf-card .pc-g { color: #059669; }
+.perf-card .pc-r { color: #dc2626; }
+.perf-hdr {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 12px; padding: 8px 20px; margin-bottom: 4px;
+}
+.perf-hdr span { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* ── ALERT CARD ── */
 .ac {
@@ -798,7 +820,7 @@ def card(a: dict, mode: str = "view", first: bool = False):
                                       help="Upload a TradingView chart — Claude will analyze it on approval")
                 if cf:
                     cf.seek(0)
-                    st.image(cf.read(), caption="✅ Chart ready", use_column_width=True)
+                    st.image(cf.read(), caption="✅ Chart ready", use_container_width=True)
 
             is_ratio = (act == "RATIO")
             rl = rs = None
@@ -956,10 +978,10 @@ def main():
             "Command Center",
             "Trade Center",
             "Approved Cards",
+            "Alert Performance",
             "Market Pulse",
-            "Performance",
         ]
-        nav_keys = ["command", "trade", "approved", "pulse", "perf"]
+        nav_keys = ["command", "trade", "approved", "perf", "pulse"]
 
         selected = st.radio("Navigation", nav_options, key="nav_radio", label_visibility="collapsed")
         t = nav_keys[nav_options.index(selected)]
@@ -1014,64 +1036,98 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
-    # TRADE CENTER — 3 Column Grid
+    # TRADE CENTER — Cards + Action
     # ══════════════════════════════
     elif t == "trade":
         st.markdown('<div class="jip-content">', unsafe_allow_html=True)
-        st.caption(f"{np_count} pending alerts · Upload a chart screenshot to enable Claude vision analysis")
+        st.caption(f"{np_count} pending alerts · Click Approve to action with Claude analysis")
         if not pending:
             st.markdown('<div class="empty"><div class="empty-icon">✅</div><h3>All caught up</h3><p>No pending alerts</p></div>', unsafe_allow_html=True)
         else:
+            # Track which card is being actioned
+            if "action_card_id" not in st.session_state:
+                st.session_state.action_card_id = None
+
+            # Render cards in 3-col grid with approve/deny buttons
             cols = st.columns(3)
             for i, a in enumerate(pending):
                 with cols[i % 3]:
                     st.markdown(f'<div class="ac-sm">{card_html(a)}</div>', unsafe_allow_html=True)
-                    with st.expander(f"Action #{a['id']}", expanded=(i == 0)):
-                        act  = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{a['id']}")
-                        prio = st.selectbox("Priority", ["IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key=f"pr_{a['id']}")
-                        cf = st.file_uploader("Chart", type=["png","jpg","jpeg","webp"], key=f"cf_{a['id']}")
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        if st.button("✅ Approve", key=f"apbtn_{a['id']}", use_container_width=True, type="primary"):
+                            st.session_state.action_card_id = a["id"]
+                    with b2:
+                        if st.button("✗ Deny", key=f"denbtn_{a['id']}", use_container_width=True):
+                            res = post_action({"alert_id": a["id"], "decision": "DENIED"})
+                            if res.get("success"): st.rerun()
+                            else: st.error(f"Error: {res.get('error','Unknown')}")
+
+            # FM Action Panel — shown when Approve is clicked
+            active_id = st.session_state.get("action_card_id")
+            if active_id:
+                active_alert = next((a for a in pending if a["id"] == active_id), None)
+                if active_alert:
+                    st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+                    st.markdown(f"""<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px 20px;margin-bottom:8px;">
+<div style="font-size:13px;font-weight:700;color:#059669;">FM Action Panel — {esc(active_alert.get("ticker",""))} #{active_id}</div>
+<div style="font-size:11px;color:#64748b;">Complete the fields below and submit to approve with Claude analysis</div>
+</div>""", unsafe_allow_html=True)
+
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        act = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{active_id}")
+                        prio = st.selectbox("Priority / Intensity", ["IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key=f"pr_{active_id}")
+                    with c2:
+                        cf = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key=f"cf_{active_id}")
                         if cf:
                             cf.seek(0)
-                            st.image(cf.read(), caption="Chart ready", use_column_width=True)
+                            st.image(cf.read(), caption="Chart ready", use_container_width=True)
 
-                        is_ratio = (act == "RATIO")
-                        rl = rs = rnt = rdt = None
-                        if is_ratio:
-                            rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key=f"rl_{a['id']}")
-                            rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{a['id']}")
-                            rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key=f"rnt_{a['id']}")
-                            rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{a['id']}")
+                    fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key=f"fn_{active_id}", height=80)
 
-                        b1, b2 = st.columns(2)
-                        with b1:
-                            if st.button("Approve", key=f"app_{a['id']}", use_container_width=True, type="primary"):
-                                b64 = None
-                                if cf:
-                                    cf.seek(0)
-                                    b64 = base64.b64encode(cf.read()).decode("utf-8")
-                                if b64:
-                                    st.info("Sending chart to Claude...")
-                                else:
-                                    st.info("Running text analysis...")
-                                res = post_action({
-                                    "alert_id": a["id"], "decision": "APPROVED",
-                                    "action_call": act, "is_ratio": is_ratio,
-                                    "ratio_long": rl if is_ratio else None,
-                                    "ratio_short": rs if is_ratio else None,
-                                    "ratio_numerator_ticker": rnt if is_ratio else None,
-                                    "ratio_denominator_ticker": rdt if is_ratio else None,
-                                    "priority": prio, "chart_image_b64": b64,
-                                })
-                                if res.get("success"):
-                                    st.success("Approved")
-                                    st.rerun()
-                                else:
-                                    st.error(f"Error: {res.get('error','Unknown')}")
-                        with b2:
-                            if st.button("Deny", key=f"den_{a['id']}", use_container_width=True):
-                                res = post_action({"alert_id": a["id"], "decision": "DENIED"})
-                                if res.get("success"): st.rerun()
-                                else: st.error(f"Error: {res.get('error','Unknown')}")
+                    is_ratio = (act == "RATIO")
+                    rl = rs = rnt = rdt = None
+                    if is_ratio:
+                        r1, r2 = st.columns(2)
+                        with r1:
+                            rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key=f"rl_{active_id}")
+                            rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key=f"rnt_{active_id}")
+                        with r2:
+                            rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{active_id}")
+                            rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{active_id}")
+
+                    sb1, sb2, sb3 = st.columns([2, 2, 6])
+                    with sb1:
+                        if st.button("Submit Approval", key=f"submit_{active_id}", use_container_width=True, type="primary"):
+                            b64 = None
+                            if cf:
+                                cf.seek(0)
+                                b64 = base64.b64encode(cf.read()).decode("utf-8")
+                            if b64:
+                                st.info("Sending chart to Claude for analysis...")
+                            else:
+                                st.info("Running text analysis with Claude...")
+                            res = post_action({
+                                "alert_id": active_id, "decision": "APPROVED",
+                                "action_call": act, "is_ratio": is_ratio,
+                                "ratio_long": rl if is_ratio else None,
+                                "ratio_short": rs if is_ratio else None,
+                                "ratio_numerator_ticker": rnt if is_ratio else None,
+                                "ratio_denominator_ticker": rdt if is_ratio else None,
+                                "priority": prio, "chart_image_b64": b64,
+                                "fm_notes": fm_notes if fm_notes else None,
+                            })
+                            if res.get("success"):
+                                st.session_state.action_card_id = None
+                                st.success("Approved — moved to Approved Cards")
+                                st.rerun()
+                            else:
+                                st.error(f"Error: {res.get('error','Unknown')}")
+                    with sb2:
+                        if st.button("Cancel", key=f"cancel_{active_id}", use_container_width=True):
+                            st.session_state.action_card_id = None
+                            st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
@@ -1191,9 +1247,9 @@ def main():
                 return '<span style="color:#64748b;">In-line with base</span>'
 
             def _period_return(item, period_key):
-                """Get ratio-based period return from API data."""
-                ratio_returns = item.get("ratio_returns", {})
-                return ratio_returns.get(period_key.lower())
+                """Get index's own period return from API data."""
+                index_returns = item.get("index_returns", {})
+                return index_returns.get(period_key.lower())
 
             rows_html = ""
             current_sector = None
@@ -1246,7 +1302,7 @@ def main():
         <th>Ratio to {esc(base_idx)}</th>
         <th>Signal</th>
         <th>Daily Chg%</th>
-        <th>{esc(period_filter)} Ratio Return</th>
+        <th>{esc(period_filter)} Return</th>
         <th>Recommendation</th>
     </tr></thead>
     <tbody>{rows_html}</tbody>
@@ -1291,13 +1347,13 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
-    # PERFORMANCE — Table Format
+    # ALERT PERFORMANCE — Card Rows
     # ══════════════════════════════
     elif t == "perf":
         st.markdown('<div class="jip-content">', unsafe_allow_html=True)
 
         if not approved:
-            st.markdown('<div class="empty"><div class="empty-icon">📈</div><h3>No approved trades</h3><p>Approve alerts in Trade Center to track performance</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty"><div class="empty-icon">📈</div><h3>No approved alerts</h3><p>Approve alerts in Trade Center to track performance</p></div>', unsafe_allow_html=True)
         else:
             try:
                 perf_data = requests.get(f"{API_URL}/api/performance", timeout=30).json().get("performance", [])
@@ -1322,62 +1378,63 @@ def main():
                     <div class="stat"><div class="stat-lbl">Active Trades</div><div class="stat-val" style="font-size:24px;">{len(perf_data)}</div><div class="stat-sub">Being tracked</div></div>
                 </div>""", unsafe_allow_html=True)
 
-                # ── Performance table ──
-                perf_rows = ""
+                st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+
+                # ── Card-row header ──
+                st.markdown("""<div class="perf-hdr">
+                    <span>Ticker / Alert Date</span><span>Signal</span><span>Entry Price</span>
+                    <span>Current Price</span><span>Abs Return %</span><span>Days Since</span><span>Action</span>
+                </div>""", unsafe_allow_html=True)
+
+                # ── Performance card-rows ──
+                perf_html = ""
                 for p in perf_data:
                     sig = (p.get("signal_direction") or "").upper()
-                    sig_badge = '<span class="chip chip-bull">BULL</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">BEAR</span>' if sig == "BEARISH" else "—")
-                    trigger = p.get("trigger_price")
+                    sig_badge = '<span class="chip chip-bull">BULL</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">BEAR</span>' if sig == "BEARISH" else '<span class="chip" style="background:#f1f5f9;color:#64748b;">—</span>')
                     entry = p.get("entry_price")
                     curr = p.get("current_price")
                     ret_pct = p.get("return_pct")
-                    ret_abs = p.get("return_abs")
                     days = p.get("days_since")
                     action = p.get("action") or {}
                     action_call = action.get("action_call", "—")
                     prio = action.get("priority", "")
 
-                    trigger_str = fp(trigger) if trigger else "—"
                     entry_str = fp(entry) if entry else "—"
                     curr_str = fp(curr) if curr else "—"
-                    ret_str = f"{ret_pct:+.2f}%" if ret_pct is not None else "—"
-                    ret_cls = "g" if (ret_pct or 0) >= 0 else "r"
-                    abs_str = f"{ret_abs:+.2f}" if ret_abs is not None else "—"
-                    abs_cls = "g" if (ret_abs or 0) >= 0 else "r"
-                    days_str = f"{days}d" if days is not None else "—"
+                    ret_str = "{:+.2f}%".format(ret_pct) if ret_pct is not None else "—"
+                    ret_cls = "pc-g" if (ret_pct or 0) >= 0 else "pc-r"
+                    days_str = "{}d".format(days) if days is not None else "—"
 
+                    # Alert date
+                    alert_dt = p.get("received_at") or p.get("time_utc") or ""
+                    try:
+                        dt_obj = datetime.fromisoformat(alert_dt.replace("Z", ""))
+                        alert_date_str = dt_obj.strftime("%d %b %y")
+                    except Exception:
+                        alert_date_str = "—"
+
+                    ticker_label = esc(p.get("ticker", "—"))
                     is_ratio = p.get("is_ratio_trade")
                     ratio_info = p.get("ratio_data")
-                    ticker_label = esc(p.get("ticker", "—"))
                     if is_ratio and ratio_info:
-                        ticker_label += f'<div style="font-size:9px;color:#64748b;">{esc(ratio_info.get("numerator_ticker",""))} / {esc(ratio_info.get("denominator_ticker",""))}</div>'
+                        ticker_label += f' <span style="font-size:9px;color:#64748b;">{esc(ratio_info.get("numerator_ticker",""))}/{esc(ratio_info.get("denominator_ticker",""))}</span>'
 
-                    prio_str = ""
-                    if prio == "IMMEDIATELY": prio_str = '<span class="chip chip-imm">Now</span>'
-                    elif prio == "WITHIN_A_WEEK": prio_str = '<span class="chip chip-wk">Week</span>'
-                    elif prio == "WITHIN_A_MONTH": prio_str = '<span class="chip chip-mo">Month</span>'
+                    prio_badge = ""
+                    if prio == "IMMEDIATELY": prio_badge = '<span class="chip chip-imm">Now</span>'
+                    elif prio == "WITHIN_A_WEEK": prio_badge = '<span class="chip chip-wk">Week</span>'
+                    elif prio == "WITHIN_A_MONTH": prio_badge = '<span class="chip chip-mo">Month</span>'
 
-                    perf_rows += f"""<tr>
-                        <td style="font-weight:600;">{ticker_label}</td>
-                        <td>{sig_badge}</td>
-                        <td class="mono">{trigger_str}</td>
-                        <td class="mono">{entry_str}</td>
-                        <td class="mono" style="color:#2563eb;font-weight:600;">{curr_str}</td>
-                        <td class="mono {ret_cls}">{ret_str}</td>
-                        <td class="mono {abs_cls}">{abs_str}</td>
-                        <td class="mono">{days_str}</td>
-                        <td>{esc(action_call)}</td>
-                        <td>{prio_str}</td>
-                    </tr>"""
+                    perf_html += f"""<div class="perf-card">
+                        <div><div class="pc-ticker">{ticker_label}</div><div class="pc-sub">{alert_date_str}</div></div>
+                        <div>{sig_badge}</div>
+                        <div><div class="pc-lbl">Entry</div><div class="pc-val">{entry_str}</div></div>
+                        <div><div class="pc-lbl">Current</div><div class="pc-val" style="color:#2563eb;">{curr_str}</div></div>
+                        <div><div class="pc-lbl">Return</div><div class="pc-val {ret_cls}">{ret_str}</div></div>
+                        <div><div class="pc-lbl">Days</div><div class="pc-val">{days_str}</div></div>
+                        <div><div style="font-size:12px;font-weight:600;">{esc(action_call)}</div>{prio_badge}</div>
+                    </div>"""
 
-                st.markdown(f"""
-<table class="idx-table">
-    <thead><tr>
-        <th>Ticker</th><th>Signal</th><th>Trigger</th><th>Entry</th><th>Current</th>
-        <th>Return%</th><th>Abs</th><th>Days</th><th>Action</th><th>Priority</th>
-    </tr></thead>
-    <tbody>{perf_rows}</tbody>
-</table>""", unsafe_allow_html=True)
+                st.markdown(perf_html, unsafe_allow_html=True)
             else:
                 st.markdown('<div class="empty"><div class="empty-icon">⏳</div><h3>Loading performance data</h3><p>Fetching live prices…</p></div>', unsafe_allow_html=True)
 
