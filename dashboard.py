@@ -540,6 +540,7 @@ with tab2:
             conf_txt = f"Bull {bull_s} vs Bear {bear_s}" if (bull_s != "" or bear_s != "") else conf
 
             _conf_pill = f'<span class="pill" style="background:var(--surface3);color:var(--text2);font-size:9px;">{conf_txt}</span>' if conf_txt else ""
+            selected_bg = "background:var(--surface2);border-color:var(--accent);" if is_selected else ""
             st.markdown(f"""<div class="alert-card {cls}" style="margin-bottom:4px;cursor:pointer;{selected_bg}">
   <div class="card-top" style="margin-bottom:6px;">
     <div>
