@@ -169,6 +169,7 @@ def _serialize(a: TradingViewAlert) -> dict:
             "has_chart":      bool(ac.chart_image_b64),
             "chart_analysis": json.loads(ac.chart_analysis) if ac.chart_analysis else None,
             "decision_at":    ac.decision_at.isoformat() if ac.decision_at else None,
+            "fm_notes":       ac.fm_notes,
         }
     return {
         "id":               a.id,
@@ -224,6 +225,7 @@ class ActionRequest(BaseModel):
     ratio_denominator_ticker: Optional[str] = None
     priority:        Optional[str] = None
     chart_image_b64: Optional[str] = None
+    fm_notes:        Optional[str] = None
 
 
 @app.post("/api/alerts/{alert_id}/action")
@@ -257,6 +259,8 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
 
     if req.chart_image_b64:
         action.chart_image_b64 = req.chart_image_b64
+    if req.fm_notes:
+        action.fm_notes = req.fm_notes
 
     # Always run Claude analysis on APPROVED
     # Vision analysis if chart uploaded, text-only otherwise

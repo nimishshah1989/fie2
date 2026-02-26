@@ -108,6 +108,9 @@ class AlertAction(Base):
     # Claude's analysis of the chart image (8 bullet points)
     chart_analysis  = Column(Text, nullable=True)   # JSON array of strings
 
+    # FM commentary
+    fm_notes = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -156,6 +159,7 @@ def _run_migrations():
         "ALTER TABLE tradingview_alerts ADD COLUMN price_at_alert FLOAT",
         "ALTER TABLE alert_actions ADD COLUMN ratio_numerator_ticker VARCHAR(50)",
         "ALTER TABLE alert_actions ADD COLUMN ratio_denominator_ticker VARCHAR(50)",
+        "ALTER TABLE alert_actions ADD COLUMN fm_notes TEXT",
     ]
     for sql in migrations:
         try:

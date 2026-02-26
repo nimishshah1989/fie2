@@ -109,25 +109,25 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
 @media (max-width: 768px) {
     .card-grid { grid-template-columns: 1fr; }
 }
-/* ── PERFORMANCE CARD-ROWS ── */
+/* ── PERFORMANCE CARD GRID ── */
+.perf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .perf-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 768px)  { .perf-grid { grid-template-columns: 1fr; } }
 .perf-card {
     background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px;
-    padding: 16px 20px; margin-bottom: 10px;
-    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
-    align-items: center; gap: 12px;
+    padding: 14px 16px; overflow: hidden;
 }
-.perf-card:hover { background: #f8fafc; }
+.perf-card:hover { border-color: #cbd5e1; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.perf-card .pc-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .perf-card .pc-ticker { font-size: 14px; font-weight: 700; color: #0f172a; }
-.perf-card .pc-sub { font-size: 10px; color: #94a3b8; margin-top: 2px; }
-.perf-card .pc-val { font-size: 13px; font-weight: 600; color: #1e293b; font-family: 'SF Mono','Fira Code',monospace; }
+.perf-card .pc-date { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+.perf-card .pc-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+.perf-card .pc-cell { flex: 1; min-width: 60px; }
 .perf-card .pc-lbl { font-size: 9px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.perf-card .pc-val { font-size: 13px; font-weight: 600; color: #1e293b; font-family: 'SF Mono','Fira Code',monospace; }
 .perf-card .pc-g { color: #059669; }
 .perf-card .pc-r { color: #dc2626; }
-.perf-hdr {
-    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
-    gap: 12px; padding: 8px 20px; margin-bottom: 4px;
-}
-.perf-hdr span { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; }
+.perf-card .pc-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px solid #f1f5f9; }
 
 /* ── ALERT CARD ── */
 .ac {
@@ -267,15 +267,17 @@ div[data-testid="stButton"] > button {
     background: #ffffff !important;
     color: #475569 !important;
     border: 1px solid #e5e7eb !important;
-    border-radius: 20px !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    padding: 6px 20px !important;
-    height: 36px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding: 5px 14px !important;
+    height: 32px !important;
+    min-height: 32px !important;
     transition: all 0.15s !important;
     box-shadow: none !important;
     font-family: 'Inter', system-ui, sans-serif !important;
     white-space: nowrap !important;
+    letter-spacing: 0.01em !important;
 }
 div[data-testid="stButton"] > button:hover {
     background: #f1f5f9 !important;
@@ -390,6 +392,27 @@ div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
 .ac-sm .ac-o-val { font-size: 10px; }
 .ac-sm .ac-msg { font-size: 10px; padding: 5px 12px; max-height: 36px; }
 .ac-sm .ac-ts { font-size: 8px; }
+
+/* ── FM ACTION PANEL ── */
+.fm-panel {
+    background: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 10px;
+    padding: 16px 20px; margin-top: 12px;
+}
+.fm-panel-hdr { font-size: 13px; font-weight: 700; color: #059669; margin-bottom: 2px; }
+.fm-panel-sub { font-size: 11px; color: #64748b; margin-bottom: 12px; }
+
+/* ── CHART PREVIEW: constrain uploaded images in FM panel ── */
+/* Don't globally restrict — only in file-uploader context */
+
+/* ── DETAIL DIALOG STYLING ── */
+div[data-testid="stDialog"] { }
+div[data-testid="stDialog"] > div { max-width: 720px !important; }
+.detail-section { margin-bottom: 14px; }
+.detail-title { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.detail-insights { background: #eff6ff; border-radius: 8px; padding: 12px 16px; }
+.detail-insights .di-item { display: flex; gap: 6px; font-size: 12px; color: #1e40af; line-height: 1.5; padding: 3px 0; }
+.detail-insights .di-num { font-size: 10px; font-weight: 700; color: #2563eb; min-width: 16px; flex-shrink: 0; margin-top: 2px; }
+.detail-fm-notes { background: #f0fdf4; border: 1px solid #d1fae5; border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #065f46; line-height: 1.5; }
 
 /* ── INDEX / PERFORMANCE TABLE ── */
 .idx-table {
@@ -882,6 +905,11 @@ def card(a: dict, mode: str = "view", first: bool = False):
   {legs_html}
 </div>""")
 
+            # FM notes
+            fm_n = action.get("fm_notes")
+            if fm_n:
+                parts.append(f'<div style="padding:8px 16px;background:#f0fdf4;border-top:1px solid #d1fae5;font-size:11px;color:#065f46;"><span style="font-size:9px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:0.06em;">FM Notes</span><br/>{esc(fm_n)}</div>')
+
             # Claude analysis (collapsible)
             analysis = action.get("chart_analysis")
             if analysis:
@@ -1074,17 +1102,17 @@ def main():
 <div style="font-size:11px;color:#64748b;">Complete the fields below and submit to approve with Claude analysis</div>
 </div>""", unsafe_allow_html=True)
 
-                    c1, c2 = st.columns(2)
+                    c1, c2, c3 = st.columns([2, 2, 3])
                     with c1:
                         act = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{active_id}")
                         prio = st.selectbox("Priority / Intensity", ["IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key=f"pr_{active_id}")
                     with c2:
+                        fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key=f"fn_{active_id}", height=100)
+                    with c3:
                         cf = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key=f"cf_{active_id}")
                         if cf:
                             cf.seek(0)
-                            st.image(cf.read(), caption="Chart ready", use_container_width=True)
-
-                    fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key=f"fn_{active_id}", height=80)
+                            st.image(cf.read(), caption="Chart ready", width=180)
 
                     is_ratio = (act == "RATIO")
                     rl = rs = rnt = rdt = None
@@ -1097,7 +1125,7 @@ def main():
                             rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{active_id}")
                             rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{active_id}")
 
-                    sb1, sb2, sb3 = st.columns([2, 2, 6])
+                    sb1, sb2, _ = st.columns([1.5, 1.5, 7])
                     with sb1:
                         if st.button("Submit Approval", key=f"submit_{active_id}", use_container_width=True, type="primary"):
                             b64 = None
@@ -1105,9 +1133,9 @@ def main():
                                 cf.seek(0)
                                 b64 = base64.b64encode(cf.read()).decode("utf-8")
                             if b64:
-                                st.info("Sending chart to Claude for analysis...")
+                                st.info("Sending chart to Claude…")
                             else:
-                                st.info("Running text analysis with Claude...")
+                                st.info("Running text analysis…")
                             res = post_action({
                                 "alert_id": active_id, "decision": "APPROVED",
                                 "action_call": act, "is_ratio": is_ratio,
@@ -1217,8 +1245,7 @@ def main():
 
             filtered.sort(key=_sort_key)
 
-            st.caption(f"Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {base_idx}")
-            st.markdown(f'<div style="text-align:right;font-size:11px;color:#94a3b8;margin:-4px 0 8px;">Last updated: {ts_str}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 4px;"><span style="font-size:12px;color:#64748b;">Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {esc(base_idx)}</span><span style="font-size:11px;color:#94a3b8;white-space:nowrap;flex-shrink:0;margin-left:12px;">Updated: {ts_str}</span></div>', unsafe_allow_html=True)
 
             def _signal_badge(sig):
                 if not sig:
@@ -1347,7 +1374,7 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
-    # ALERT PERFORMANCE — Card Rows
+    # ALERT PERFORMANCE — Card Grid
     # ══════════════════════════════
     elif t == "perf":
         st.markdown('<div class="jip-content">', unsafe_allow_html=True)
@@ -1379,62 +1406,121 @@ def main():
                 </div>""", unsafe_allow_html=True)
 
                 st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+                st.caption(f"{len(perf_data)} active trades · Click ℹ Details to view Claude insights")
 
-                # ── Card-row header ──
-                st.markdown("""<div class="perf-hdr">
-                    <span>Ticker / Alert Date</span><span>Signal</span><span>Entry Price</span>
-                    <span>Current Price</span><span>Abs Return %</span><span>Days Since</span><span>Action</span>
-                </div>""", unsafe_allow_html=True)
+                # ── Track which alert detail to show ──
+                if "detail_alert_id" not in st.session_state:
+                    st.session_state.detail_alert_id = None
 
-                # ── Performance card-rows ──
-                perf_html = ""
-                for p in perf_data:
-                    sig = (p.get("signal_direction") or "").upper()
-                    sig_badge = '<span class="chip chip-bull">BULL</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">BEAR</span>' if sig == "BEARISH" else '<span class="chip" style="background:#f1f5f9;color:#64748b;">—</span>')
-                    entry = p.get("entry_price")
-                    curr = p.get("current_price")
-                    ret_pct = p.get("return_pct")
-                    days = p.get("days_since")
-                    action = p.get("action") or {}
-                    action_call = action.get("action_call", "—")
-                    prio = action.get("priority", "")
+                # ── Performance card grid (3 cols) ──
+                perf_cols = st.columns(3)
+                for idx_p, p in enumerate(perf_data):
+                    with perf_cols[idx_p % 3]:
+                        sig = (p.get("signal_direction") or "").upper()
+                        sig_badge = '<span class="chip chip-bull">▲ Bull</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">▼ Bear</span>' if sig == "BEARISH" else '')
+                        entry = p.get("entry_price")
+                        curr = p.get("current_price")
+                        ret_pct = p.get("return_pct")
+                        days = p.get("days_since")
+                        action_d = p.get("action") or {}
+                        action_call = action_d.get("action_call", "—")
+                        prio = action_d.get("priority", "")
 
-                    entry_str = fp(entry) if entry else "—"
-                    curr_str = fp(curr) if curr else "—"
-                    ret_str = "{:+.2f}%".format(ret_pct) if ret_pct is not None else "—"
-                    ret_cls = "pc-g" if (ret_pct or 0) >= 0 else "pc-r"
-                    days_str = "{}d".format(days) if days is not None else "—"
+                        entry_str = fp(entry) if entry else "—"
+                        curr_str = fp(curr) if curr else "—"
+                        ret_str = "{:+.2f}%".format(ret_pct) if ret_pct is not None else "—"
+                        ret_cls = "pc-g" if (ret_pct or 0) >= 0 else "pc-r"
+                        days_str = "{}d".format(days) if days is not None else "—"
 
-                    # Alert date
-                    alert_dt = p.get("received_at") or p.get("time_utc") or ""
-                    try:
-                        dt_obj = datetime.fromisoformat(alert_dt.replace("Z", ""))
-                        alert_date_str = dt_obj.strftime("%d %b %y")
-                    except Exception:
-                        alert_date_str = "—"
+                        alert_dt = p.get("received_at") or p.get("time_utc") or ""
+                        try:
+                            dt_obj = datetime.fromisoformat(alert_dt.replace("Z", ""))
+                            alert_date_str = dt_obj.strftime("%d %b %y")
+                        except Exception:
+                            alert_date_str = "—"
 
-                    ticker_label = esc(p.get("ticker", "—"))
-                    is_ratio = p.get("is_ratio_trade")
-                    ratio_info = p.get("ratio_data")
-                    if is_ratio and ratio_info:
-                        ticker_label += f' <span style="font-size:9px;color:#64748b;">{esc(ratio_info.get("numerator_ticker",""))}/{esc(ratio_info.get("denominator_ticker",""))}</span>'
+                        prio_badge = ""
+                        if prio == "IMMEDIATELY": prio_badge = '<span class="chip chip-imm" style="margin-left:4px;">Now</span>'
+                        elif prio == "WITHIN_A_WEEK": prio_badge = '<span class="chip chip-wk" style="margin-left:4px;">Week</span>'
+                        elif prio == "WITHIN_A_MONTH": prio_badge = '<span class="chip chip-mo" style="margin-left:4px;">Month</span>'
 
-                    prio_badge = ""
-                    if prio == "IMMEDIATELY": prio_badge = '<span class="chip chip-imm">Now</span>'
-                    elif prio == "WITHIN_A_WEEK": prio_badge = '<span class="chip chip-wk">Week</span>'
-                    elif prio == "WITHIN_A_MONTH": prio_badge = '<span class="chip chip-mo">Month</span>'
+                        ticker_label = esc(p.get("ticker", "—"))
 
-                    perf_html += f"""<div class="perf-card">
-                        <div><div class="pc-ticker">{ticker_label}</div><div class="pc-sub">{alert_date_str}</div></div>
-                        <div>{sig_badge}</div>
-                        <div><div class="pc-lbl">Entry</div><div class="pc-val">{entry_str}</div></div>
-                        <div><div class="pc-lbl">Current</div><div class="pc-val" style="color:#2563eb;">{curr_str}</div></div>
-                        <div><div class="pc-lbl">Return</div><div class="pc-val {ret_cls}">{ret_str}</div></div>
-                        <div><div class="pc-lbl">Days</div><div class="pc-val">{days_str}</div></div>
-                        <div><div style="font-size:12px;font-weight:600;">{esc(action_call)}</div>{prio_badge}</div>
-                    </div>"""
+                        st.markdown(f"""<div class="perf-card">
+  <div class="pc-top">
+    <div>
+      <div class="pc-ticker">{ticker_label} {sig_badge}</div>
+      <div class="pc-date">{alert_date_str}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:12px;font-weight:700;color:#0f172a;">{esc(action_call)}</div>
+      {prio_badge}
+    </div>
+  </div>
+  <div class="pc-row">
+    <div class="pc-cell"><div class="pc-lbl">Entry</div><div class="pc-val">{entry_str}</div></div>
+    <div class="pc-cell"><div class="pc-lbl">Current</div><div class="pc-val" style="color:#2563eb;">{curr_str}</div></div>
+    <div class="pc-cell"><div class="pc-lbl">Return</div><div class="pc-val {ret_cls}">{ret_str}</div></div>
+    <div class="pc-cell"><div class="pc-lbl">Days</div><div class="pc-val">{days_str}</div></div>
+  </div>
+</div>""", unsafe_allow_html=True)
+                        if st.button("ℹ Details", key=f"det_{p.get('id', idx_p)}", use_container_width=True):
+                            st.session_state.detail_alert_id = p.get("id")
 
-                st.markdown(perf_html, unsafe_allow_html=True)
+                # ── Detail panel (shown below grid when ℹ clicked) ──
+                detail_id = st.session_state.get("detail_alert_id")
+                if detail_id:
+                    detail_p = next((p for p in perf_data if p.get("id") == detail_id), None)
+                    if detail_p:
+                        action_d = detail_p.get("action") or {}
+                        st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+                        st.markdown(f"""<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 20px;margin-bottom:8px;">
+<div style="font-size:14px;font-weight:700;color:#1e40af;">Insights — {esc(detail_p.get("ticker",""))}</div>
+<div style="font-size:11px;color:#64748b;">Claude analysis & FM commentary</div>
+</div>""", unsafe_allow_html=True)
+
+                        detail_cols = st.columns([3, 2])
+                        with detail_cols[0]:
+                            # Claude insights
+                            analysis = action_d.get("chart_analysis")
+                            if analysis:
+                                valid = [b for b in analysis if b and b != "—"]
+                                if valid:
+                                    mode_label = "🔭 Vision" if action_d.get("has_chart") else "📝 Text"
+                                    insights_html = f'<div class="detail-title">Claude Analysis · {mode_label} · {len(valid)} points</div><div class="detail-insights">'
+                                    for bi, bv in enumerate(valid):
+                                        insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
+                                    insights_html += '</div>'
+                                    st.markdown(insights_html, unsafe_allow_html=True)
+                                else:
+                                    st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
+
+                            # FM notes
+                            fm_n = action_d.get("fm_notes")
+                            if fm_n:
+                                st.markdown(f'<div style="margin-top:12px;"><div class="detail-title">FM Commentary</div><div class="detail-fm-notes">{esc(fm_n)}</div></div>', unsafe_allow_html=True)
+
+                        with detail_cols[1]:
+                            # Chart image
+                            if action_d.get("has_chart"):
+                                try:
+                                    r = requests.get(f"{API_URL}/api/alerts/{detail_id}/chart", timeout=8)
+                                    b64_data = r.json().get("chart_image_b64", "")
+                                    if b64_data:
+                                        if not b64_data.startswith("data:"):
+                                            b64_data = "data:image/png;base64," + b64_data
+                                        st.markdown('<div class="detail-title">Chart</div>', unsafe_allow_html=True)
+                                        st.image(b64_data, use_container_width=True)
+                                except Exception:
+                                    pass
+                            else:
+                                st.markdown('<div style="font-size:12px;color:#94a3b8;margin-top:20px;">No chart uploaded</div>', unsafe_allow_html=True)
+
+                        if st.button("Close Details", key="close_detail"):
+                            st.session_state.detail_alert_id = None
+                            st.rerun()
             else:
                 st.markdown('<div class="empty"><div class="empty-icon">⏳</div><h3>Loading performance data</h3><p>Fetching live prices…</p></div>', unsafe_allow_html=True)
 
