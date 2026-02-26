@@ -31,11 +31,11 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 
 # ═══════════════════════════════════════════════════════
-# WEBHOOK — accepts simplified TradingView payload
+# WEBHOOK HELPERS
 # ═══════════════════════════════════════════════════════
 
 def _sf(v):
-    """Safe float conversion — ignores TradingView unfilled {{}} placeholders."""
+    """Safe float — ignores TradingView unfilled {{}} placeholders."""
     if v is None: return None
     s = str(v).strip()
     if "{{" in s or s.lower() in ("null", "nan", "none", ""): return None
@@ -43,28 +43,62 @@ def _sf(v):
     except: return None
 
 def _cs(v, default=""):
+    """Safe string — strips whitespace and rejects TV placeholders."""
     if v is None: return default
     s = str(v).strip()
     return default if ("{{" in s or s.lower() in ("none", "null", "")) else s
 
-def _infer_signal(text: str) -> Optional[str]:
+
+# ─── Signal inference — multi-word phrases checked first (weighted 2×)
+# to avoid single-word false draws like "crossed above resistance" scoring
+# bull=1 (above) vs bear=1 (resistance) = NEUTRAL when it should be BULLISH.
+
+_BULLISH_PHRASES = [
+    "crossed above", "golden cross", "oversold bounce", "reversal up",
+    "higher high", "higher low", "breakout above", "buy signal",
+]
+_BEARISH_PHRASES = [
+    "crossed below", "death cross", "overbought reversal", "reversal down",
+    "lower high", "lower low", "breakdown below", "sell signal",
+]
+_BULLISH_WORDS = [
+    "bullish", "buy", "long", "breakout", "uptrend", "oversold",
+    "accumulate", "above", "support", "bottom", "recovery",
+]
+_BEARISH_WORDS = [
+    "bearish", "sell", "short", "breakdown", "downtrend", "overbought",
+    "distribute", "below", "resistance", "top", "correction",
+]
+_JUNK = {"null", "none", "n/a", "your_alert_name", "your_alert_name_here", ""}
+
+
+def _infer_signal(text: str) -> str:
+    if not text: return "NEUTRAL"
     t = text.lower()
-    bull = ["buy", "bullish", "long", "breakout", "uptrend", "oversold", "accumulate"]
-    bear = ["sell", "bearish", "short", "breakdown", "downtrend", "overbought", "distribute"]
-    b = sum(1 for w in bull if w in t)
-    s = sum(1 for w in bear if w in t)
-    if b > s: return "BULLISH"
-    if s > b: return "BEARISH"
+    bull = sum(2 for p in _BULLISH_PHRASES if p in t)
+    bear = sum(2 for p in _BEARISH_PHRASES if p in t)
+    bull += sum(1 for w in _BULLISH_WORDS if w in t)
+    bear += sum(1 for w in _BEARISH_WORDS if w in t)
+    if bull > bear: return "BULLISH"
+    if bear > bull: return "BEARISH"
     return "NEUTRAL"
 
-def _parse_alert_name(data_text: str, ticker: str) -> str:
-    """Try to extract a short alert name from the data string."""
-    if not data_text:
-        return ticker or "Alert"
-    # First line or first sentence
-    first = data_text.split("\n")[0].split(".")[0].strip()
-    return first[:80] if first else (ticker or "Alert")
 
+def _parse_alert_name(data_text: str, ticker: str) -> str:
+    """Extract clean alert name: first non-junk line → first sentence → ticker fallback."""
+    fallback = f"{ticker} Alert" if ticker else "Alert"
+    if not data_text or data_text.strip().lower() in _JUNK:
+        return fallback
+    first_line = data_text.split("\n")[0].strip()
+    if first_line and first_line.lower() not in _JUNK:
+        name = first_line.split(".")[0].strip()
+        return name[:80] if name else fallback
+    return fallback
+
+
+# ═══════════════════════════════════════════════════════
+# WEBHOOK ENDPOINT
+# ═══════════════════════════════════════════════════════
 
 @app.on_event("startup")
 async def startup():
@@ -81,6 +115,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         try:
             data = json.loads(body)
         except Exception:
+            # Non-JSON body — treat whole body as the data/message field
             data = {"data": body}
 
         ticker   = _cs(data.get("ticker"))
@@ -93,33 +128,38 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         l = _sf(data.get("low"))
         c = _sf(data.get("close"))
         v = _sf(data.get("volume"))
+
+        # "data" field = {{strategy.order.alert_message}}
         alert_data = _cs(data.get("data"))
 
-        # Signal direction from data text
-        sig = _infer_signal(alert_data) if alert_data else "NEUTRAL"
+        # price_at_alert = close (the candle close when alert fired)
+        price_at_alert = c
+
+        sig        = _infer_signal(alert_data)
         alert_name = _parse_alert_name(alert_data, ticker)
 
         alert = TradingViewAlert(
-            ticker=ticker or "UNKNOWN",
-            exchange=exchange,
-            interval=interval,
-            time_utc=time_val,
-            timenow_utc=timenow,
-            price_open=o,
-            price_high=h,
-            price_low=l,
-            price_close=c,
-            volume=v,
-            alert_data=alert_data,
-            alert_name=alert_name,
-            signal_direction=sig,
-            raw_payload=data,
-            status=AlertStatus.PENDING,
+            ticker         = ticker or "UNKNOWN",
+            exchange       = exchange,
+            interval       = interval,
+            time_utc       = time_val,
+            timenow_utc    = timenow,
+            price_open     = o,
+            price_high     = h,
+            price_low      = l,
+            price_close    = c,
+            price_at_alert = price_at_alert,
+            volume         = v,
+            alert_data     = alert_data,
+            alert_name     = alert_name,
+            signal_direction = sig,
+            raw_payload    = data,
+            status         = AlertStatus.PENDING,
         )
         db.add(alert)
         db.commit()
         db.refresh(alert)
-        logger.info(f"Alert #{alert.id} saved: {ticker} @ {c}")
+        logger.info(f"Alert #{alert.id} — {ticker} @ {c} | {sig} | name='{alert_name}'")
         return {"success": True, "alert_id": alert.id}
 
     except Exception as e:
@@ -134,16 +174,17 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
 def _serialize(a: TradingViewAlert) -> dict:
     action = None
     if a.action:
+        ac = a.action
         action = {
-            "decision":     a.action.decision.value,
-            "action_call":  a.action.action_call,
-            "is_ratio":     a.action.is_ratio,
-            "ratio_long":   a.action.ratio_long,
-            "ratio_short":  a.action.ratio_short,
-            "priority":     a.action.priority.value if a.action.priority else None,
-            "has_chart":    bool(a.action.chart_image_b64),
-            "chart_analysis": json.loads(a.action.chart_analysis) if a.action.chart_analysis else None,
-            "decision_at":  a.action.decision_at.isoformat() if a.action.decision_at else None,
+            "decision":       ac.decision.value,
+            "action_call":    ac.action_call,
+            "is_ratio":       ac.is_ratio,
+            "ratio_long":     ac.ratio_long,
+            "ratio_short":    ac.ratio_short,
+            "priority":       ac.priority.value if ac.priority else None,
+            "has_chart":      bool(ac.chart_image_b64),
+            "chart_analysis": json.loads(ac.chart_analysis) if ac.chart_analysis else None,
+            "decision_at":    ac.decision_at.isoformat() if ac.decision_at else None,
         }
     return {
         "id":              a.id,
@@ -156,6 +197,7 @@ def _serialize(a: TradingViewAlert) -> dict:
         "price_high":      a.price_high,
         "price_low":       a.price_low,
         "price_close":     a.price_close,
+        "price_at_alert":  a.price_at_alert,
         "volume":          a.volume,
         "alert_data":      a.alert_data,
         "alert_name":      a.alert_name or a.ticker,
@@ -189,13 +231,13 @@ async def get_alert(alert_id: int, db: Session = Depends(get_db)):
 
 class ActionRequest(BaseModel):
     alert_id:        int
-    decision:        str                     # APPROVED | DENIED
-    action_call:     Optional[str] = None    # BUY / SELL / RATIO / etc.
+    decision:        str                    # APPROVED | DENIED
+    action_call:     Optional[str] = None   # BUY / SELL / RATIO / etc.
     is_ratio:        Optional[bool] = False
     ratio_long:      Optional[str] = None
     ratio_short:     Optional[str] = None
-    priority:        Optional[str] = None    # IMMEDIATELY | WITHIN_A_WEEK | WITHIN_A_MONTH
-    chart_image_b64: Optional[str] = None   # base64 encoded image
+    priority:        Optional[str] = None   # IMMEDIATELY | WITHIN_A_WEEK | WITHIN_A_MONTH
+    chart_image_b64: Optional[str] = None  # base64 image (with or without data: URI prefix)
 
 
 @app.post("/api/alerts/{alert_id}/action")
@@ -227,7 +269,7 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
 
     if req.chart_image_b64:
         action.chart_image_b64 = req.chart_image_b64
-        # Trigger Claude analysis
+        # Run Claude vision analysis — stored as JSON array of 8 bullet strings
         analysis = await _analyze_chart_with_claude(req.chart_image_b64, alert)
         action.chart_analysis = json.dumps(analysis)
 
@@ -236,44 +278,56 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     return {"success": True, "alert_id": alert_id}
 
 
+# ─── Claude Chart Analysis ─────────────────────────────
+
 async def _analyze_chart_with_claude(image_b64: str, alert: TradingViewAlert) -> list:
-    """Call Anthropic API to analyze chart image and return 8 bullet points."""
+    """
+    Sends the chart image to claude-sonnet-4-5 vision.
+    Returns a list of 8 institutional-grade bullet point strings.
+    Stored in alert_actions.chart_analysis as a JSON array.
+    """
     if not ANTHROPIC_API_KEY:
-        return ["Chart analysis unavailable — ANTHROPIC_API_KEY not set."]
+        return ["Chart analysis unavailable — ANTHROPIC_API_KEY not configured."]
 
     import httpx
 
-    # Determine media type from base64 header if present
+    # Strip data: URI prefix if present, and detect media type
     media_type = "image/png"
+    raw_b64 = image_b64
     if image_b64.startswith("data:"):
-        header, image_b64 = image_b64.split(",", 1)
+        header, raw_b64 = image_b64.split(",", 1)
         if "jpeg" in header or "jpg" in header:
             media_type = "image/jpeg"
         elif "webp" in header:
             media_type = "image/webp"
+        elif "gif" in header:
+            media_type = "image/gif"
 
-    ticker   = alert.ticker or "this instrument"
-    interval = alert.interval or "unknown"
-    price    = alert.price_close or "N/A"
-    signal   = alert.signal_direction or "NEUTRAL"
+    ticker   = alert.ticker   or "this instrument"
+    interval = alert.interval or "unknown timeframe"
+    price    = alert.price_at_alert or alert.price_close or "N/A"
+    sig      = alert.signal_direction or "NEUTRAL"
+    name     = alert.alert_name or ticker
 
-    prompt = f"""You are a senior technical analyst at an Indian wealth management firm. 
-Analyze this TradingView chart for {ticker} on {interval} timeframe. Alert triggered at price {price}. Signal direction: {signal}.
-
-Provide exactly 8 concise bullet points covering:
-1. Overall trend / structure
-2. Key support / resistance levels visible
-3. Momentum interpretation (RSI/MACD if visible)
-4. Volume analysis
-5. Candlestick pattern at alert trigger
-6. Moving average alignment
-7. Confluence or confirmation factors
-8. Risk/reward observation and actionable insight for fund manager
-
-Each bullet must be under 15 words. No preamble. Return ONLY the 8 bullet points, one per line, starting each with a bullet "•"."""
+    prompt = (
+        f"You are a senior technical analyst at an Indian wealth management firm. "
+        f"The fund manager has uploaded a TradingView chart for: {name} ({ticker}), "
+        f"interval: {interval}, alert trigger price: {price}, signal direction: {sig}.\n\n"
+        f"Provide exactly 8 concise institutional-grade bullet points covering:\n"
+        f"1. Overall trend structure (higher highs/lows, downtrend, range)\n"
+        f"2. Key support and resistance levels visible on the chart\n"
+        f"3. Momentum indicator interpretation (RSI, MACD — if visible)\n"
+        f"4. Volume analysis (confirming or diverging)\n"
+        f"5. Candlestick pattern at the alert trigger candle\n"
+        f"6. Moving average alignment (EMA/SMA crossovers if visible)\n"
+        f"7. Confluence or confirmation factors for the signal\n"
+        f"8. Risk/reward observation and single actionable insight for the fund manager\n\n"
+        f"Rules: Each bullet under 20 words. No preamble, no numbering, no headers. "
+        f"Return ONLY the 8 lines, each starting with •"
+    )
 
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=45) as client:
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
@@ -283,7 +337,7 @@ Each bullet must be under 15 words. No preamble. Return ONLY the 8 bullet points
                 },
                 json={
                     "model": "claude-sonnet-4-5",
-                    "max_tokens": 500,
+                    "max_tokens": 600,
                     "messages": [{
                         "role": "user",
                         "content": [
@@ -292,7 +346,7 @@ Each bullet must be under 15 words. No preamble. Return ONLY the 8 bullet points
                                 "source": {
                                     "type": "base64",
                                     "media_type": media_type,
-                                    "data": image_b64,
+                                    "data": raw_b64,
                                 }
                             },
                             {"type": "text", "text": prompt}
@@ -300,13 +354,31 @@ Each bullet must be under 15 words. No preamble. Return ONLY the 8 bullet points
                     }]
                 }
             )
+
+        if resp.status_code != 200:
+            logger.error(f"Claude API {resp.status_code}: {resp.text[:200]}")
+            return [f"Claude API error {resp.status_code} — check API key and credits."]
+
         data = resp.json()
-        text = data["content"][0]["text"].strip()
-        bullets = [line.strip().lstrip("•").strip() for line in text.split("\n") if line.strip()]
-        return bullets[:8]
+        raw_text = data["content"][0]["text"].strip()
+        # Parse bullet lines — strip leading •, numbers, or whitespace
+        bullets = []
+        for line in raw_text.split("\n"):
+            clean = line.strip().lstrip("•").lstrip("0123456789").lstrip(".").lstrip(")").strip()
+            if clean:
+                bullets.append(clean)
+        # Return exactly up to 8; pad with placeholder if Claude returned fewer
+        result = bullets[:8]
+        while len(result) < 8:
+            result.append("—")
+        return result
+
+    except httpx.TimeoutException:
+        logger.error("Claude API timeout after 45s")
+        return ["Chart analysis timed out — try re-approving with the same image."]
     except Exception as e:
-        logger.error(f"Claude chart analysis failed: {e}")
-        return [f"Chart analysis error: {str(e)[:80]}"]
+        logger.error(f"Claude chart analysis failed: {e}", exc_info=True)
+        return [f"Chart analysis error: {str(e)[:100]}"]
 
 
 # ─── Chart image retrieval ─────────────────────────────
@@ -315,7 +387,7 @@ Each bullet must be under 15 words. No preamble. Return ONLY the 8 bullet points
 async def get_chart(alert_id: int, db: Session = Depends(get_db)):
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
     if not action or not action.chart_image_b64:
-        raise HTTPException(status_code=404, detail="No chart image")
+        raise HTTPException(status_code=404, detail="No chart image found")
     return {"chart_image_b64": action.chart_image_b64}
 
 
