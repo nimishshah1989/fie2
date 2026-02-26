@@ -1,566 +1,343 @@
+"""
+FIE v3 — FastAPI Server
+Jhaveri Intelligence Platform
+Simplified webhook (ticker/exchange/interval/OHLCV/time/data) + FM actions + Claude chart analysis
+"""
+
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
-from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+import json, os, logging, base64, re
 from datetime import datetime
-from pydantic import BaseModel
 from typing import Optional
-import json
-import os
-import logging
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
 from models import (
     init_db, get_db,
-    TradingViewAlert, AlertAction, AlertPerformance, AlertStatus, ActionCall,
-    SignalDirection, AlertType
+    TradingViewAlert, AlertAction, AlertStatus, ActionPriority
 )
-from price_service import update_all_performance, get_live_price
-from ai_engine import generate_technical_summary
 
-logger = logging.getLogger("fie")
+logger = logging.getLogger("fie_v3")
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="JHAVERI FIE Engine")
-
+app = FastAPI(title="JHAVERI FIE v3")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=False,
     allow_methods=["*"], allow_headers=["*"]
 )
 
-class ActionRequest(BaseModel):
-    alert_id: int
-    decision: str
-    primary_call: Optional[str] = None
-    conviction: Optional[str] = "MEDIUM"
-    fm_rationale_text: Optional[str] = None
-    target_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    chart_image_b64: Optional[str] = None
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
+
+# ═══════════════════════════════════════════════════════
+# WEBHOOK — accepts simplified TradingView payload
+# ═══════════════════════════════════════════════════════
+
+def _sf(v):
+    """Safe float conversion — ignores TradingView unfilled {{}} placeholders."""
+    if v is None: return None
+    s = str(v).strip()
+    if "{{" in s or s.lower() in ("null", "nan", "none", ""): return None
+    try: return float(s)
+    except: return None
+
+def _cs(v, default=""):
+    if v is None: return default
+    s = str(v).strip()
+    return default if ("{{" in s or s.lower() in ("none", "null", "")) else s
+
+def _infer_signal(text: str) -> Optional[str]:
+    t = text.lower()
+    bull = ["buy", "bullish", "long", "breakout", "uptrend", "oversold", "accumulate"]
+    bear = ["sell", "bearish", "short", "breakdown", "downtrend", "overbought", "distribute"]
+    b = sum(1 for w in bull if w in t)
+    s = sum(1 for w in bear if w in t)
+    if b > s: return "BULLISH"
+    if s > b: return "BEARISH"
+    return "NEUTRAL"
+
+def _parse_alert_name(data_text: str, ticker: str) -> str:
+    """Try to extract a short alert name from the data string."""
+    if not data_text:
+        return ticker or "Alert"
+    # First line or first sentence
+    first = data_text.split("\n")[0].split(".")[0].strip()
+    return first[:80] if first else (ticker or "Alert")
+
 
 @app.on_event("startup")
 async def startup():
     init_db()
 
-# ═══════════════════════════════════════════════════════
-# WEBHOOK PROCESSOR — handles legacy + FIE Pine payloads
-# ═══════════════════════════════════════════════════════
-
-def _sf(v):
-    if v is None: return None
-    s = str(v).strip().lower()
-    if s in ("null","nan","none","","n/a") or "{{" in s: return None
-    try: return float(v)
-    except: return None
-
-def _cs(v, d=""):
-    if v is None: return d
-    t = str(v).strip()
-    return d if ("{{" in t or t.lower() in ("none","null")) else t
-
-def _parse_fie(data):
-    p = data.get("price", {})
-    indicators = {}
-    for section_key in ("moving_averages","momentum","trend","volatility","volume_analysis","levels"):
-        sec = data.get(section_key, {})
-        for k, v in sec.items():
-            if isinstance(v, (int, float, str, bool)):
-                indicators[k] = v
-    htf = data.get("htf", {})
-    for k, v in htf.items():
-        if isinstance(v, (int, float, str)):
-            indicators[f"htf_{k}"] = v
-    conf = data.get("confluence", {})
-    for k, v in conf.items():
-        if isinstance(v, (int, float, str)):
-            indicators[f"confluence_{k}"] = v
-    if p.get("candle_pattern"):
-        indicators["candle_pattern"] = p["candle_pattern"]
-
-    sig = str(data.get("signal","NEUTRAL")).upper()
-    signal_dir = SignalDirection(sig) if sig in ("BULLISH","BEARISH","NEUTRAL") else SignalDirection.NEUTRAL
-    at = str(data.get("alert_type","ABSOLUTE")).upper()
-
-    mom = data.get("momentum", {})
-    trend = data.get("trend", {})
-
-    parts = []
-    ticker = _cs(data.get("ticker"), "Unknown")
-    alert_name = _cs(data.get("alert_name"), f"{ticker} Signal")
-    parts.append(alert_name)
-    if p.get("close"): parts.append(f"Price: {p['close']}")
-    rsi = mom.get("rsi")
-    if rsi is not None:
-        rl = "OB" if float(rsi)>70 else "OS" if float(rsi)<30 else "N"
-        parts.append(f"RSI:{rsi}({rl})")
-    cb = conf.get("bias","")
-    if cb: parts.append(f"Confluence:{cb}({conf.get('bull_score','')}B/{conf.get('bear_score','')}S)")
-    std = trend.get("supertrend_dir","")
-    if std: parts.append(f"ST:{std}")
-    ht = htf.get("trend","")
-    if ht: parts.append(f"HTF:{ht}")
-    ma_a = data.get("moving_averages",{}).get("ma_alignment","")
-    if ma_a: parts.append(f"MA:{ma_a}")
-    cp = p.get("candle_pattern","NONE")
-    if cp and cp != "NONE": parts.append(f"Pat:{cp}")
-    summary = " | ".join(parts)
-    cm = _cs(data.get("custom_message"), "")
-
-    return {
-        "ticker": ticker, "exchange": _cs(data.get("exchange")),
-        "interval": _cs(data.get("interval")),
-        "price_at_alert": _sf(p.get("close")) or _sf(data.get("close")),
-        "price_open": _sf(p.get("open")), "price_high": _sf(p.get("high")),
-        "price_low": _sf(p.get("low")), "price_close": _sf(p.get("close")),
-        "volume": _sf(p.get("volume")) or _sf(data.get("volume")),
-        "alert_name": alert_name, "alert_message": cm or summary,
-        "signal_direction": signal_dir,
-        "signal_strength": _sf(conf.get("signal_strength")),
-        "signal_summary": summary,
-        "alert_type": AlertType.RELATIVE if at=="RELATIVE" else AlertType.ABSOLUTE,
-        "asset_class": _cs(data.get("asset_class"),"EQUITY"),
-        "sector": _cs(data.get("sector")),
-        "indicator_values": indicators, "raw_payload": data,
-    }
-
-def _parse_legacy(data):
-    sig = str(data.get("signal","")).upper()
-    sd = SignalDirection(sig) if sig in ("BULLISH","BEARISH","NEUTRAL") else SignalDirection.NEUTRAL
-    return {
-        "ticker": _cs(data.get("ticker"),"UNKNOWN"), "exchange": _cs(data.get("exchange")),
-        "interval": _cs(data.get("interval")),
-        "price_at_alert": _sf(data.get("close")) or _sf(data.get("price")),
-        "price_open": None, "price_high": None, "price_low": None,
-        "price_close": _sf(data.get("close")),
-        "volume": _sf(data.get("volume")),
-        "alert_name": _cs(data.get("alert_name"),"Manual Alert"),
-        "alert_message": str(data.get("message",data.get("alert_message","")))[:500],
-        "signal_direction": sd, "signal_strength": None, "signal_summary": None,
-        "alert_type": AlertType.ABSOLUTE, "asset_class": None, "sector": None,
-        "indicator_values": {}, "raw_payload": data,
-    }
-
-async def process_webhook(request: Request, db: Session):
-    try:
-        body = (await request.body()).decode("utf-8")
-        logger.info(f"WEBHOOK RECEIVED: {body[:500]}")
-        try: data = json.loads(body)
-        except:
-            logger.warning(f"Non-JSON webhook body: {body[:200]}")
-            data = {"message": body}
-
-        is_fie = bool(data.get("fie_version"))
-        logger.info(f"Payload type: {'FIE Pine' if is_fie else 'Legacy'} | Keys: {list(data.keys())[:15]}")
-        parsed = _parse_fie(data) if is_fie else _parse_legacy(data)
-        logger.info(f"Parsed: ticker={parsed.get('ticker')} price={parsed.get('price_at_alert')} indicators={len(parsed.get('indicator_values',{}))}")
-
-        # ── Override signal_direction from confluence if available ──
-        ind_vals = parsed.get("indicator_values") or {}
-        bull_conf = ind_vals.get("confluence_bull_score") or ind_vals.get("confluence_bull") or 0
-        bear_conf = ind_vals.get("confluence_bear_score") or ind_vals.get("confluence_bear") or 0
-        st_dir    = str(ind_vals.get("supertrend_dir") or ind_vals.get("supertrend_direction") or "").upper()
-        ma_align  = str(ind_vals.get("ma_alignment") or "").upper()
-        try: bull_conf = float(bull_conf)
-        except: bull_conf = 0
-        try: bear_conf = float(bear_conf)
-        except: bear_conf = 0
-
-        if bear_conf > bull_conf and bear_conf > 0:
-            parsed["signal_direction"] = SignalDirection.BEARISH
-        elif bull_conf > bear_conf and bull_conf > 0:
-            parsed["signal_direction"] = SignalDirection.BULLISH
-        elif st_dir in ("BEARISH", "BEAR"):
-            parsed["signal_direction"] = SignalDirection.BEARISH
-        elif st_dir in ("BULLISH", "BULL"):
-            parsed["signal_direction"] = SignalDirection.BULLISH
-        elif "BEAR" in ma_align:
-            parsed["signal_direction"] = SignalDirection.BEARISH
-        elif "BULL" in ma_align:
-            parsed["signal_direction"] = SignalDirection.BULLISH
-        # else keep whatever _interpret_signal determined
-
-        # ── No AI at ingest — commentary generated lazily on demand ──
-        # Store raw alert_message only; dashboard requests /api/alerts/{id}/commentary
-        if not parsed.get("signal_summary"):
-            parsed["signal_summary"] = None  # will be generated on demand
-
-        alert = TradingViewAlert(
-            ticker=parsed["ticker"], exchange=parsed["exchange"], interval=parsed["interval"],
-            price_at_alert=parsed["price_at_alert"], price_open=parsed.get("price_open"),
-            price_high=parsed.get("price_high"), price_low=parsed.get("price_low"),
-            price_close=parsed.get("price_close"), volume=parsed["volume"],
-            alert_name=parsed["alert_name"], alert_message=parsed["alert_message"],
-            signal_direction=parsed["signal_direction"], signal_strength=parsed.get("signal_strength"),
-            signal_summary=parsed.get("signal_summary"),
-            alert_type=parsed.get("alert_type", AlertType.ABSOLUTE),
-            asset_class=parsed.get("asset_class"), sector=parsed.get("sector"),
-            indicator_values=parsed.get("indicator_values"),
-            status=AlertStatus.PENDING, processed=True, raw_payload=parsed["raw_payload"],
-        )
-        db.add(alert); db.commit(); db.refresh(alert)
-        logger.info(f"Alert #{alert.id}: {alert.ticker} / {alert.alert_name}")
-        return JSONResponse(status_code=200, content={"success": True, "alert_id": alert.id})
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Webhook error: {e}")
-        return JSONResponse(status_code=500, content={"error": str(e)})
 
 @app.post("/webhook/tradingview")
 @app.post("/webhook/tradingview/")
-async def explicit_webhook(request: Request, db: Session = Depends(get_db)):
-    return await process_webhook(request, db)
+async def receive_webhook(request: Request, db: Session = Depends(get_db)):
+    try:
+        body = (await request.body()).decode("utf-8")
+        logger.info(f"WEBHOOK: {body[:300]}")
+
+        try:
+            data = json.loads(body)
+        except Exception:
+            data = {"data": body}
+
+        ticker   = _cs(data.get("ticker"))
+        exchange = _cs(data.get("exchange"))
+        interval = _cs(data.get("interval"))
+        time_val = _cs(data.get("time"))
+        timenow  = _cs(data.get("timenow"))
+        o = _sf(data.get("open"))
+        h = _sf(data.get("high"))
+        l = _sf(data.get("low"))
+        c = _sf(data.get("close"))
+        v = _sf(data.get("volume"))
+        alert_data = _cs(data.get("data"))
+
+        # Signal direction from data text
+        sig = _infer_signal(alert_data) if alert_data else "NEUTRAL"
+        alert_name = _parse_alert_name(alert_data, ticker)
+
+        alert = TradingViewAlert(
+            ticker=ticker or "UNKNOWN",
+            exchange=exchange,
+            interval=interval,
+            time_utc=time_val,
+            timenow_utc=timenow,
+            price_open=o,
+            price_high=h,
+            price_low=l,
+            price_close=c,
+            volume=v,
+            alert_data=alert_data,
+            alert_name=alert_name,
+            signal_direction=sig,
+            raw_payload=data,
+            status=AlertStatus.PENDING,
+        )
+        db.add(alert)
+        db.commit()
+        db.refresh(alert)
+        logger.info(f"Alert #{alert.id} saved: {ticker} @ {c}")
+        return {"success": True, "alert_id": alert.id}
+
+    except Exception as e:
+        logger.error(f"Webhook error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ═══════════════════════════════════════════════════════
 # REST API
 # ═══════════════════════════════════════════════════════
 
-def _serialize_alert(a, db=None):
-    action_data = None
+def _serialize(a: TradingViewAlert) -> dict:
+    action = None
     if a.action:
-        action_data = {
-            "call": a.action.primary_call.value if a.action.primary_call else None,
-            "conviction": a.action.conviction,
-            "remarks": a.action.fm_remarks,
-            "has_chart": bool(a.action.chart_image_b64),
-            "decision_at": a.action.decision_at.isoformat() if a.action.decision_at else None,
-            "target_price": a.action.primary_target_price,
-            "stop_loss": a.action.primary_stop_loss,
+        action = {
+            "decision":     a.action.decision.value,
+            "action_call":  a.action.action_call,
+            "is_ratio":     a.action.is_ratio,
+            "ratio_long":   a.action.ratio_long,
+            "ratio_short":  a.action.ratio_short,
+            "priority":     a.action.priority.value if a.action.priority else None,
+            "has_chart":    bool(a.action.chart_image_b64),
+            "chart_analysis": json.loads(a.action.chart_analysis) if a.action.chart_analysis else None,
+            "decision_at":  a.action.decision_at.isoformat() if a.action.decision_at else None,
         }
-    perf_data = None
-    if db:
-        perf = db.query(AlertPerformance).filter_by(alert_id=a.id, is_primary=True).first()
-        if perf:
-            perf_data = {"reference_price": perf.reference_price, "current_price": perf.current_price,
-                         "return_pct": perf.return_pct, "max_drawdown": perf.max_drawdown,
-                         "last_updated": perf.snapshot_date.isoformat() if perf.snapshot_date else None}
-
-    ind = a.indicator_values or {}
     return {
-        "id": a.id, "ticker": a.ticker or "—", "exchange": a.exchange or "—",
-        "interval": a.interval or "—",
-        "price_at_alert": a.price_at_alert, "volume": a.volume,
-        "alert_name": a.alert_name or "",
-        "alert_message": a.alert_message,
-        "signal_direction": a.signal_direction.value if a.signal_direction else "NEUTRAL",
-        "signal_strength": a.signal_strength, "signal_summary": a.signal_summary,
-        "status": a.status.value if a.status else "PENDING",
-        "received_at": a.received_at.isoformat() if a.received_at else None,
-        "asset_class": a.asset_class or "—", "sector": a.sector or "—",
-        "action": action_data, "performance": perf_data,
-        "indicators": {
-            "rsi": ind.get("rsi"), "macd_hist": ind.get("macd_hist"),
-            "macd_line": ind.get("macd_line"), "macd_signal": ind.get("macd_signal"),
-            "supertrend_dir": ind.get("supertrend_dir"),
-            "adx": ind.get("adx"), "di_plus": ind.get("di_plus"), "di_minus": ind.get("di_minus"),
-            "bb_pctb": ind.get("bb_pctb"), "vol_ratio": ind.get("vol_ratio"),
-            "vol_spike": ind.get("vol_spike"),
-            "ma_alignment": ind.get("ma_alignment"),
-            "ema_9": ind.get("ema_9"), "ema_20": ind.get("ema_20"),
-            "ema_50": ind.get("ema_50"), "ema_200": ind.get("ema_200"),
-            "vwap": ind.get("vwap"),
-            "candle_pattern": ind.get("candle_pattern"),
-            "confluence_bias": ind.get("confluence_bias"),
-            "confluence_bull_score": ind.get("confluence_bull_score"),
-            "confluence_bear_score": ind.get("confluence_bear_score"),
-            "confluence_net_score": ind.get("confluence_net_score"),
-            "htf_trend": ind.get("htf_trend"), "htf_rsi": ind.get("htf_rsi"),
-            "atr_pct": ind.get("atr_pct"), "atr": ind.get("atr"),
-            "dist_vwap_pct": ind.get("dist_vwap_pct"),
-            "stoch_k": ind.get("stoch_k"), "stoch_d": ind.get("stoch_d"),
-            "cci": ind.get("cci"), "mfi": ind.get("mfi"),
-            "pivot_pp": ind.get("pivot_pp"),
-            "high_20": ind.get("high_20"), "low_20": ind.get("low_20"),
-        } if ind else None,
+        "id":              a.id,
+        "ticker":          a.ticker or "—",
+        "exchange":        a.exchange or "—",
+        "interval":        a.interval or "—",
+        "time_utc":        a.time_utc,
+        "timenow_utc":     a.timenow_utc,
+        "price_open":      a.price_open,
+        "price_high":      a.price_high,
+        "price_low":       a.price_low,
+        "price_close":     a.price_close,
+        "volume":          a.volume,
+        "alert_data":      a.alert_data,
+        "alert_name":      a.alert_name or a.ticker,
+        "signal_direction": a.signal_direction or "NEUTRAL",
+        "status":          a.status.value,
+        "received_at":     a.received_at.isoformat() if a.received_at else None,
+        "action":          action,
     }
+
 
 @app.get("/api/alerts")
 async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db)):
     q = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
-    if status and status != "All": q = q.filter(TradingViewAlert.status == status)
-    return {"alerts": [_serialize_alert(a, db) for a in q.limit(limit).all()]}
+    if status and status != "All":
+        try:
+            q = q.filter(TradingViewAlert.status == AlertStatus(status))
+        except Exception:
+            pass
+    return {"alerts": [_serialize(a) for a in q.limit(limit).all()]}
+
+
+@app.get("/api/alerts/{alert_id}")
+async def get_alert(alert_id: int, db: Session = Depends(get_db)):
+    a = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Not found")
+    return _serialize(a)
+
+
+# ─── FM Action ─────────────────────────────────────────
+
+class ActionRequest(BaseModel):
+    alert_id:        int
+    decision:        str                     # APPROVED | DENIED
+    action_call:     Optional[str] = None    # BUY / SELL / RATIO / etc.
+    is_ratio:        Optional[bool] = False
+    ratio_long:      Optional[str] = None
+    ratio_short:     Optional[str] = None
+    priority:        Optional[str] = None    # IMMEDIATELY | WITHIN_A_WEEK | WITHIN_A_MONTH
+    chart_image_b64: Optional[str] = None   # base64 encoded image
+
 
 @app.post("/api/alerts/{alert_id}/action")
 async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not alert: raise HTTPException(status_code=404)
-    dm = {"APPROVED": AlertStatus.APPROVED, "DENIED": AlertStatus.DENIED, "REVIEW_LATER": AlertStatus.REVIEW_LATER}
-    decision = dm.get(req.decision, AlertStatus.DENIED)
-    action = db.query(AlertAction).filter_by(alert_id=alert_id).first() or AlertAction(alert_id=alert_id)
-    action.decision = decision; action.decision_at = datetime.now()
-    action.primary_ticker = alert.ticker; action.conviction = req.conviction
-    if req.primary_call:
-        try: action.primary_call = ActionCall(req.primary_call)
-        except: action.primary_call = None
-    if req.fm_rationale_text: action.fm_remarks = req.fm_rationale_text
-    if req.chart_image_b64: action.chart_image_b64 = req.chart_image_b64
-    if req.target_price: action.primary_target_price = req.target_price
-    if req.stop_loss: action.primary_stop_loss = req.stop_loss
-    if not action.id: db.add(action)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    decision_map = {"APPROVED": AlertStatus.APPROVED, "DENIED": AlertStatus.DENIED}
+    decision = decision_map.get(req.decision, AlertStatus.DENIED)
+
+    action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
+    if not action:
+        action = AlertAction(alert_id=alert_id)
+        db.add(action)
+
+    action.decision    = decision
+    action.decision_at = datetime.now()
+    action.action_call = req.action_call
+    action.is_ratio    = req.is_ratio or False
+    action.ratio_long  = req.ratio_long
+    action.ratio_short = req.ratio_short
+
+    if req.priority:
+        try:
+            action.priority = ActionPriority(req.priority)
+        except Exception:
+            action.priority = None
+
+    if req.chart_image_b64:
+        action.chart_image_b64 = req.chart_image_b64
+        # Trigger Claude analysis
+        analysis = await _analyze_chart_with_claude(req.chart_image_b64, alert)
+        action.chart_analysis = json.dumps(analysis)
+
     alert.status = decision
-    if decision == AlertStatus.APPROVED:
-        if not db.query(AlertPerformance).filter_by(alert_id=alert.id).first():
-            db.add(AlertPerformance(alert_id=alert.id, ticker=alert.ticker, is_primary=True,
-                                    reference_price=alert.price_at_alert or 0.0, reference_date=datetime.now()))
     db.commit()
-    return {"success": True}
+    return {"success": True, "alert_id": alert_id}
+
+
+async def _analyze_chart_with_claude(image_b64: str, alert: TradingViewAlert) -> list:
+    """Call Anthropic API to analyze chart image and return 8 bullet points."""
+    if not ANTHROPIC_API_KEY:
+        return ["Chart analysis unavailable — ANTHROPIC_API_KEY not set."]
+
+    import httpx
+
+    # Determine media type from base64 header if present
+    media_type = "image/png"
+    if image_b64.startswith("data:"):
+        header, image_b64 = image_b64.split(",", 1)
+        if "jpeg" in header or "jpg" in header:
+            media_type = "image/jpeg"
+        elif "webp" in header:
+            media_type = "image/webp"
+
+    ticker   = alert.ticker or "this instrument"
+    interval = alert.interval or "unknown"
+    price    = alert.price_close or "N/A"
+    signal   = alert.signal_direction or "NEUTRAL"
+
+    prompt = f"""You are a senior technical analyst at an Indian wealth management firm. 
+Analyze this TradingView chart for {ticker} on {interval} timeframe. Alert triggered at price {price}. Signal direction: {signal}.
+
+Provide exactly 8 concise bullet points covering:
+1. Overall trend / structure
+2. Key support / resistance levels visible
+3. Momentum interpretation (RSI/MACD if visible)
+4. Volume analysis
+5. Candlestick pattern at alert trigger
+6. Moving average alignment
+7. Confluence or confirmation factors
+8. Risk/reward observation and actionable insight for fund manager
+
+Each bullet must be under 15 words. No preamble. Return ONLY the 8 bullet points, one per line, starting each with a bullet "•"."""
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-5",
+                    "max_tokens": 500,
+                    "messages": [{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_b64,
+                                }
+                            },
+                            {"type": "text", "text": prompt}
+                        ]
+                    }]
+                }
+            )
+        data = resp.json()
+        text = data["content"][0]["text"].strip()
+        bullets = [line.strip().lstrip("•").strip() for line in text.split("\n") if line.strip()]
+        return bullets[:8]
+    except Exception as e:
+        logger.error(f"Claude chart analysis failed: {e}")
+        return [f"Chart analysis error: {str(e)[:80]}"]
+
+
+# ─── Chart image retrieval ─────────────────────────────
+
+@app.get("/api/alerts/{alert_id}/chart")
+async def get_chart(alert_id: int, db: Session = Depends(get_db)):
+    action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
+    if not action or not action.chart_image_b64:
+        raise HTTPException(status_code=404, detail="No chart image")
+    return {"chart_image_b64": action.chart_image_b64}
+
+
+# ─── Delete alert ──────────────────────────────────────
 
 @app.delete("/api/alerts/{alert_id}")
 async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
-    if not alert: raise HTTPException(status_code=404)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Not found")
     db.query(AlertAction).filter_by(alert_id=alert_id).delete()
-    db.query(AlertPerformance).filter_by(alert_id=alert_id).delete()
-    db.delete(alert); db.commit()
+    db.delete(alert)
+    db.commit()
     return {"success": True}
 
-@app.get("/api/performance")
-async def get_performance(db: Session = Depends(get_db)):
-    records = db.query(AlertPerformance, TradingViewAlert).join(TradingViewAlert).order_by(desc(AlertPerformance.reference_date)).all()
-    nifty_ret = None
-    try:
-        from price_service import get_live_price
-        nd = get_live_price("NIFTY")
-        if nd.get("current_price") and nd.get("prev_close"):
-            nifty_ret = round(((nd["current_price"] - nd["prev_close"]) / nd["prev_close"]) * 100, 2)
-    except: pass
-    perf_list = []
-    for p, a in records:
-        direction = a.signal_direction.value if a.signal_direction else "BULLISH"
-        beats = None
-        if p.return_pct is not None and nifty_ret is not None:
-            beats = p.return_pct > 0 if direction == "BEARISH" else p.return_pct > nifty_ret
-        perf_list.append({
-            "id": p.id, "alert_id": p.alert_id, "ticker": p.ticker, "alert_name": a.alert_name,
-            "signal_direction": direction,
-            "reference_price": p.reference_price,
-            "reference_date": p.reference_date.isoformat() if p.reference_date else None,
-            "current_price": p.current_price,
-            "return_absolute": p.return_absolute, "return_pct": p.return_pct,
-            "return_1d": p.return_1d, "return_1w": p.return_1w,
-            "return_1m": p.return_1m, "return_3m": p.return_3m,
-            "high_since": p.high_since, "low_since": p.low_since,
-            "max_drawdown": p.max_drawdown,
-            "last_updated": p.snapshot_date.isoformat() if p.snapshot_date else None,
-            "action_call": a.action.primary_call.value if a.action and a.action.primary_call else None,
-            "conviction": a.action.conviction if a.action else None,
-            "target_price": a.action.primary_target_price if a.action else None,
-            "stop_loss": a.action.primary_stop_loss if a.action else None,
-            "beats_benchmark": beats, "nifty_benchmark_ret": nifty_ret,
-        })
-    return {"performance": perf_list, "nifty_return": nifty_ret}
 
+# ─── Health ────────────────────────────────────────────
 
-@app.post("/api/performance/refresh")
-async def refresh_performance(db: Session = Depends(get_db)):
-    return {"success": True, "updated_count": update_all_performance(db)}
+@app.get("/health")
+async def health():
+    return {"status": "ok", "version": "3.0"}
 
-@app.get("/api/stats")
-async def get_stats(db: Session = Depends(get_db)):
-    total = db.query(TradingViewAlert).count()
-    pending = db.query(TradingViewAlert).filter(TradingViewAlert.status == AlertStatus.PENDING).count()
-    return {"total_alerts": total, "pending": pending}
-
-# ═══════════════════════════════════════════════════════════
-# MARKET PULSE — Live index prices for dashboard
-# ═══════════════════════════════════════════════════════════
-
-MARKET_INSTRUMENTS = [
-    # NSE Broad Market
-    {"ticker": "NIFTY", "name": "Nifty 50", "category": "NSE Broad Market"},
-    {"ticker": "BANKNIFTY", "name": "Bank Nifty", "category": "NSE Broad Market"},
-    {"ticker": "NIFTY500", "name": "Nifty 500", "category": "NSE Broad Market"},
-    {"ticker": "NIFTYMIDCAP", "name": "Nifty Midcap 150", "category": "NSE Broad Market"},
-    {"ticker": "NIFTYSMALLCAP", "name": "Nifty Smallcap 250", "category": "NSE Broad Market"},
-    {"ticker": "NIFTYNEXT50", "name": "Nifty Next 50", "category": "NSE Broad Market"},
-    # NSE Sectoral
-    {"ticker": "NIFTYIT", "name": "Nifty IT", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYPHARMA", "name": "Nifty Pharma", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYFMCG", "name": "Nifty FMCG", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYAUTO", "name": "Nifty Auto", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYMETAL", "name": "Nifty Metal", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYREALTY", "name": "Nifty Realty", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYENERGY", "name": "Nifty Energy", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYPSUBANK", "name": "Nifty PSU Bank", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYFINSERVICE", "name": "Nifty Fin Services", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYINFRA", "name": "Nifty Infra", "category": "NSE Sectoral"},
-    {"ticker": "NIFTYMEDIA", "name": "Nifty Media", "category": "NSE Sectoral"},
-    # BSE Indices
-    {"ticker": "SENSEX", "name": "BSE Sensex", "category": "BSE Indices"},
-    # Commodities
-    {"ticker": "GOLD", "name": "Gold", "category": "Commodities"},
-    {"ticker": "SILVER", "name": "Silver", "category": "Commodities"},
-    {"ticker": "CRUDEOIL", "name": "Crude Oil", "category": "Commodities"},
-    # Currency
-    {"ticker": "USDINR", "name": "USD/INR", "category": "Currency"},
-]
-
-_market_cache = {"data": None, "updated_at": None}
-
-@app.get("/api/market-pulse")
-async def get_market_pulse():
-    """Fetch live prices for all major NSE/BSE indices, commodities, and currencies."""
-    import time as _time
-    now = _time.time()
-    # Cache for 60 seconds to avoid hammering Yahoo Finance
-    if _market_cache["data"] and _market_cache["updated_at"] and (now - _market_cache["updated_at"]) < 60:
-        return _market_cache["data"]
-    
-    results = []
-    for inst in MARKET_INSTRUMENTS:
-        try:
-            price_data = get_live_price(inst["ticker"])
-            results.append({
-                "ticker": inst["ticker"],
-                "name": inst["name"],
-                "category": inst["category"],
-                "current_price": price_data.get("current_price"),
-                "prev_close": price_data.get("prev_close"),
-                "change_pct": price_data.get("change_pct"),
-                "high": price_data.get("high"),
-                "low": price_data.get("low"),
-                "volume": price_data.get("volume"),
-            })
-        except Exception as e:
-            logger.warning(f"Market pulse error for {inst['ticker']}: {e}")
-            results.append({
-                "ticker": inst["ticker"], "name": inst["name"],
-                "category": inst["category"], "current_price": None,
-                "change_pct": None, "error": str(e),
-            })
-    
-    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    response = {
-        "indices": results,
-        "updated_at": ist_now.strftime("%d-%b-%Y %I:%M:%S %p IST"),
-        "count": len([r for r in results if r.get("current_price")]),
-    }
-    _market_cache["data"] = response
-    _market_cache["updated_at"] = now
-    return response
-
-@app.get("/api/master")
-async def get_master_alerts(limit: int = 200, status: Optional[str] = None, db: Session = Depends(get_db)):
-    q = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
-    if status and status != "All": q = q.filter(TradingViewAlert.status == status)
-    return {"alerts": [_serialize_alert(a, db) for a in q.limit(limit).all()]}
-
-@app.get("/api/debug/latest")
-async def debug_latest(db: Session = Depends(get_db)):
-    """Debug endpoint to see raw stored data for the last 5 alerts."""
-    alerts = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at)).limit(5).all()
-    return {"alerts": [{
-        "id": a.id, "ticker": a.ticker, "exchange": a.exchange, "interval": a.interval,
-        "price_at_alert": a.price_at_alert, "alert_name": a.alert_name,
-        "alert_message": a.alert_message[:200] if a.alert_message else None,
-        "signal_direction": a.signal_direction.value if a.signal_direction else None,
-        "signal_summary": a.signal_summary[:200] if a.signal_summary else None,
-        "indicator_values": a.indicator_values,
-        "raw_payload_keys": list(a.raw_payload.keys()) if a.raw_payload else [],
-        "raw_payload_sample": {k: v for k, v in list((a.raw_payload or {}).items())[:10]},
-        "status": a.status.value if a.status else None,
-        "received_at": a.received_at.isoformat() if a.received_at else None,
-    } for a in alerts]}
-
-@app.get("/api/alerts/{alert_id}/chart")
-async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
-    action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
-    if not action or not action.chart_image_b64: raise HTTPException(status_code=404)
-    return {"chart_image_b64": action.chart_image_b64}
-
-@app.post("/api/alerts/{alert_id}/commentary")
-async def generate_commentary(alert_id: int, db: Session = Depends(get_db)):
-    """Lazy commentary generation — called by dashboard when FM opens Trade Center card."""
-    alert = db.query(TradingViewAlert).filter_by(id=alert_id).first()
-    if not alert: raise HTTPException(status_code=404)
-
-    # Return cached if already generated
-    if alert.signal_summary and len(alert.signal_summary) > 80:
-        return {"commentary": alert.signal_summary, "cached": True}
-
-    ind = alert.indicator_values or {}
-    if not ind:
-        commentary = alert.alert_message or "No indicator data available for this alert."
-        return {"commentary": commentary, "cached": False}
-
-    try:
-        from ai_engine import generate_technical_summary
-        commentary = generate_technical_summary(
-            alert.ticker or "Unknown",
-            alert.price_at_alert,
-            ind,
-            alert.alert_message or ""
-        )
-        # Cache it
-        alert.signal_summary = commentary
-        db.commit()
-        return {"commentary": commentary, "cached": False}
-    except Exception as e:
-        logger.warning(f"Commentary generation failed for #{alert_id}: {e}")
-        return {"commentary": alert.alert_message or "Commentary unavailable.", "cached": False, "error": str(e)}
-
-
-# ═══════════════════════════════════════════════════════
-# STREAMLIT REVERSE PROXY
-# ═══════════════════════════════════════════════════════
-import httpx, subprocess, sys, asyncio
-from starlette.websockets import WebSocket
-
-STREAMLIT_INTERNAL_PORT = 8501
-STREAMLIT_BASE = f"http://127.0.0.1:{STREAMLIT_INTERNAL_PORT}"
-_streamlit_proc = None
-_proxy_client = None
-
-def _start_streamlit():
-    global _streamlit_proc
-    _streamlit_proc = subprocess.Popen([
-        sys.executable, "-m", "streamlit", "run", "dashboard.py",
-        "--server.port", str(STREAMLIT_INTERNAL_PORT), "--server.address", "127.0.0.1",
-        "--server.headless", "true", "--browser.gatherUsageStats", "false",
-        "--server.enableCORS", "false", "--server.enableXsrfProtection", "false",
-    ])
-
-@app.on_event("startup")
-async def startup_proxy():
-    global _proxy_client
-    _proxy_client = httpx.AsyncClient(base_url=STREAMLIT_BASE, timeout=30.0)
-    _start_streamlit()
-
-@app.on_event("shutdown")
-async def shutdown_proxy():
-    if _streamlit_proc: _streamlit_proc.terminate()
-    if _proxy_client: await _proxy_client.aclose()
-
-@app.websocket("/_stcore/stream")
-async def ws_proxy(websocket: WebSocket):
-    await websocket.accept()
-    import websockets as ws_lib
-    try:
-        async with ws_lib.connect(f"ws://127.0.0.1:{STREAMLIT_INTERNAL_PORT}/_stcore/stream") as remote:
-            async def c2s():
-                try:
-                    while True: await remote.send(await websocket.receive_text())
-                except: pass
-            async def s2c():
-                try:
-                    async for m in remote:
-                        if isinstance(m, str): await websocket.send_text(m)
-                        else: await websocket.send_bytes(m)
-                except: pass
-            await asyncio.gather(c2s(), s2c())
-    except: pass
-    finally:
-        try: await websocket.close()
-        except: pass
-
-@app.api_route("/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH","OPTIONS","HEAD"])
-async def proxy_streamlit(request: Request, path: str = "", db: Session = Depends(get_db)):
-    if "webhook" in path.lower(): return await process_webhook(request, db)
-    url = f"/{path}"
-    if request.url.query: url += f"?{request.url.query}"
-    h = dict(request.headers); h.pop("host",None); h.pop("content-length",None)
-    try:
-        r = await _proxy_client.request(method=request.method, url=url, headers=h, content=await request.body())
-        skip = {"content-encoding","transfer-encoding","connection","content-length"}
-        return Response(content=r.content, status_code=r.status_code, headers={k:v for k,v in r.headers.items() if k.lower() not in skip})
-    except:
-        return Response(content="Dashboard loading...", status_code=502)
+@app.get("/")
+async def root():
+    return {"service": "JHAVERI FIE v3", "status": "running"}
