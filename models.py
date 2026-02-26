@@ -146,6 +146,14 @@ class AlertAction(Base):
     
     # Chart image attachment
     chart_image_b64 = Column(Text, nullable=True)
+    chart_image_path = Column(String(500), nullable=True)  # future: file path on volume
+
+    # Leg 2 (for relative/ratio alerts)
+    leg2_ticker = Column(String(50), nullable=True)
+    leg2_call = Column(SQLEnum(ActionCall), nullable=True)
+    leg2_target_price = Column(Float, nullable=True)
+    leg2_stop_loss = Column(Float, nullable=True)
+    leg2_notes = Column(Text, nullable=True)
     
     price_at_decision = Column(Float, nullable=True)
     secondary_price_at_decision = Column(Float, nullable=True)
@@ -223,12 +231,18 @@ def init_db():
 
 
 def _migrate_columns():
-    """Safely add new columns to existing tables"""
+    """Safely add new columns to existing tables — idempotent, ignores if already exists."""
     db = SessionLocal()
     migrations = [
         "ALTER TABLE alert_actions ADD COLUMN chart_image_b64 TEXT",
         "ALTER TABLE alert_actions ADD COLUMN primary_target_price FLOAT",
         "ALTER TABLE alert_actions ADD COLUMN primary_stop_loss FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN chart_image_path VARCHAR(500)",
+        "ALTER TABLE alert_actions ADD COLUMN leg2_ticker VARCHAR(50)",
+        "ALTER TABLE alert_actions ADD COLUMN leg2_call VARCHAR(50)",
+        "ALTER TABLE alert_actions ADD COLUMN leg2_target_price FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN leg2_stop_loss FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN leg2_notes TEXT",
     ]
     for sql in migrations:
         try:
