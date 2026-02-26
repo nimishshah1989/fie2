@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 import time
 import os
 import json
-import streamlit.components.v1 as components
 
 API_BASE = os.getenv("FIE_API_URL", "http://localhost:8000")
 
@@ -136,7 +135,8 @@ with st.sidebar:
     ist = now_ist()
     is_market_open = ist.weekday() < 5 and 9 <= ist.hour < 16
     market_indicator = "OPEN" if is_market_open else "CLOSED"
-    st.markdown(f"<div style='font-size:10px; color:#475569; margin-top:8px;'>Live &middot; {ist.strftime('%d-%b-%y %I:%M:%S %p')} IST</div>", unsafe_allow_html=True)
+    mkt_color = "#059669" if is_market_open else "#DC2626"
+    st.markdown(f"<div style='font-size:10px; color:#475569; margin-top:8px;'><span style='display:inline-block; width:6px; height:6px; border-radius:50%; background:{mkt_color}; margin-right:4px;'></span> Live &middot; {ist.strftime('%d-%b-%y %I:%M:%S %p')} IST</div>", unsafe_allow_html=True)
 
 _should_auto_refresh = True
 
@@ -147,93 +147,98 @@ _should_auto_refresh = True
 if page == "Command Center":
     st.markdown("<h1 style='margin-bottom:4px;'>Command Center</h1><p style='color:#64748B; font-size:13px; margin-top:0;'>Real-time signal feed with technical intelligence</p>", unsafe_allow_html=True)
     
-    stats = api_call('GET', "/api/stats") or {}
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total Alerts", stats.get("total_alerts", 0))
-    c2.metric("Pending Queue", stats.get("pending", 0))
-    ist = now_ist()
-    c3.metric("Market Status", "OPEN" if (ist.weekday() < 5 and 9 <= ist.hour < 16) else "CLOSED")
-    
-    st.divider()
     sf = st.selectbox("Filter", ["All", "PENDING", "APPROVED", "DENIED"], label_visibility="collapsed")
-    params = {"limit": 50}
-    if sf != "All": params["status"] = sf
-    data = api_call('GET', "/api/alerts", params=params)
     
-    if not data or not data.get("alerts"):
-        st.markdown("""<div class='empty-state'>
-            <div style='font-size:32px; margin-bottom:12px;'>No signals found</div>
-            <div style='font-size:12px;'>Alerts will appear here when your TradingView webhooks fire. Check the Integrations page for setup instructions.</div>
-        </div>""", unsafe_allow_html=True)
-    else:
-        cols = st.columns(3)
-        for i, al in enumerate(data["alerts"]):
-            with cols[i % 3]:
-                with st.container(border=True):
-                    alert_nm = clean_placeholder(al.get("alert_name"))
-                    tkr = str(al.get("ticker", "—")).strip()
-                    ind = al.get("indicators") or {}
-                    has_rich_data = bool(ind and ind.get("rsi") is not None)
-                    
-                    interval_display = f"<span style='font-size:9px; color:#94A3B8; margin-left:4px;'>{al.get('interval','')}</span>" if al.get('interval') and al.get('interval') != '—' else ""
-                    
-                    st.markdown(f"""
-                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
-                        <div>{asset_pill(al.get('asset_class'))} {signal_pill(al.get('signal_direction'))}</div>
-                        <div style='font-size:10px; color:#94A3B8;'>{fmt_ist(al.get('received_at'))}</div>
-                    </div>
-                    <div style='display:flex; justify-content:space-between; align-items:flex-end;'>
-                        <div>
-                            <div style='font-size:15px; font-weight:800; color:#0F172A;'>{alert_nm}{interval_display}</div>
-                            {f"<div style='font-size:11px; color:#64748B;'>{tkr}</div>" if alert_nm.upper() != tkr.upper() else ""}
-                        </div>
-                        <div style='text-align:right;'>
-                            <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get("price_at_alert"))}</div>
-                            <div>{stat_pill(al.get('status'))}</div>
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if has_rich_data:
-                        rsi_html = rsi_gauge(ind.get("rsi"))
-                        st_dir = ind.get("supertrend_dir", "")
-                        st_color = "#059669" if st_dir == "BULLISH" else "#DC2626" if st_dir == "BEARISH" else "#94A3B8"
-                        htf = ind.get("htf_trend", "")
-                        htf_color = "#059669" if htf == "BULLISH" else "#DC2626" if htf == "BEARISH" else "#94A3B8"
-                        adx_val = ind.get("adx")
-                        adx_str = f"{float(adx_val):.0f}" if adx_val else "—"
+    @st.fragment(run_every=REFRESH_INTERVAL)
+    def command_center_feed():
+        stats = api_call('GET', "/api/stats") or {}
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Alerts", stats.get("total_alerts", 0))
+        c2.metric("Pending Queue", stats.get("pending", 0))
+        ist = now_ist()
+        c3.metric("Market Status", "OPEN" if (ist.weekday() < 5 and 9 <= ist.hour < 16) else "CLOSED")
+        
+        st.divider()
+        params = {"limit": 50}
+        if sf != "All": params["status"] = sf
+        data = api_call('GET', "/api/alerts", params=params)
+    
+        if not data or not data.get("alerts"):
+            st.markdown("""<div class='empty-state'>
+                <div style='font-size:32px; margin-bottom:12px;'>No signals found</div>
+                <div style='font-size:12px;'>Alerts will appear here when your TradingView webhooks fire. Check the Integrations page for setup instructions.</div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            cols = st.columns(3)
+            for i, al in enumerate(data["alerts"]):
+                with cols[i % 3]:
+                    with st.container(border=True):
+                        alert_nm = clean_placeholder(al.get("alert_name"))
+                        tkr = str(al.get("ticker", "—")).strip()
+                        ind = al.get("indicators") or {}
+                        has_rich_data = bool(ind and ind.get("rsi") is not None)
+                        
+                        interval_display = f"<span style='font-size:9px; color:#94A3B8; margin-left:4px;'>{al.get('interval','')}</span>" if al.get('interval') and al.get('interval') != '—' else ""
                         
                         st.markdown(f"""
-                        <div style='background:#F8FAFC; border-radius:6px; padding:8px 10px; margin-top:8px;'>
-                            <div style='display:flex; justify-content:space-between; font-size:10px; margin-bottom:6px;'>
-                                <div><span style='color:#94A3B8;'>RSI</span> {rsi_html}</div>
-                                <div><span style='color:#94A3B8;'>ADX</span> <span style='font-weight:700;'>{adx_str}</span></div>
-                                <div><span style='color:#94A3B8;'>ST</span> <span style='color:{st_color}; font-weight:700;'>{st_dir[:4] if st_dir else "—"}</span></div>
-                                <div><span style='color:#94A3B8;'>HTF</span> <span style='color:{htf_color}; font-weight:700;'>{htf[:4] if htf else "—"}</span></div>
+                        <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                            <div>{asset_pill(al.get('asset_class'))} {signal_pill(al.get('signal_direction'))}</div>
+                            <div style='font-size:10px; color:#94A3B8;'>{fmt_ist(al.get('received_at'))}</div>
+                        </div>
+                        <div style='display:flex; justify-content:space-between; align-items:flex-end;'>
+                            <div>
+                                <div style='font-size:15px; font-weight:800; color:#0F172A;'>{alert_nm}{interval_display}</div>
+                                {f"<div style='font-size:11px; color:#64748B;'>{tkr}</div>" if alert_nm.upper() != tkr.upper() else ""}
                             </div>
-                            {confluence_bar(ind.get("confluence_bull_score"), ind.get("confluence_bear_score"))}
+                            <div style='text-align:right;'>
+                                <div style='font-size:16px; font-weight:800; color:#0F172A;'>{fmt_price(al.get("price_at_alert"))}</div>
+                                <div>{stat_pill(al.get('status'))}</div>
+                            </div>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        ma_a = ind.get("ma_alignment", "")
-                        cp = ind.get("candle_pattern", "")
-                        extras = []
-                        if ma_a and ma_a != "MIXED": extras.append(f"MA: {ma_a}")
-                        if cp and cp != "NONE": extras.append(f"Pattern: {cp}")
-                        vr = ind.get("vol_ratio")
-                        if vr:
-                            try:
-                                if float(vr) > 1.5: extras.append(f"Vol: {float(vr):.1f}x")
-                            except: pass
-                        if extras:
-                            st.markdown(f"<div style='font-size:9px; color:#64748B; margin-top:4px;'>{' &middot; '.join(extras)}</div>", unsafe_allow_html=True)
-                    
-                    # Show signal summary or alert message
-                    summary = al.get("signal_summary") or ""
-                    msg = al.get("alert_message") or ""
-                    display_text = summary if summary and len(summary) > 20 else msg
-                    if display_text and "{{" not in display_text and len(display_text) > 5:
-                        st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px; background:#F8FAFC; border-radius:6px; margin-top:8px; line-height:1.4;'>{display_text[:300]}</div>", unsafe_allow_html=True)
+                        if has_rich_data:
+                            rsi_html = rsi_gauge(ind.get("rsi"))
+                            st_dir = ind.get("supertrend_dir", "")
+                            st_color = "#059669" if st_dir == "BULLISH" else "#DC2626" if st_dir == "BEARISH" else "#94A3B8"
+                            htf = ind.get("htf_trend", "")
+                            htf_color = "#059669" if htf == "BULLISH" else "#DC2626" if htf == "BEARISH" else "#94A3B8"
+                            adx_v = ind.get("adx")
+                            adx_str = f"{float(adx_v):.0f}" if adx_v else "—"
+                            
+                            st.markdown(f"""
+                            <div style='background:#F8FAFC; border-radius:6px; padding:8px 10px; margin-top:8px;'>
+                                <div style='display:flex; justify-content:space-between; font-size:10px; margin-bottom:6px;'>
+                                    <div><span style='color:#94A3B8;'>RSI</span> {rsi_html}</div>
+                                    <div><span style='color:#94A3B8;'>ADX</span> <span style='font-weight:700;'>{adx_str}</span></div>
+                                    <div><span style='color:#94A3B8;'>ST</span> <span style='color:{st_color}; font-weight:700;'>{st_dir[:4] if st_dir else "—"}</span></div>
+                                    <div><span style='color:#94A3B8;'>HTF</span> <span style='color:{htf_color}; font-weight:700;'>{htf[:4] if htf else "—"}</span></div>
+                                </div>
+                                {confluence_bar(ind.get("confluence_bull_score"), ind.get("confluence_bear_score"))}
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            ma_a = ind.get("ma_alignment", "")
+                            cp = ind.get("candle_pattern", "")
+                            extras = []
+                            if ma_a and ma_a != "MIXED": extras.append(f"MA: {ma_a}")
+                            if cp and cp != "NONE": extras.append(f"Pattern: {cp}")
+                            vr = ind.get("vol_ratio")
+                            if vr:
+                                try:
+                                    if float(vr) > 1.5: extras.append(f"Vol: {float(vr):.1f}x")
+                                except: pass
+                            if extras:
+                                st.markdown(f"<div style='font-size:9px; color:#64748B; margin-top:4px;'>{' &middot; '.join(extras)}</div>", unsafe_allow_html=True)
+                        
+                        # Show signal summary or alert message
+                        summary = al.get("signal_summary") or ""
+                        msg = al.get("alert_message") or ""
+                        display_text = summary if summary and len(summary) > 20 else msg
+                        if display_text and "{{" not in display_text and len(display_text) > 5:
+                            st.markdown(f"<div style='font-size:11px; color:#475569; padding:8px; background:#F8FAFC; border-radius:6px; margin-top:8px; line-height:1.4;'>{display_text[:300]}</div>", unsafe_allow_html=True)
+
+    command_center_feed()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -341,72 +346,68 @@ elif page == "Trade Desk":
 elif page == "Market Pulse":
     st.markdown("<h1 style='margin-bottom:4px;'>Market Pulse</h1><p style='color:#64748B; font-size:13px; margin-top:0;'>Live NSE and BSE indices, commodities, and currencies</p>", unsafe_allow_html=True)
     
-    if st.button("Refresh Prices", type="primary"):
-        st.cache_data.clear()
-        st.rerun()
+    @st.fragment(run_every=REFRESH_INTERVAL)
+    def market_pulse_feed():
+        market_data = api_call('GET', '/api/market-pulse')
     
-    @st.cache_data(ttl=60)
-    def fetch_market_data():
-        return api_call('GET', '/api/market-pulse')
-    
-    market_data = fetch_market_data()
-    
-    if not market_data or not market_data.get("indices"):
-        st.warning("Market data is loading... Click Refresh to try again.")
-    else:
-        indices = market_data["indices"]
-        
-        categories = {}
-        for item in indices:
-            cat = item.get("category", "Other")
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append(item)
-        
-        cat_order = ["NSE Broad Market", "NSE Sectoral", "BSE Indices", "Commodities", "Currency"]
-        
-        for cat in cat_order:
-            if cat not in categories:
-                continue
-            items = categories[cat]
-            st.markdown(f"### {cat}")
+        if not market_data or not market_data.get("indices"):
+            st.warning("Market data is loading...")
+        else:
+            indices = market_data["indices"]
             
-            cols = st.columns(4)
-            for j, item in enumerate(items):
-                with cols[j % 4]:
-                    with st.container(border=True):
-                        name = item.get("name", item.get("ticker", ""))
-                        price = item.get("current_price")
-                        change = item.get("change_pct")
-                        
-                        if change is not None:
-                            if change > 0:
-                                chg_color = "#059669"
-                                chg_str = f"+{change:.2f}%"
-                            elif change < 0:
-                                chg_color = "#DC2626"
-                                chg_str = f"{change:.2f}%"
+            categories = {}
+            for item in indices:
+                cat = item.get("category", "Other")
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append(item)
+            
+            cat_order = ["NSE Broad Market", "NSE Sectoral", "BSE Indices", "Commodities", "Currency"]
+            
+            for cat in cat_order:
+                if cat not in categories:
+                    continue
+                items = categories[cat]
+                st.markdown(f"### {cat}")
+                
+                cols = st.columns(4)
+                for j, item in enumerate(items):
+                    with cols[j % 4]:
+                        with st.container(border=True):
+                            name = item.get("name", item.get("ticker", ""))
+                            price = item.get("current_price")
+                            change = item.get("change_pct")
+                            
+                            if change is not None:
+                                if change > 0:
+                                    chg_color = "#059669"
+                                    chg_str = f"+{change:.2f}%"
+                                elif change < 0:
+                                    chg_color = "#DC2626"
+                                    chg_str = f"{change:.2f}%"
+                                else:
+                                    chg_color = "#64748B"
+                                    chg_str = "0.00%"
+                                chg_html = f"<span style='color:{chg_color}; font-size:12px; font-weight:700;'>{chg_str}</span>"
                             else:
-                                chg_color = "#64748B"
-                                chg_str = "0.00%"
-                            chg_html = f"<span style='color:{chg_color}; font-size:12px; font-weight:700;'>{chg_str}</span>"
-                        else:
-                            chg_html = "<span style='color:#94A3B8; font-size:11px;'>N/A</span>"
-                        
-                        price_str = fmt_price(price) if price else "—"
-                        
-                        st.markdown(f"""
-                        <div style='font-size:11px; color:#94A3B8; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;'>{name}</div>
-                        <div style='display:flex; justify-content:space-between; align-items:baseline; margin-top:4px;'>
-                            <div style='font-size:18px; font-weight:800; color:#0F172A;'>{price_str}</div>
-                            <div>{chg_html}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                                chg_html = "<span style='color:#94A3B8; font-size:11px;'>N/A</span>"
+                            
+                            price_str = fmt_price(price) if price else "—"
+                            
+                            st.markdown(f"""
+                            <div style='font-size:11px; color:#94A3B8; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;'>{name}</div>
+                            <div style='display:flex; justify-content:space-between; align-items:baseline; margin-top:4px;'>
+                                <div style='font-size:18px; font-weight:800; color:#0F172A;'>{price_str}</div>
+                                <div>{chg_html}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
             
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-        
-        updated = market_data.get("updated_at", "")
-        st.markdown(f"<div style='text-align:center; font-size:10px; color:#94A3B8; margin-top:16px;'>Last updated: {updated}</div>", unsafe_allow_html=True)
+            updated = market_data.get("updated_at", "")
+            st.markdown(f"<div style='text-align:center; font-size:10px; color:#94A3B8; margin-top:16px;'>Last updated: {updated}</div>", unsafe_allow_html=True)
+
+    market_pulse_feed()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -414,9 +415,6 @@ elif page == "Market Pulse":
 # ═══════════════════════════════════════════════════════════
 elif page == "Portfolio Analytics":
     st.markdown("<h1>Portfolio Analytics</h1>", unsafe_allow_html=True)
-    if st.button("Sync Prices", type="primary"):
-        api_call('POST', "/api/performance/refresh")
-        st.rerun()
     data = api_call('GET', "/api/performance")
     if data and data.get("performance"):
         perf = data["performance"]
@@ -537,12 +535,4 @@ elif page == "Integrations":
         st.markdown(f"AI Engine: {'Gemini configured' if gemini_key else 'GEMINI_API_KEY not set'}")
 
 
-# ─── AUTO REFRESH (every 2 seconds on live pages) ─────────
-if _should_auto_refresh and page in ["Command Center", "Trade Desk", "Market Pulse"]:
-    components.html("""
-    <script>
-        setTimeout(function(){
-            window.parent.location.reload();
-        }, """ + str(REFRESH_INTERVAL * 1000) + """);
-    </script>
-    """, height=0)
+# ─── AUTO REFRESH handled by @st.fragment(run_every=...) on each page ───
