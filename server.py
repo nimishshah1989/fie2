@@ -179,16 +179,10 @@ async def process_webhook(request: Request, db: Session):
             parsed["signal_direction"] = SignalDirection.BULLISH
         # else keep whatever _interpret_signal determined
 
-        if parsed.get("indicator_values"):
-            try:
-                ai = generate_technical_summary(parsed["ticker"], parsed.get("price_at_alert"), parsed["indicator_values"], parsed.get("alert_message",""))
-                if ai and ai != parsed.get("alert_message"):
-                    parsed["signal_summary"] = ai
-            except Exception as e:
-                logger.warning(f"AI enrichment failed: {e}")
-
+        # ── No AI at ingest — commentary generated lazily on demand ──
+        # Store raw alert_message only; dashboard requests /api/alerts/{id}/commentary
         if not parsed.get("signal_summary"):
-            parsed["signal_summary"] = parsed.get("alert_message") or "Signal received"
+            parsed["signal_summary"] = None  # will be generated on demand
 
         alert = TradingViewAlert(
             ticker=parsed["ticker"], exchange=parsed["exchange"], interval=parsed["interval"],
@@ -322,14 +316,39 @@ async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
 @app.get("/api/performance")
 async def get_performance(db: Session = Depends(get_db)):
     records = db.query(AlertPerformance, TradingViewAlert).join(TradingViewAlert).order_by(desc(AlertPerformance.reference_date)).all()
-    return {"performance": [{
-        "id": p.id, "alert_id": p.alert_id, "ticker": p.ticker, "alert_name": a.alert_name,
-        "reference_price": p.reference_price, "current_price": p.current_price,
-        "return_pct": p.return_pct, "max_drawdown": p.max_drawdown,
-        "last_updated": p.snapshot_date.isoformat() if p.snapshot_date else None,
-        "action_call": a.action.primary_call.value if a.action and a.action.primary_call else None,
-        "conviction": a.action.conviction if a.action else None,
-    } for p, a in records]}
+    nifty_ret = None
+    try:
+        from price_service import get_live_price
+        nd = get_live_price("NIFTY")
+        if nd.get("current_price") and nd.get("prev_close"):
+            nifty_ret = round(((nd["current_price"] - nd["prev_close"]) / nd["prev_close"]) * 100, 2)
+    except: pass
+    perf_list = []
+    for p, a in records:
+        direction = a.signal_direction.value if a.signal_direction else "BULLISH"
+        beats = None
+        if p.return_pct is not None and nifty_ret is not None:
+            beats = p.return_pct > 0 if direction == "BEARISH" else p.return_pct > nifty_ret
+        perf_list.append({
+            "id": p.id, "alert_id": p.alert_id, "ticker": p.ticker, "alert_name": a.alert_name,
+            "signal_direction": direction,
+            "reference_price": p.reference_price,
+            "reference_date": p.reference_date.isoformat() if p.reference_date else None,
+            "current_price": p.current_price,
+            "return_absolute": p.return_absolute, "return_pct": p.return_pct,
+            "return_1d": p.return_1d, "return_1w": p.return_1w,
+            "return_1m": p.return_1m, "return_3m": p.return_3m,
+            "high_since": p.high_since, "low_since": p.low_since,
+            "max_drawdown": p.max_drawdown,
+            "last_updated": p.snapshot_date.isoformat() if p.snapshot_date else None,
+            "action_call": a.action.primary_call.value if a.action and a.action.primary_call else None,
+            "conviction": a.action.conviction if a.action else None,
+            "target_price": a.action.primary_target_price if a.action else None,
+            "stop_loss": a.action.primary_stop_loss if a.action else None,
+            "beats_benchmark": beats, "nifty_benchmark_ret": nifty_ret,
+        })
+    return {"performance": perf_list, "nifty_return": nifty_ret}
+
 
 @app.post("/api/performance/refresh")
 async def refresh_performance(db: Session = Depends(get_db)):
@@ -447,6 +466,38 @@ async def get_alert_chart(alert_id: int, db: Session = Depends(get_db)):
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
     if not action or not action.chart_image_b64: raise HTTPException(status_code=404)
     return {"chart_image_b64": action.chart_image_b64}
+
+@app.post("/api/alerts/{alert_id}/commentary")
+async def generate_commentary(alert_id: int, db: Session = Depends(get_db)):
+    """Lazy commentary generation — called by dashboard when FM opens Trade Center card."""
+    alert = db.query(TradingViewAlert).filter_by(id=alert_id).first()
+    if not alert: raise HTTPException(status_code=404)
+
+    # Return cached if already generated
+    if alert.signal_summary and len(alert.signal_summary) > 80:
+        return {"commentary": alert.signal_summary, "cached": True}
+
+    ind = alert.indicator_values or {}
+    if not ind:
+        commentary = alert.alert_message or "No indicator data available for this alert."
+        return {"commentary": commentary, "cached": False}
+
+    try:
+        from ai_engine import generate_technical_summary
+        commentary = generate_technical_summary(
+            alert.ticker or "Unknown",
+            alert.price_at_alert,
+            ind,
+            alert.alert_message or ""
+        )
+        # Cache it
+        alert.signal_summary = commentary
+        db.commit()
+        return {"commentary": commentary, "cached": False}
+    except Exception as e:
+        logger.warning(f"Commentary generation failed for #{alert_id}: {e}")
+        return {"commentary": alert.alert_message or "Commentary unavailable.", "cached": False, "error": str(e)}
+
 
 # ═══════════════════════════════════════════════════════
 # STREAMLIT REVERSE PROXY
