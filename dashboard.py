@@ -39,7 +39,7 @@ html, body, .stApp {
     color: #1e293b;
     -webkit-font-smoothing: antialiased;
 }
-.block-container { padding: 0 !important; max-width: 100% !important; }
+.block-container { padding: 0 28px !important; max-width: 100% !important; }
 /* Sidebar styling */
 section[data-testid="stSidebar"] {
     background: #f0fdf4 !important;
@@ -80,7 +80,7 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
 /* ── STATS ROW ── */
 .stats-row {
     display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
-    padding: 16px 28px 12px;
+    padding: 16px 0 12px;
 }
 .stat {
     background: #ffffff; border: 1px solid #e5e7eb; border-radius: 10px;
@@ -94,7 +94,7 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
 .stat-sub { font-size: 11px; color: #b0b8c4; margin-top: 6px; font-weight: 400; }
 
 /* ── PAGE CONTENT ── */
-.jip-content { padding: 16px 28px 20px; }
+.jip-content { padding: 0; }
 
 /* ── CARD GRID (Command Center) ── */
 .card-grid {
@@ -148,8 +148,8 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
     font-size: 14px; font-weight: 700; color: #0f172a;
     display: flex; align-items: center; gap: 8px; line-height: 1.2;
 }
-.ac-name   { font-size: 11px; color: #94a3b8; margin-top: 2px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ac-meta   { font-size: 10px; color: #94a3b8; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+.ac-name   { font-size: 11px; color: #64748b; margin-top: 2px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-meta   { font-size: 10px; color: #64748b; margin-top: 4px; display: flex; align-items: center; gap: 6px; }
 .ac-itv    { background: #f1f5f9; color: #64748b; border-radius: 4px; padding: 1px 6px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; font-weight: 500; }
 .ac-price-lbl { font-size: 10px; color: #94a3b8; letter-spacing: 0.03em; }
 .ac-price { font-size: 16px; font-weight: 700; color: #2563eb; line-height: 1.2; font-family: 'SF Mono', 'Fira Code', monospace; }
@@ -239,7 +239,7 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
 /* ── API KEY BANNER ── */
 .api-warn {
     background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
-    padding: 10px 16px; margin: 12px 28px 0;
+    padding: 10px 16px; margin: 12px 0 0;
     font-size: 12px; color: #92400e;
     display: flex; align-items: center; gap: 8px;
 }
@@ -351,8 +351,8 @@ div[data-testid="stImage"] img { border-radius: 8px; }
 /* ── GLOBAL STREAMLIT COMPACTNESS ── */
 .stApp > div > div > div > div { padding-top: 0 !important; }
 section.main > div.block-container { padding-top: 0 !important; padding-bottom: 0 !important; }
-div[data-testid="stAppViewBlockContainer"] { padding: 0 !important; }
-div[data-testid="stMainBlockContainer"] { padding: 0 !important; }
+div[data-testid="stAppViewBlockContainer"] { padding: 0 28px !important; }
+div[data-testid="stMainBlockContainer"] { padding: 0 28px !important; }
 /* Force zero gap on Streamlit emotion-cache flex containers */
 div[class*="st-emotion-cache"][style*="flex-direction: column"] { gap: 0 !important; }
 div[class*="e1f1d6gn"] { gap: 0 !important; }
@@ -363,22 +363,19 @@ div[class*="ea3mdgi"] { gap: 0 !important; }
 /* Keep horizontal gaps for columns */
 div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
 
-/* ── APPROVED CARD WRAPPER ── */
-.approved-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 14px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+/* ── URGENCY COLOR-CODED CARDS ── */
+.ac.urgency-now  { border-top: 3px solid #ea580c; }
+.ac.urgency-week { border-top: 3px solid #4f46e5; }
+.ac.urgency-month { border-top: 3px solid #7c3aed; }
+/* FM strip inside card-grid cards */
+.ac .fm-strip-inline {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 6px 16px; background: #f8fafc; border-top: 1px solid #f1f5f9;
+    font-size: 11px;
 }
-.approved-card .ac {
-    border: none;
-    border-radius: 0;
-    margin: 0;
-}
-.approved-card .ac.bull { border-left: 3px solid #10b981; border-radius: 0; }
-.approved-card .ac.bear { border-left: 3px solid #ef4444; border-radius: 0; }
+.ac .fm-strip-inline .fm-action-label { font-weight: 700; color: #0f172a; font-size: 12px; }
+/* Button gap fix for Trade Center */
+.trade-card-wrap { margin-bottom: 8px; }
 
 /* ── COMPACT CARD (Trade Center 3-col) ── */
 .ac-sm .ac-main { padding: 10px 12px; gap: 10px; }
@@ -825,133 +822,9 @@ def card_html(a: dict) -> str:
 </div>"""
 
 
-def card(a: dict, mode: str = "view", first: bool = False):
-    """Render an alert card with optional Streamlit widgets for action/approved modes."""
-    # Approved mode renders its own cohesive card block
-    if mode != "approved":
-        st.markdown(card_html(a), unsafe_allow_html=True)
-
-    # ── TRADE CENTER action panel ──────────────────────────
-    if mode == "action" and a.get("status") == "PENDING":
-        with st.expander(f"⚡  Action — #{a['id']}  {a.get('ticker','')}", expanded=first):
-            c1, c2 = st.columns([1, 1])
-            with c1:
-                act  = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{a['id']}")
-                prio = st.selectbox("Priority", ["IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key=f"pr_{a['id']}")
-            with c2:
-                cf = st.file_uploader("Chart Screenshot", type=["png","jpg","jpeg","webp"], key=f"cf_{a['id']}",
-                                      help="Upload a TradingView chart — Claude will analyze it on approval")
-                if cf:
-                    cf.seek(0)
-                    st.image(cf.read(), caption="✅ Chart ready", use_container_width=True)
-
-            is_ratio = (act == "RATIO")
-            rl = rs = None
-            if is_ratio:
-                r1, r2 = st.columns(2)
-                with r1: rl = st.text_input("Long leg",  placeholder="LONG 60% RELIANCE",  key=f"rl_{a['id']}")
-                with r2: rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{a['id']}")
-
-            b1, b2 = st.columns(2)
-            with b1:
-                if st.button("✅  Approve", key=f"app_{a['id']}", use_container_width=True, type="primary"):
-                    b64 = None
-                    if cf:
-                        cf.seek(0)
-                        b64 = base64.b64encode(cf.read()).decode("utf-8")
-                    if b64:
-                        st.info("⏳ Sending chart to Claude for analysis…")
-                    else:
-                        st.info("⏳ Running text analysis with Claude…")
-                    res = post_action({
-                        "alert_id": a["id"], "decision": "APPROVED",
-                        "action_call": act, "is_ratio": is_ratio,
-                        "ratio_long": rl if is_ratio else None,
-                        "ratio_short": rs if is_ratio else None,
-                        "priority": prio, "chart_image_b64": b64,
-                    })
-                    if res.get("success"):
-                        st.success("✅ Approved — moved to Approved Alerts")
-                        st.rerun()
-                    else:
-                        st.error(f"Error: {res.get('error','Unknown')}")
-            with b2:
-                if st.button("✗  Deny", key=f"den_{a['id']}", use_container_width=True):
-                    res = post_action({"alert_id": a["id"], "decision": "DENIED"})
-                    if res.get("success"): st.rerun()
-                    else: st.error(f"Error: {res.get('error','Unknown')}")
-
-    # ── APPROVED ALERTS view ───────────────────────────────
-    if mode == "approved":
-        action = a.get("action") or {}
-        if action:
-            # Build entire approved card as one cohesive HTML block
-            parts = ['<div class="approved-card">']
-            # Re-render card HTML inside wrapper (strip outer .ac border since wrapper handles it)
-            parts.append(card_html(a))
-
-            # FM decision strip
-            legs_html = ""
-            if action.get("is_ratio"):
-                legs = [l for l in [action.get("ratio_long"), action.get("ratio_short")] if l]
-                if legs: legs_html = f'<div class="fm-ratio">{"  &middot;  ".join(esc(l) for l in legs)}</div>'
-            d = action.get("decision", "")
-            dcls = "chip-app" if d == "APPROVED" else "chip-den"
-            parts.append(f"""<div class="fm-strip">
-  <span class="fm-lbl">FM</span>
-  <span class="chip {dcls}">{esc(d)}</span>
-  <span class="fm-action">{esc(action.get('action_call') or '—')}</span>
-  {prio_chip(action.get('priority',''))}
-  {legs_html}
-</div>""")
-
-            # FM notes
-            fm_n = action.get("fm_notes")
-            if fm_n:
-                parts.append(f'<div style="padding:8px 16px;background:#f0fdf4;border-top:1px solid #d1fae5;font-size:11px;color:#065f46;"><span style="font-size:9px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:0.06em;">FM Notes</span><br/>{esc(fm_n)}</div>')
-
-            # Claude analysis (collapsible)
-            analysis = action.get("chart_analysis")
-            if analysis:
-                valid = [b for b in analysis if b and b != "—"]
-                if valid:
-                    left  = valid[:4]
-                    right = valid[4:8]
-                    lh = "".join(f'<div class="cl-bullet"><span class="cl-n">{i+1}.</span><span>{esc(b)}</span></div>' for i,b in enumerate(left))
-                    rh = "".join(f'<div class="cl-bullet"><span class="cl-n">{i+5}.</span><span>{esc(b)}</span></div>' for i,b in enumerate(right))
-                    mode_label = "🔭 Vision" if action.get("has_chart") else "📝 Text"
-                    parts.append(f"""<details class="cl-details">
-  <summary class="cl-summary">Claude Analysis &middot; {mode_label} &middot; {len(valid)} points</summary>
-  <div class="cl-block"><div class="cl-grid"><div>{lh}</div><div>{rh}</div></div></div>
-</details>""")
-            elif action.get("has_chart"):
-                parts.append('<div style="padding:6px 16px;font-size:11px;color:#94a3b8;">⏳ Analysis pending</div>')
-
-            # Chart thumbnail with lightbox
-            if action.get("has_chart"):
-                try:
-                    r = requests.get(f"{API_URL}/api/alerts/{a['id']}/chart", timeout=8)
-                    b64_data = r.json().get("chart_image_b64", "")
-                    if b64_data:
-                        if not b64_data.startswith("data:"):
-                            b64_data = "data:image/png;base64," + b64_data
-                        uid = f"lb_{a['id']}"
-                        parts.append(f"""<div style="padding:8px 16px;border-top:1px solid #f1f5f9;">
-  <label for="{uid}" style="cursor:pointer;display:inline-block;">
-    <img src="{b64_data}" class="chart-thumb" style="width:260px;" alt="Chart"/>
-    <div style="font-size:10px;color:#94a3b8;margin-top:2px;">Click to expand</div>
-  </label>
-</div>
-<input type="checkbox" id="{uid}" class="chart-toggle"/>
-<label for="{uid}" class="chart-lightbox">
-  <span class="chart-lightbox-close">&times;</span>
-  <img src="{b64_data}" alt="Full chart"/>
-</label>""")
-                except Exception:
-                    pass
-
-            parts.append('</div>')
-            st.markdown('\n'.join(parts), unsafe_allow_html=True)
+def card(a: dict):
+    """Render an alert card as HTML."""
+    st.markdown(card_html(a), unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -966,11 +839,6 @@ def main():
     pending  = [a for a in alerts if a.get("status") == "PENDING"]
     approved = [a for a in alerts if a.get("status") == "APPROVED"]
     denied   = [a for a in alerts if a.get("status") == "DENIED"]
-    actioned = sorted(
-        approved + denied,
-        key=lambda a: (a.get("action") or {}).get("decision_at") or a.get("received_at") or "",
-        reverse=True
-    )
     np_count = len(pending)
     bull = sum(1 for a in alerts if a.get("signal_direction") == "BULLISH")
     bear = sum(1 for a in alerts if a.get("signal_direction") == "BEARISH")
@@ -1046,30 +914,36 @@ def main():
   <div class="stat"><div class="stat-lbl">Bearish ▼</div><div class="stat-val r">{bear}</div><div class="stat-sub">Signals</div></div>
 </div>""", unsafe_allow_html=True)
 
-        st.markdown(f'<div style="text-align:right;padding:2px 28px 8px;font-size:11px;color:#94a3b8;">Last refreshed: {datetime.now().strftime("%d-%b-%y %I:%M %p")}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-size:11px;color:#94a3b8;">Last refreshed: {datetime.now().strftime("%d-%b-%y %I:%M %p")}</span></div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
         if not pending:
             st.markdown('<div class="empty"><div class="empty-icon">📡</div><h3>No pending alerts</h3><p>Waiting for incoming TradingView webhooks</p></div>', unsafe_allow_html=True)
         else:
             f1, f2, _ = st.columns([2, 2, 6])
             with f1: sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="cc_s")
             with f2: so = st.selectbox("Sort", ["Newest First","Oldest First"], key="cc_o")
-            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
+            st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
             fl = pending if sf == "All" else [a for a in pending if a.get("signal_direction") == sf]
             if so == "Oldest First": fl = list(reversed(fl))
             st.caption(f"{len(fl)} pending alerts")
             cards_html = "".join(card_html(a) for a in fl[:50])
             st.markdown(f'<div class="card-grid">{cards_html}</div>', unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
     # TRADE CENTER — Cards + Action
     # ══════════════════════════════
     elif t == "trade":
-        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
-        st.caption(f"{np_count} pending alerts · Click Approve to action with Claude analysis")
-        if not pending:
+        # Filters
+        f1, f2, _ = st.columns([2, 2, 6])
+        with f1: tc_sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="tc_s")
+        with f2: tc_so = st.selectbox("Sort", ["Newest First","Oldest First"], key="tc_o")
+        st.markdown('<div style="height:4px;"></div>', unsafe_allow_html=True)
+
+        tc_list = pending if tc_sf == "All" else [a for a in pending if a.get("signal_direction") == tc_sf]
+        if tc_so == "Oldest First": tc_list = list(reversed(tc_list))
+
+        st.caption(f"{len(tc_list)} pending alerts · Click Approve to action with Claude analysis")
+        if not tc_list:
             st.markdown('<div class="empty"><div class="empty-icon">✅</div><h3>All caught up</h3><p>No pending alerts</p></div>', unsafe_allow_html=True)
         else:
             # Track which card is being actioned
@@ -1078,18 +952,19 @@ def main():
 
             # Render cards in 3-col grid with approve/deny buttons
             cols = st.columns(3)
-            for i, a in enumerate(pending):
+            for i, a in enumerate(tc_list):
                 with cols[i % 3]:
-                    st.markdown(f'<div class="ac-sm">{card_html(a)}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="trade-card-wrap"><div class="ac-sm">{card_html(a)}</div></div>', unsafe_allow_html=True)
                     b1, b2 = st.columns(2)
                     with b1:
-                        if st.button("✅ Approve", key=f"apbtn_{a['id']}", use_container_width=True, type="primary"):
+                        if st.button("Approve", key=f"apbtn_{a['id']}", use_container_width=True, type="primary"):
                             st.session_state.action_card_id = a["id"]
                     with b2:
-                        if st.button("✗ Deny", key=f"denbtn_{a['id']}", use_container_width=True):
+                        if st.button("Deny", key=f"denbtn_{a['id']}", use_container_width=True):
                             res = post_action({"alert_id": a["id"], "decision": "DENIED"})
                             if res.get("success"): st.rerun()
                             else: st.error(f"Error: {res.get('error','Unknown')}")
+                    st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
 
             # FM Action Panel — shown when Approve is clicked
             active_id = st.session_state.get("action_card_id")
@@ -1156,33 +1031,163 @@ def main():
                         if st.button("Cancel", key=f"cancel_{active_id}", use_container_width=True):
                             st.session_state.action_card_id = None
                             st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════
-    # APPROVED CARDS
+    # APPROVED CARDS — Grid layout
     # ══════════════════════════════
     elif t == "approved":
-        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
-        st.caption("FM decisions + Claude analysis")
-        if not actioned:
-            st.markdown('<div class="empty"><div class="empty-icon">🗄️</div><h3>No actioned alerts</h3><p>Approved alerts with Claude analysis appear here</p></div>', unsafe_allow_html=True)
+        # Stats row for approved cards
+        app_imm = sum(1 for a in approved if (a.get("action") or {}).get("priority") == "IMMEDIATELY")
+        app_wk  = sum(1 for a in approved if (a.get("action") or {}).get("priority") == "WITHIN_A_WEEK")
+        app_mo  = sum(1 for a in approved if (a.get("action") or {}).get("priority") == "WITHIN_A_MONTH")
+        st.markdown(f"""<div class="stats-row" style="grid-template-columns: repeat(4, 1fr);">
+  <div class="stat"><div class="stat-lbl">Approved</div><div class="stat-val g">{len(approved)}</div><div class="stat-sub">Total approved</div></div>
+  <div class="stat"><div class="stat-lbl">Immediate</div><div class="stat-val" style="color:#ea580c;">{app_imm}</div><div class="stat-sub">Act now</div></div>
+  <div class="stat"><div class="stat-lbl">This Week</div><div class="stat-val" style="color:#4f46e5;">{app_wk}</div><div class="stat-sub">Within a week</div></div>
+  <div class="stat"><div class="stat-lbl">This Month</div><div class="stat-val" style="color:#7c3aed;">{app_mo}</div><div class="stat-sub">Within a month</div></div>
+</div>""", unsafe_allow_html=True)
+
+        if not approved:
+            st.markdown('<div class="empty"><div class="empty-icon">🗄️</div><h3>No approved alerts</h3><p>Approve alerts in Trade Center — they appear here with Claude analysis</p></div>', unsafe_allow_html=True)
         else:
-            f1, f2, _ = st.columns([2, 2, 6])
-            with f1: sf = st.selectbox("Status", ["All","APPROVED","DENIED"], key="db_s")
-            with f2: tk = st.text_input("Search", placeholder="NIFTY, BITCOIN…", key="db_t")
-            st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-            fl = actioned
-            if sf != "All": fl = [a for a in fl if a.get("status") == sf]
-            if tk: fl = [a for a in fl if tk.upper() in (a.get("ticker") or "").upper()]
-            st.caption(f"{len(fl)} alerts")
-            for a in fl[:100]: card(a, mode="approved")
-        st.markdown("</div>", unsafe_allow_html=True)
+            # Filters
+            f1, f2, f3, _ = st.columns([2, 2, 2, 4])
+            with f1: ap_uf = st.selectbox("Urgency", ["All","IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key="ap_u")
+            with f2: ap_sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="ap_s")
+            with f3: ap_tk = st.text_input("Search", placeholder="NIFTY, BITCOIN…", key="ap_t")
+            st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
+
+            fl = list(approved)
+            if ap_uf != "All": fl = [a for a in fl if (a.get("action") or {}).get("priority") == ap_uf]
+            if ap_sf != "All": fl = [a for a in fl if a.get("signal_direction") == ap_sf]
+            if ap_tk: fl = [a for a in fl if ap_tk.upper() in (a.get("ticker") or "").upper()]
+            st.caption(f"{len(fl)} approved alerts")
+
+            # Track which approved alert detail to show
+            if "approved_detail_id" not in st.session_state:
+                st.session_state.approved_detail_id = None
+
+            # Build approved cards as HTML in 3-col grid
+            def _approved_card_html(a):
+                action = a.get("action") or {}
+                prio = action.get("priority", "")
+                urgency_cls = ""
+                if prio == "IMMEDIATELY": urgency_cls = " urgency-now"
+                elif prio == "WITHIN_A_WEEK": urgency_cls = " urgency-week"
+                elif prio == "WITHIN_A_MONTH": urgency_cls = " urgency-month"
+
+                sig = (a.get("signal_direction") or "").upper()
+                bcls = {"BULLISH": "bull", "BEARISH": "bear"}.get(sig, "")
+                ticker = esc(a.get("ticker") or "—")
+                name = a.get("alert_name") or ""
+                t_up = ticker.replace("&amp;", "&")
+                name_s = esc(name) if name.upper() not in [t_up.upper(), "ALERT", "", "UNKNOWN ALERT"] else ""
+                price = a.get("price_at_alert") or a.get("price_close")
+                action_call = esc(action.get("action_call") or "—")
+
+                # FM strip
+                legs_html = ""
+                if action.get("is_ratio"):
+                    legs = [l for l in [action.get("ratio_long"), action.get("ratio_short")] if l]
+                    if legs: legs_html = f'<div style="font-size:10px;color:#64748b;width:100%;padding-top:2px;">{"  ·  ".join(esc(l) for l in legs)}</div>'
+
+                # Analysis summary
+                analysis = action.get("chart_analysis")
+                analysis_count = 0
+                if analysis:
+                    valid = [b for b in analysis if b and b != "—"]
+                    analysis_count = len(valid)
+                mode_icon = "🔭" if action.get("has_chart") else "📝"
+
+                return f"""<div class="ac {bcls}{urgency_cls}">
+  <div class="ac-main">
+    <div class="ac-left">
+      <div class="ac-ticker">{ticker} {sig_chip(sig)}</div>
+      {f'<div class="ac-name">{name_s}</div>' if name_s else ""}
+    </div>
+    <div class="ac-right">
+      <div class="ac-price-lbl">Alert Price</div>
+      <div class="ac-price">{fp(price)}</div>
+    </div>
+  </div>
+  <div class="fm-strip-inline">
+    <span class="fm-action-label">{action_call}</span>
+    {prio_chip(prio)}
+    {legs_html}
+  </div>
+  {f'<div style="padding:4px 16px;font-size:10px;color:#64748b;background:#f8fafc;border-top:1px solid #f1f5f9;">{mode_icon} {analysis_count} Claude insights</div>' if analysis_count else ''}
+</div>"""
+
+            # Render grid
+            app_cols = st.columns(3)
+            for i, a in enumerate(fl[:100]):
+                with app_cols[i % 3]:
+                    st.markdown(_approved_card_html(a), unsafe_allow_html=True)
+                    if st.button("Details", key=f"apdet_{a['id']}", use_container_width=True):
+                        st.session_state.approved_detail_id = a["id"]
+                    st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
+
+            # Detail panel (shown below grid when Details is clicked)
+            detail_id = st.session_state.get("approved_detail_id")
+            if detail_id:
+                detail_a = next((a for a in fl if a["id"] == detail_id), None)
+                if detail_a:
+                    action = detail_a.get("action") or {}
+                    st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
+                    prio = action.get("priority", "")
+                    prio_color = {"IMMEDIATELY": "#ea580c", "WITHIN_A_WEEK": "#4f46e5", "WITHIN_A_MONTH": "#7c3aed"}.get(prio, "#059669")
+                    st.markdown(f"""<div style="background:#f8fafc;border:1px solid #e5e7eb;border-top:3px solid {prio_color};border-radius:10px;padding:14px 20px;margin-bottom:8px;">
+<div style="font-size:14px;font-weight:700;color:#0f172a;">{esc(detail_a.get("ticker",""))} — Approved Details</div>
+<div style="font-size:11px;color:#64748b;">FM decision: <strong>{esc(action.get("action_call","—"))}</strong> · {prio_chip(prio)}</div>
+</div>""", unsafe_allow_html=True)
+
+                    detail_cols = st.columns([3, 2])
+                    with detail_cols[0]:
+                        # Claude insights
+                        analysis = action.get("chart_analysis")
+                        if analysis:
+                            valid = [b for b in analysis if b and b != "—"]
+                            if valid:
+                                mode_label = "🔭 Vision" if action.get("has_chart") else "📝 Text"
+                                insights_html = f'<div class="detail-title">Claude Analysis · {mode_label} · {len(valid)} points</div><div class="detail-insights">'
+                                for bi, bv in enumerate(valid):
+                                    insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
+                                insights_html += '</div>'
+                                st.markdown(insights_html, unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
+
+                        # FM notes
+                        fm_n = action.get("fm_notes")
+                        if fm_n:
+                            st.markdown(f'<div style="margin-top:12px;"><div class="detail-title">FM Commentary</div><div class="detail-fm-notes">{esc(fm_n)}</div></div>', unsafe_allow_html=True)
+
+                    with detail_cols[1]:
+                        # Chart image
+                        if action.get("has_chart"):
+                            try:
+                                r = requests.get(f"{API_URL}/api/alerts/{detail_id}/chart", timeout=8)
+                                b64_data = r.json().get("chart_image_b64", "")
+                                if b64_data:
+                                    if not b64_data.startswith("data:"):
+                                        b64_data = "data:image/png;base64," + b64_data
+                                    st.markdown('<div class="detail-title">Chart</div>', unsafe_allow_html=True)
+                                    st.image(b64_data, use_container_width=True)
+                            except Exception:
+                                pass
+                        else:
+                            st.markdown('<div style="font-size:12px;color:#94a3b8;margin-top:20px;">No chart uploaded</div>', unsafe_allow_html=True)
+
+                    if st.button("Close Details", key="close_app_detail"):
+                        st.session_state.approved_detail_id = None
+                        st.rerun()
 
     # ══════════════════════════════
     # MARKET PULSE — Full Index Table
     # ══════════════════════════════
     elif t == "pulse":
-        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
 
         c1, c2, c3, c4 = st.columns([2, 1.5, 1.5, 2])
         with c1:
@@ -1245,7 +1250,10 @@ def main():
 
             filtered.sort(key=_sort_key)
 
-            st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:0 4px;"><span style="font-size:12px;color:#64748b;">Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {esc(base_idx)}</span><span style="font-size:11px;color:#94a3b8;white-space:nowrap;flex-shrink:0;margin-left:12px;">Updated: {ts_str}</span></div>', unsafe_allow_html=True)
+            st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px;">
+<span style="font-size:12px;color:#64748b;min-width:0;">Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {esc(base_idx)}</span>
+<span style="font-size:11px;color:#94a3b8;white-space:nowrap;">Updated: {ts_str}</span>
+</div>""", unsafe_allow_html=True)
 
             def _signal_badge(sig):
                 if not sig:
@@ -1371,13 +1379,10 @@ def main():
         heat_html += '</div>'
         st.markdown(heat_html, unsafe_allow_html=True)
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
     # ══════════════════════════════
     # ALERT PERFORMANCE — Card Grid
     # ══════════════════════════════
     elif t == "perf":
-        st.markdown('<div class="jip-content">', unsafe_allow_html=True)
 
         if not approved:
             st.markdown('<div class="empty"><div class="empty-icon">📈</div><h3>No approved alerts</h3><p>Approve alerts in Trade Center to track performance</p></div>', unsafe_allow_html=True)
@@ -1523,8 +1528,6 @@ def main():
                             st.rerun()
             else:
                 st.markdown('<div class="empty"><div class="empty-icon">⏳</div><h3>Loading performance data</h3><p>Fetching live prices…</p></div>', unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
 
 
 
