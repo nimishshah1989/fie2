@@ -195,7 +195,7 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] 
 .fm-action { font-size: 13px; font-weight: 800; color: #0f172a; }
 .fm-ratio  { font-size: 10px; color: #64748b; width: 100%; padding-top: 3px; }
 
-/* ── CLAUDE ANALYSIS BLOCK (collapsible) ── */
+/* ── INSIGHTS BLOCK (collapsible) ── */
 .cl-details {
     border-top: 1px solid #dbeafe;
     background: #f8fafc;
@@ -382,16 +382,16 @@ div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
 .detail-title { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
 
 /* ── COMPACT CARD (Trade Center 3-col) ── */
-.ac-sm { margin-bottom: 6px; }
+.ac-sm { margin-bottom: 0; }
 .ac-sm .ac-main { padding: 10px 12px; gap: 10px; }
 .ac-sm .ac-ticker { font-size: 13px; }
 .ac-sm .ac-name { font-size: 10px; max-width: 180px; }
 .ac-sm .ac-meta { font-size: 9px; }
-.ac-sm .ac-price { font-size: 13px; }
+.ac-sm .ac-price { font-size: 14px; }
 .ac-sm .ac-price-lbl { font-size: 9px; }
-.ac-sm .ac-ohlcv { padding: 3px 12px; }
+.ac-sm .ac-ohlcv { padding: 4px 12px; }
 .ac-sm .ac-o-lbl { font-size: 8px; }
-.ac-sm .ac-o-val { font-size: 9px; }
+.ac-sm .ac-o-val { font-size: 10px; }
 .ac-sm .ac-msg { font-size: 10px; padding: 4px 12px; max-height: 30px; }
 .ac-sm .ac-ts { font-size: 8px; }
 
@@ -908,7 +908,7 @@ def main():
         if not _status.get("analysis_enabled"):
             st.markdown("""
 <div class="api-warn">
-  ⚠️ <strong>Claude analysis disabled</strong> — Set ANTHROPIC_API_KEY on the server.
+  ⚠️ <strong>Analysis disabled</strong> — Set ANTHROPIC_API_KEY on the server.
   <code>ANTHROPIC_API_KEY=sk-ant-...</code>
 </div>""", unsafe_allow_html=True)
     except Exception:
@@ -946,7 +946,79 @@ def main():
     # TRADE CENTER — Cards + Action
     # ══════════════════════════════
     elif t == "trade":
-        # Filters
+        # Track which card is being actioned
+        if "action_card_id" not in st.session_state:
+            st.session_state.action_card_id = None
+
+        # Priority display mapping
+        _PRIO_DISPLAY = {"Immediately": "IMMEDIATELY", "Within a Week": "WITHIN_A_WEEK", "Within a Month": "WITHIN_A_MONTH"}
+        _PRIO_LABELS = list(_PRIO_DISPLAY.keys())
+
+        # ── FM Action Panel — shown at TOP when Approve is clicked ──
+        active_id = st.session_state.get("action_card_id")
+        if active_id:
+            active_alert = next((a for a in pending if a["id"] == active_id), None)
+            if active_alert:
+                st.markdown(f"""<div style="background:#ecfdf5;border:2px solid #a7f3d0;border-radius:10px;padding:16px 20px;margin-bottom:12px;">
+<div style="font-size:14px;font-weight:700;color:#059669;">FM Action Panel — {esc(active_alert.get("ticker",""))} #{active_id}</div>
+<div style="font-size:11px;color:#64748b;">Complete the fields below and submit to approve</div>
+</div>""", unsafe_allow_html=True)
+
+                c1, c2, c3 = st.columns([2, 2, 3])
+                with c1:
+                    act = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{active_id}")
+                    prio_label = st.selectbox("Priority / Intensity", _PRIO_LABELS, key=f"pr_{active_id}")
+                    prio = _PRIO_DISPLAY[prio_label]
+                with c2:
+                    fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key=f"fn_{active_id}", height=100)
+                with c3:
+                    cf = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key=f"cf_{active_id}")
+                    if cf:
+                        cf.seek(0)
+                        st.image(cf.read(), caption="Chart ready", width=180)
+
+                is_ratio = (act == "RATIO")
+                rl = rs = rnt = rdt = None
+                if is_ratio:
+                    r1, r2 = st.columns(2)
+                    with r1:
+                        rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key=f"rl_{active_id}")
+                        rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key=f"rnt_{active_id}")
+                    with r2:
+                        rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{active_id}")
+                        rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{active_id}")
+
+                sb1, sb2, _ = st.columns([1.5, 1.5, 7])
+                with sb1:
+                    if st.button("Submit Approval", key=f"submit_{active_id}", use_container_width=True, type="primary"):
+                        b64 = None
+                        if cf:
+                            cf.seek(0)
+                            b64 = base64.b64encode(cf.read()).decode("utf-8")
+                        with st.spinner("Approving…"):
+                            res = post_action({
+                                "alert_id": active_id, "decision": "APPROVED",
+                                "action_call": act, "is_ratio": is_ratio,
+                                "ratio_long": rl if is_ratio else None,
+                                "ratio_short": rs if is_ratio else None,
+                                "ratio_numerator_ticker": rnt if is_ratio else None,
+                                "ratio_denominator_ticker": rdt if is_ratio else None,
+                                "priority": prio, "chart_image_b64": b64,
+                                "fm_notes": fm_notes if fm_notes else None,
+                            })
+                        if res.get("success"):
+                            st.session_state.action_card_id = None
+                            st.rerun()
+                        else:
+                            st.error(f"Error: {res.get('error','Unknown')}")
+                with sb2:
+                    if st.button("Cancel", key=f"cancel_{active_id}", use_container_width=True):
+                        st.session_state.action_card_id = None
+                        st.rerun()
+
+                st.markdown("---")
+
+        # ── Filters ──
         f1, f2, _ = st.columns([2, 2, 6])
         with f1: tc_sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="tc_s")
         with f2: tc_so = st.selectbox("Sort", ["Newest First","Oldest First"], key="tc_o")
@@ -955,91 +1027,30 @@ def main():
         tc_list = pending if tc_sf == "All" else [a for a in pending if a.get("signal_direction") == tc_sf]
         if tc_so == "Oldest First": tc_list = list(reversed(tc_list))
 
-        st.caption(f"{len(tc_list)} pending alerts · Click Approve to action with Claude analysis")
+        st.caption(f"{len(tc_list)} pending alerts · Click Approve to action")
         if not tc_list:
             st.markdown('<div class="empty"><div class="empty-icon">✅</div><h3>All caught up</h3><p>No pending alerts</p></div>', unsafe_allow_html=True)
         else:
-            # Track which card is being actioned
-            if "action_card_id" not in st.session_state:
-                st.session_state.action_card_id = None
+            # Render cards in 3-col grid — card HTML in grid, buttons below each
+            cards_html = ""
+            for a in tc_list:
+                cards_html += f'<div class="ac-sm">{card_html(a)}</div>'
+            st.markdown(f'<div class="card-grid" style="margin-bottom:8px;">{cards_html}</div>', unsafe_allow_html=True)
 
-            # Render cards in 3-col grid with approve/deny buttons
+            # Action buttons in 3-col grid below cards
             cols = st.columns(3)
             for i, a in enumerate(tc_list):
                 with cols[i % 3]:
-                    st.markdown(f'<div class="trade-card-wrap"><div class="ac-sm">{card_html(a)}</div></div>', unsafe_allow_html=True)
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("Approve", key=f"apbtn_{a['id']}", use_container_width=True, type="primary"):
                             st.session_state.action_card_id = a["id"]
+                            st.rerun()
                     with b2:
                         if st.button("Deny", key=f"denbtn_{a['id']}", use_container_width=True):
                             res = post_action({"alert_id": a["id"], "decision": "DENIED"})
                             if res.get("success"): st.rerun()
                             else: st.error(f"Error: {res.get('error','Unknown')}")
-                    st.markdown('<div style="height:12px;"></div>', unsafe_allow_html=True)
-
-            # FM Action Panel — shown when Approve is clicked
-            active_id = st.session_state.get("action_card_id")
-            if active_id:
-                active_alert = next((a for a in pending if a["id"] == active_id), None)
-                if active_alert:
-                    st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
-                    st.markdown(f"""<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px 20px;margin-bottom:8px;">
-<div style="font-size:13px;font-weight:700;color:#059669;">FM Action Panel — {esc(active_alert.get("ticker",""))} #{active_id}</div>
-<div style="font-size:11px;color:#64748b;">Complete the fields below and submit to approve with Claude analysis</div>
-</div>""", unsafe_allow_html=True)
-
-                    c1, c2, c3 = st.columns([2, 2, 3])
-                    with c1:
-                        act = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{active_id}")
-                        prio = st.selectbox("Priority / Intensity", ["IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key=f"pr_{active_id}")
-                    with c2:
-                        fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key=f"fn_{active_id}", height=100)
-                    with c3:
-                        cf = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key=f"cf_{active_id}")
-                        if cf:
-                            cf.seek(0)
-                            st.image(cf.read(), caption="Chart ready", width=180)
-
-                    is_ratio = (act == "RATIO")
-                    rl = rs = rnt = rdt = None
-                    if is_ratio:
-                        r1, r2 = st.columns(2)
-                        with r1:
-                            rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key=f"rl_{active_id}")
-                            rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key=f"rnt_{active_id}")
-                        with r2:
-                            rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{active_id}")
-                            rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{active_id}")
-
-                    sb1, sb2, _ = st.columns([1.5, 1.5, 7])
-                    with sb1:
-                        if st.button("Submit Approval", key=f"submit_{active_id}", use_container_width=True, type="primary"):
-                            b64 = None
-                            if cf:
-                                cf.seek(0)
-                                b64 = base64.b64encode(cf.read()).decode("utf-8")
-                            with st.spinner("Approving…"):
-                                res = post_action({
-                                    "alert_id": active_id, "decision": "APPROVED",
-                                    "action_call": act, "is_ratio": is_ratio,
-                                    "ratio_long": rl if is_ratio else None,
-                                    "ratio_short": rs if is_ratio else None,
-                                    "ratio_numerator_ticker": rnt if is_ratio else None,
-                                    "ratio_denominator_ticker": rdt if is_ratio else None,
-                                    "priority": prio, "chart_image_b64": b64,
-                                    "fm_notes": fm_notes if fm_notes else None,
-                                })
-                            if res.get("success"):
-                                st.session_state.action_card_id = None
-                                st.rerun()
-                            else:
-                                st.error(f"Error: {res.get('error','Unknown')}")
-                    with sb2:
-                        if st.button("Cancel", key=f"cancel_{active_id}", use_container_width=True):
-                            st.session_state.action_card_id = None
-                            st.rerun()
 
     # ══════════════════════════════
     # APPROVED CARDS — Grid layout
@@ -1057,15 +1068,17 @@ def main():
 </div>""", unsafe_allow_html=True)
 
         if not approved:
-            st.markdown('<div class="empty"><div class="empty-icon">🗄️</div><h3>No approved alerts</h3><p>Approve alerts in Trade Center — they appear here with Claude analysis</p></div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty"><div class="empty-icon">🗄️</div><h3>No approved alerts</h3><p>Approve alerts in Trade Center — they appear here with insights</p></div>', unsafe_allow_html=True)
         else:
             # Filters
             f1, f2, f3, _ = st.columns([2, 2, 2, 4])
-            with f1: ap_uf = st.selectbox("Urgency", ["All","IMMEDIATELY","WITHIN_A_WEEK","WITHIN_A_MONTH"], key="ap_u")
+            _URG_MAP = {"All": "All", "Immediately": "IMMEDIATELY", "Within a Week": "WITHIN_A_WEEK", "Within a Month": "WITHIN_A_MONTH"}
+            with f1: ap_uf_label = st.selectbox("Urgency", list(_URG_MAP.keys()), key="ap_u")
             with f2: ap_sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="ap_s")
             with f3: ap_tk = st.text_input("Search", placeholder="NIFTY, BITCOIN…", key="ap_t")
             st.markdown('<div style="height:8px;"></div>', unsafe_allow_html=True)
 
+            ap_uf = _URG_MAP[ap_uf_label]
             fl = list(approved)
             if ap_uf != "All": fl = [a for a in fl if (a.get("action") or {}).get("priority") == ap_uf]
             if ap_sf != "All": fl = [a for a in fl if a.get("signal_direction") == ap_sf]
@@ -1159,13 +1172,11 @@ def main():
 <div style="font-size:11px;color:#64748b;">FM decision: <strong>{esc(action.get("action_call","—"))}</strong> · {prio_chip(prio)}</div>
 </div>""", unsafe_allow_html=True)
 
-                    # Chart first (bigger), then insights
+                    # Chart and insights side by side — equal space
                     has_chart_img = action.get("has_chart")
-                    chart_col_w = 3 if has_chart_img else 0
-                    insight_col_w = 2 if has_chart_img else 1
 
                     if has_chart_img:
-                        detail_cols = st.columns([chart_col_w, insight_col_w])
+                        detail_cols = st.columns([1, 1])
                         with detail_cols[0]:
                             try:
                                 r = requests.get(f"{API_URL}/api/alerts/{detail_id}/chart", timeout=8)
@@ -1281,10 +1292,7 @@ def main():
 
             filtered.sort(key=_sort_key)
 
-            st.markdown(f"""<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:12px;">
-<span style="font-size:12px;color:#64748b;min-width:0;">Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {esc(base_idx)}</span>
-<span style="font-size:11px;color:#94a3b8;white-space:nowrap;">Updated: {ts_str}</span>
-</div>""", unsafe_allow_html=True)
+            st.caption(f"Live NSE data · {len(filtered)} of {len(idx_list)} indices · Base: {base_idx} · Updated: {ts_str}")
 
             def _signal_badge(sig):
                 if not sig:
@@ -1442,47 +1450,42 @@ def main():
                 </div>""", unsafe_allow_html=True)
 
                 st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
-                st.caption(f"{len(perf_data)} active trades · Click ℹ Details to view Claude insights")
+                st.caption(f"{len(perf_data)} active trades")
 
-                # ── Track which alert detail to show ──
-                if "detail_alert_id" not in st.session_state:
-                    st.session_state.detail_alert_id = None
-
-                # ── Performance card grid (3 cols) ──
-                perf_cols = st.columns(3)
+                # ── Performance card grid (3 cols) — no detail panel ──
+                perf_html = ""
                 for idx_p, p in enumerate(perf_data):
-                    with perf_cols[idx_p % 3]:
-                        sig = (p.get("signal_direction") or "").upper()
-                        sig_badge = '<span class="chip chip-bull">▲ Bull</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">▼ Bear</span>' if sig == "BEARISH" else '')
-                        entry = p.get("entry_price")
-                        curr = p.get("current_price")
-                        ret_pct = p.get("return_pct")
-                        days = p.get("days_since")
-                        action_d = p.get("action") or {}
-                        action_call = action_d.get("action_call", "—")
-                        prio = action_d.get("priority", "")
+                    sig = (p.get("signal_direction") or "").upper()
+                    sig_badge = '<span class="chip chip-bull">▲ Bull</span>' if sig == "BULLISH" else ('<span class="chip chip-bear">▼ Bear</span>' if sig == "BEARISH" else '')
+                    entry = p.get("entry_price")
+                    curr = p.get("current_price")
+                    ret_pct = p.get("return_pct")
+                    days = p.get("days_since")
+                    action_d = p.get("action") or {}
+                    action_call = action_d.get("action_call", "—")
+                    prio = action_d.get("priority", "")
 
-                        entry_str = fp(entry) if entry else "—"
-                        curr_str = fp(curr) if curr else "—"
-                        ret_str = "{:+.2f}%".format(ret_pct) if ret_pct is not None else "—"
-                        ret_cls = "pc-g" if (ret_pct or 0) >= 0 else "pc-r"
-                        days_str = "{}d".format(days) if days is not None else "—"
+                    entry_str = fp(entry) if entry else "—"
+                    curr_str = fp(curr) if curr else "—"
+                    ret_str = "{:+.2f}%".format(ret_pct) if ret_pct is not None else "—"
+                    ret_cls = "pc-g" if (ret_pct or 0) >= 0 else "pc-r"
+                    days_str = "{}d".format(days) if days is not None else "—"
 
-                        alert_dt = p.get("received_at") or p.get("time_utc") or ""
-                        try:
-                            dt_obj = datetime.fromisoformat(alert_dt.replace("Z", ""))
-                            alert_date_str = dt_obj.strftime("%d %b %y")
-                        except Exception:
-                            alert_date_str = "—"
+                    alert_dt = p.get("received_at") or p.get("time_utc") or ""
+                    try:
+                        dt_obj = datetime.fromisoformat(alert_dt.replace("Z", ""))
+                        alert_date_str = dt_obj.strftime("%d %b %y")
+                    except Exception:
+                        alert_date_str = "—"
 
-                        prio_badge = ""
-                        if prio == "IMMEDIATELY": prio_badge = '<span class="chip chip-imm" style="margin-left:4px;">Now</span>'
-                        elif prio == "WITHIN_A_WEEK": prio_badge = '<span class="chip chip-wk" style="margin-left:4px;">Week</span>'
-                        elif prio == "WITHIN_A_MONTH": prio_badge = '<span class="chip chip-mo" style="margin-left:4px;">Month</span>'
+                    prio_badge = ""
+                    if prio == "IMMEDIATELY": prio_badge = '<span class="chip chip-imm" style="margin-left:4px;">Now</span>'
+                    elif prio == "WITHIN_A_WEEK": prio_badge = '<span class="chip chip-wk" style="margin-left:4px;">Week</span>'
+                    elif prio == "WITHIN_A_MONTH": prio_badge = '<span class="chip chip-mo" style="margin-left:4px;">Month</span>'
 
-                        ticker_label = esc(p.get("ticker", "—"))
+                    ticker_label = esc(p.get("ticker", "—"))
 
-                        st.markdown(f"""<div class="perf-card">
+                    perf_html += f"""<div class="perf-card">
   <div class="pc-top">
     <div>
       <div class="pc-ticker">{ticker_label} {sig_badge}</div>
@@ -1499,64 +1502,8 @@ def main():
     <div class="pc-cell"><div class="pc-lbl">Return</div><div class="pc-val {ret_cls}">{ret_str}</div></div>
     <div class="pc-cell"><div class="pc-lbl">Days</div><div class="pc-val">{days_str}</div></div>
   </div>
-</div>""", unsafe_allow_html=True)
-                        if st.button("ℹ Details", key=f"det_{p.get('id', idx_p)}", use_container_width=True):
-                            st.session_state.detail_alert_id = p.get("id")
-
-                # ── Detail panel (shown below grid when ℹ clicked) ──
-                detail_id = st.session_state.get("detail_alert_id")
-                if detail_id:
-                    detail_p = next((p for p in perf_data if p.get("id") == detail_id), None)
-                    if detail_p:
-                        action_d = detail_p.get("action") or {}
-                        st.markdown('<div style="height:16px;"></div>', unsafe_allow_html=True)
-                        st.markdown(f"""<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 20px;margin-bottom:8px;">
-<div style="font-size:14px;font-weight:700;color:#1e40af;">Insights — {esc(detail_p.get("ticker",""))}</div>
-<div style="font-size:11px;color:#64748b;">Claude analysis & FM commentary</div>
-</div>""", unsafe_allow_html=True)
-
-                        detail_cols = st.columns([3, 2])
-                        with detail_cols[0]:
-                            # Claude insights
-                            analysis = action_d.get("chart_analysis")
-                            if analysis:
-                                valid = [b for b in analysis if b and b != "—"]
-                                if valid:
-                                    mode_label = "🔭 Vision" if action_d.get("has_chart") else "📝 Text"
-                                    insights_html = f'<div class="detail-title">Insights · {len(valid)} points</div><div class="detail-insights">'
-                                    for bi, bv in enumerate(valid):
-                                        insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
-                                    insights_html += '</div>'
-                                    st.markdown(insights_html, unsafe_allow_html=True)
-                                else:
-                                    st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
-                            else:
-                                st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
-
-                            # FM notes
-                            fm_n = action_d.get("fm_notes")
-                            if fm_n:
-                                st.markdown(f'<div style="margin-top:12px;"><div class="detail-title">FM Commentary</div><div class="detail-fm-notes">{esc(fm_n)}</div></div>', unsafe_allow_html=True)
-
-                        with detail_cols[1]:
-                            # Chart image
-                            if action_d.get("has_chart"):
-                                try:
-                                    r = requests.get(f"{API_URL}/api/alerts/{detail_id}/chart", timeout=8)
-                                    b64_data = r.json().get("chart_image_b64", "")
-                                    if b64_data:
-                                        if not b64_data.startswith("data:"):
-                                            b64_data = "data:image/png;base64," + b64_data
-                                        st.markdown('<div class="detail-title">Chart</div>', unsafe_allow_html=True)
-                                        st.image(b64_data, use_container_width=True)
-                                except Exception:
-                                    pass
-                            else:
-                                st.markdown('<div style="font-size:12px;color:#94a3b8;margin-top:20px;">No chart uploaded</div>', unsafe_allow_html=True)
-
-                        if st.button("Close Details", key="close_detail"):
-                            st.session_state.detail_alert_id = None
-                            st.rerun()
+</div>"""
+                st.markdown(f'<div class="perf-grid">{perf_html}</div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div class="empty"><div class="empty-icon">⏳</div><h3>Loading performance data</h3><p>Fetching live prices…</p></div>', unsafe_allow_html=True)
 
