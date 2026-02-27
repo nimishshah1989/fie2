@@ -936,6 +936,113 @@ async def performance(db: Session = Depends(get_db)):
     return {"performance": results}
 
 
+@app.get("/api/actionables")
+async def actionables(db: Session = Depends(get_db)):
+    """Return approved alerts where current price has hit stop_loss or target_price."""
+    from price_service import get_live_price
+
+    approved = (
+        db.query(TradingViewAlert)
+        .filter(TradingViewAlert.status == AlertStatus.APPROVED)
+        .order_by(desc(TradingViewAlert.received_at))
+        .all()
+    )
+    results = []
+    for a in approved:
+        action_obj = a.action
+        if not action_obj:
+            continue
+        sl = action_obj.stop_loss
+        tp = action_obj.target_price
+        # Only consider alerts with at least one of SL/TP set
+        if sl is None and tp is None:
+            continue
+
+        # Determine entry price: midpoint of range, or price_at_alert
+        entry_low = action_obj.entry_price_low
+        entry_high = action_obj.entry_price_high
+        if entry_low is not None and entry_high is not None:
+            entry_price = (entry_low + entry_high) / 2.0
+        elif entry_low is not None:
+            entry_price = entry_low
+        elif entry_high is not None:
+            entry_price = entry_high
+        else:
+            entry_price = a.price_at_alert or a.price_close
+
+        if not entry_price or entry_price <= 0:
+            continue
+
+        # Fetch current live price
+        is_ratio = action_obj.is_ratio if action_obj else False
+        ratio_num = action_obj.ratio_numerator_ticker
+        ratio_den = action_obj.ratio_denominator_ticker
+
+        curr_price = None
+        if is_ratio and ratio_num and ratio_den:
+            num_live = get_live_price(ratio_num)
+            den_live = get_live_price(ratio_den)
+            np_ = num_live.get("current_price")
+            dp_ = den_live.get("current_price")
+            if np_ and dp_ and dp_ > 0:
+                curr_price = round(np_ / dp_, 4)
+        else:
+            live = get_live_price(a.ticker or "")
+            curr_price = live.get("current_price")
+
+        if curr_price is None:
+            continue
+
+        direction = (a.signal_direction or "BULLISH").upper()
+        is_bullish = direction != "BEARISH"
+
+        # Check if SL or TP has been hit
+        trigger_type = None
+        if is_bullish:
+            if sl is not None and curr_price <= sl:
+                trigger_type = "SL_HIT"
+            elif tp is not None and curr_price >= tp:
+                trigger_type = "TP_HIT"
+        else:
+            if sl is not None and curr_price >= sl:
+                trigger_type = "SL_HIT"
+            elif tp is not None and curr_price <= tp:
+                trigger_type = "TP_HIT"
+
+        if trigger_type is None:
+            continue
+
+        # Calculate P&L
+        if trigger_type == "TP_HIT" and tp is not None:
+            pnl_price = tp
+        elif trigger_type == "SL_HIT" and sl is not None:
+            pnl_price = sl
+        else:
+            pnl_price = curr_price
+
+        mult = -1.0 if not is_bullish else 1.0
+        pnl_abs = round(mult * (pnl_price - entry_price), 2)
+        pnl_pct = round(mult * ((pnl_price - entry_price) / entry_price) * 100, 2)
+
+        days_since = None
+        if a.received_at:
+            days_since = (datetime.now() - a.received_at).days
+
+        results.append({
+            **_serialize(a),
+            "trigger_type": trigger_type,
+            "entry_price": round(entry_price, 2),
+            "current_price": curr_price,
+            "stop_loss": sl,
+            "target_price": tp,
+            "pnl_pct": pnl_pct,
+            "pnl_abs": pnl_abs,
+            "days_since": days_since,
+            "is_ratio_trade": is_ratio,
+        })
+    return {"actionables": results}
+
+
 # ─── APScheduler: Daily EOD Fetch ─────────────────────
 
 def _scheduled_eod_fetch():

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   TrendingUp,
   Activity,
+  AlertTriangle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAlerts } from "@/hooks/use-alerts";
@@ -17,6 +18,7 @@ const navItems = [
   { href: "/", label: "Command Center", icon: LayoutDashboard },
   { href: "/trade", label: "Trade Center", icon: ArrowLeftRight },
   { href: "/approved", label: "Approved Cards", icon: CheckCircle2 },
+  { href: "/actionables", label: "Actionables", icon: AlertTriangle },
   { href: "/performance", label: "Alert Performance", icon: TrendingUp },
   { href: "/pulse", label: "Market Pulse", icon: Activity },
 ];

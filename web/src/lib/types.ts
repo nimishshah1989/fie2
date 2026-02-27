@@ -54,6 +54,18 @@ export interface PerformanceAlert extends Alert {
   } | null;
 }
 
+export interface ActionableAlert extends Alert {
+  trigger_type: "SL_HIT" | "TP_HIT";
+  entry_price: number;
+  current_price: number;
+  stop_loss: number | null;
+  target_price: number | null;
+  pnl_pct: number;
+  pnl_abs: number;
+  days_since: number | null;
+  is_ratio_trade: boolean;
+}
+
 export interface LiveIndex {
   index_name: string;
   nse_name?: string;

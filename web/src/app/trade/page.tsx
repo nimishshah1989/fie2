@@ -29,6 +29,7 @@ export default function TradeCenterPage() {
   const [sortBy, setSortBy] = useState<SortBy>("newest");
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isWatchMode, setIsWatchMode] = useState(false);
 
   // Filter + sort pending alerts
   const filteredAlerts = useMemo(() => {
@@ -69,6 +70,20 @@ export default function TradeCenterPage() {
       const alert = pending.find((a) => a.id === id);
       if (alert) {
         setSelectedAlert(alert);
+        setIsWatchMode(false);
+        setDialogOpen(true);
+      }
+    },
+    [pending]
+  );
+
+  // Watch handler — open FM Dialog in watch mode
+  const handleWatch = useCallback(
+    (id: number) => {
+      const alert = pending.find((a) => a.id === id);
+      if (alert) {
+        setSelectedAlert(alert);
+        setIsWatchMode(true);
         setDialogOpen(true);
       }
     },
@@ -92,6 +107,7 @@ export default function TradeCenterPage() {
   const handleDialogSubmitted = useCallback(() => {
     setDialogOpen(false);
     setSelectedAlert(null);
+    setIsWatchMode(false);
     mutate();
   }, [mutate]);
 
@@ -219,6 +235,7 @@ export default function TradeCenterPage() {
               alert={alert}
               onApprove={handleApprove}
               onDeny={handleDeny}
+              onWatch={handleWatch}
             />
           ))}
         </div>
@@ -230,6 +247,7 @@ export default function TradeCenterPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSubmitted={handleDialogSubmitted}
+        watchMode={isWatchMode}
       />
     </div>
   );

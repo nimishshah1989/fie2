@@ -2,6 +2,7 @@ import type {
   Alert,
   ActionRequest,
   PerformanceAlert,
+  ActionableAlert,
   IndicesResponse,
   StatusResponse,
 } from "@/lib/types";
@@ -63,6 +64,13 @@ export async function deleteAlert(
     method: "DELETE",
   });
   return res.json();
+}
+
+export async function fetchActionables(): Promise<ActionableAlert[]> {
+  const res = await fetch(`${API}/api/actionables`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.actionables || [];
 }
 
 export async function fetchStatus(): Promise<StatusResponse> {

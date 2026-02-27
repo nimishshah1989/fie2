@@ -5,12 +5,13 @@ import { cn, formatPrice, formatTimestamp } from "@/lib/utils";
 import { SignalChip } from "@/components/signal-chip";
 import { OhlcvStrip } from "@/components/ohlcv-strip";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Eye } from "lucide-react";
 
 interface AlertCardCompactProps {
   alert: Alert;
   onApprove: (id: number) => void;
   onDeny: (id: number) => void;
+  onWatch: (id: number) => void;
 }
 
 const borderColorMap: Record<string, string> = {
@@ -23,6 +24,7 @@ export function AlertCardCompact({
   alert,
   onApprove,
   onDeny,
+  onWatch,
 }: AlertCardCompactProps) {
   const borderColor = borderColorMap[alert.signal_direction] ?? "border-l-slate-400";
 
@@ -83,6 +85,15 @@ export function AlertCardCompact({
         >
           <CheckCircle2 className="h-3.5 w-3.5" />
           Approve
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="flex-1 border-amber-300 text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+          onClick={() => onWatch(alert.id)}
+        >
+          <Eye className="h-3.5 w-3.5" />
+          Watch
         </Button>
         <Button
           size="sm"

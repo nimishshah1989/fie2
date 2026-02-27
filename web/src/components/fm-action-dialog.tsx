@@ -31,6 +31,7 @@ interface FmActionDialogProps {
   onSubmitted: () => void;
   mode?: "create" | "edit";
   initialData?: AlertAction | null;
+  watchMode?: boolean;
 }
 
 export function FmActionDialog({
@@ -40,6 +41,7 @@ export function FmActionDialog({
   onSubmitted,
   mode = "create",
   initialData,
+  watchMode = false,
 }: FmActionDialogProps) {
   const [action, setAction] = useState<string>("");
   const [priority, setPriority] = useState<string>("");
@@ -124,17 +126,20 @@ export function FmActionDialog({
   const handleSubmit = useCallback(async () => {
     if (!alert) return;
 
-    if (!action) {
+    const effectiveAction = watchMode ? "WATCH" : action;
+
+    if (!effectiveAction) {
       setError("Please select an action.");
       return;
     }
 
-    if (!priority) {
+    // Priority is optional in watchMode
+    if (!watchMode && !priority) {
       setError("Please select a priority.");
       return;
     }
 
-    if (action === "RATIO" && (!ratioLong.trim() || !ratioShort.trim())) {
+    if (effectiveAction === "RATIO" && (!ratioLong.trim() || !ratioShort.trim())) {
       setError("Please enter both long and short tickers for a ratio trade.");
       return;
     }
@@ -143,17 +148,17 @@ export function FmActionDialog({
     setError("");
 
     try {
-      // Parse optional numeric fields
-      const parsedEntryLow = entryPriceLow ? parseFloat(entryPriceLow) : undefined;
-      const parsedEntryHigh = entryPriceHigh ? parseFloat(entryPriceHigh) : undefined;
-      const parsedSL = stopLoss ? parseFloat(stopLoss) : undefined;
-      const parsedTP = targetPrice ? parseFloat(targetPrice) : undefined;
+      // Parse optional numeric fields (skip in watchMode)
+      const parsedEntryLow = !watchMode && entryPriceLow ? parseFloat(entryPriceLow) : undefined;
+      const parsedEntryHigh = !watchMode && entryPriceHigh ? parseFloat(entryPriceHigh) : undefined;
+      const parsedSL = !watchMode && stopLoss ? parseFloat(stopLoss) : undefined;
+      const parsedTP = !watchMode && targetPrice ? parseFloat(targetPrice) : undefined;
 
       if (mode === "edit") {
         // Edit mode: call updateAction
         const editPayload: Record<string, unknown> = {
-          action_call: action,
-          priority,
+          action_call: effectiveAction,
+          priority: priority || null,
           fm_notes: fmNotes.trim() || null,
           entry_price_low: parsedEntryLow ?? null,
           entry_price_high: parsedEntryHigh ?? null,
@@ -174,9 +179,9 @@ export function FmActionDialog({
         const payload: ActionRequest = {
           alert_id: alert.id,
           decision: "APPROVED",
-          action_call: action,
-          is_ratio: action === "RATIO",
-          priority,
+          action_call: effectiveAction,
+          is_ratio: effectiveAction === "RATIO",
+          priority: priority || undefined,
           fm_notes: fmNotes.trim() || undefined,
           entry_price_low: parsedEntryLow,
           entry_price_high: parsedEntryHigh,
@@ -184,7 +189,7 @@ export function FmActionDialog({
           target_price: parsedTP,
         };
 
-        if (action === "RATIO") {
+        if (effectiveAction === "RATIO") {
           payload.ratio_long = ratioLong.trim();
           payload.ratio_short = ratioShort.trim();
         }
@@ -222,6 +227,7 @@ export function FmActionDialog({
     stopLoss,
     targetPrice,
     mode,
+    watchMode,
     resetForm,
     onSubmitted,
   ]);
@@ -231,53 +237,70 @@ export function FmActionDialog({
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle>
-            {mode === "edit" ? "Edit Action" : "FM Action"} — {alert?.ticker ?? "Alert"}
+            {watchMode ? "Watch" : mode === "edit" ? "Edit Action" : "FM Action"} — {alert?.ticker ?? "Alert"}
           </DialogTitle>
           <DialogDescription>
-            {mode === "edit" ? "Update the action for" : "Submit your decision for"}{" "}
-            <span className="font-medium text-foreground">
-              {alert?.alert_name}
-            </span>
+            {watchMode
+              ? "Add this alert to your watchlist. Notes and chart are optional."
+              : mode === "edit"
+                ? "Update the action for"
+                : "Submit your decision for"}{" "}
+            {!watchMode && (
+              <span className="font-medium text-foreground">
+                {alert?.alert_name}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-5 py-2">
-          {/* Action Select */}
-          <div className="grid gap-2">
-            <Label htmlFor="fm-action">Action</Label>
-            <Select value={action} onValueChange={setAction}>
-              <SelectTrigger id="fm-action" className="w-full">
-                <SelectValue placeholder="Select action..." />
-              </SelectTrigger>
-              <SelectContent>
-                {ACTION_OPTIONS.map((opt) => (
-                  <SelectItem key={opt} value={opt}>
-                    {opt}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Watch mode banner */}
+          {watchMode && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+              Adding to watchlist — performance will be tracked automatically.
+            </div>
+          )}
 
-          {/* Priority Select */}
-          <div className="grid gap-2">
-            <Label htmlFor="fm-priority">Priority</Label>
-            <Select value={priority} onValueChange={setPriority}>
-              <SelectTrigger id="fm-priority" className="w-full">
-                <SelectValue placeholder="Select priority..." />
-              </SelectTrigger>
-              <SelectContent>
-                {PRIORITY_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Action Select — hidden in watchMode */}
+          {!watchMode && (
+            <div className="grid gap-2">
+              <Label htmlFor="fm-action">Action</Label>
+              <Select value={action} onValueChange={setAction}>
+                <SelectTrigger id="fm-action" className="w-full">
+                  <SelectValue placeholder="Select action..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTION_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-          {/* Ratio Fields — conditional */}
-          {action === "RATIO" && (
+          {/* Priority Select — optional in watchMode */}
+          {!watchMode && (
+            <div className="grid gap-2">
+              <Label htmlFor="fm-priority">Priority</Label>
+              <Select value={priority} onValueChange={setPriority}>
+                <SelectTrigger id="fm-priority" className="w-full">
+                  <SelectValue placeholder="Select priority..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRIORITY_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Ratio Fields — conditional, hidden in watchMode */}
+          {!watchMode && action === "RATIO" && (
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="fm-ratio-long">Long Ticker</Label>
@@ -300,64 +323,66 @@ export function FmActionDialog({
             </div>
           )}
 
-          {/* Trade Parameters */}
-          <div className="grid gap-3">
-            <Label className="text-sm font-medium">Trade Parameters</Label>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label htmlFor="fm-entry-low" className="text-xs text-muted-foreground">
-                  Entry Price (Low)
-                </Label>
-                <Input
-                  id="fm-entry-low"
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g. 450"
-                  value={entryPriceLow}
-                  onChange={(e) => setEntryPriceLow(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="fm-entry-high" className="text-xs text-muted-foreground">
-                  Entry Price (High)
-                </Label>
-                <Input
-                  id="fm-entry-high"
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g. 500"
-                  value={entryPriceHigh}
-                  onChange={(e) => setEntryPriceHigh(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="fm-stop-loss" className="text-xs text-muted-foreground">
-                  Stop Loss
-                </Label>
-                <Input
-                  id="fm-stop-loss"
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g. 420"
-                  value={stopLoss}
-                  onChange={(e) => setStopLoss(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="fm-target" className="text-xs text-muted-foreground">
-                  Target Price
-                </Label>
-                <Input
-                  id="fm-target"
-                  type="number"
-                  step="0.01"
-                  placeholder="e.g. 600"
-                  value={targetPrice}
-                  onChange={(e) => setTargetPrice(e.target.value)}
-                />
+          {/* Trade Parameters — hidden in watchMode */}
+          {!watchMode && (
+            <div className="grid gap-3">
+              <Label className="text-sm font-medium">Trade Parameters</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="fm-entry-low" className="text-xs text-muted-foreground">
+                    Entry Price (Low)
+                  </Label>
+                  <Input
+                    id="fm-entry-low"
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 450"
+                    value={entryPriceLow}
+                    onChange={(e) => setEntryPriceLow(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="fm-entry-high" className="text-xs text-muted-foreground">
+                    Entry Price (High)
+                  </Label>
+                  <Input
+                    id="fm-entry-high"
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 500"
+                    value={entryPriceHigh}
+                    onChange={(e) => setEntryPriceHigh(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="fm-stop-loss" className="text-xs text-muted-foreground">
+                    Stop Loss
+                  </Label>
+                  <Input
+                    id="fm-stop-loss"
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 420"
+                    value={stopLoss}
+                    onChange={(e) => setStopLoss(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="fm-target" className="text-xs text-muted-foreground">
+                    Target Price
+                  </Label>
+                  <Input
+                    id="fm-target"
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 600"
+                    value={targetPrice}
+                    onChange={(e) => setTargetPrice(e.target.value)}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* FM Commentary */}
           <div className="grid gap-2">
@@ -417,17 +442,17 @@ export function FmActionDialog({
             Cancel
           </Button>
           <Button
-            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+            className={watchMode ? "bg-amber-600 hover:bg-amber-700 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white"}
             onClick={handleSubmit}
             disabled={submitting}
           >
             {submitting ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                {mode === "edit" ? "Saving..." : "Submitting..."}
+                {watchMode ? "Adding..." : mode === "edit" ? "Saving..." : "Submitting..."}
               </>
             ) : (
-              mode === "edit" ? "Save Changes" : "Submit"
+              watchMode ? "Add to Watchlist" : mode === "edit" ? "Save Changes" : "Submit"
             )}
           </Button>
         </div>
