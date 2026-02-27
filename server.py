@@ -5,7 +5,9 @@ Jhaveri Intelligence Platform
 
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import json, os, logging
+from pathlib import Path
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
@@ -956,6 +958,11 @@ async def server_status():
 async def health():
     return {"status": "ok", "version": "3.0"}
 
-@app.get("/")
+@app.get("/api")
 async def root():
     return {"service": "JHAVERI FIE v3", "status": "running"}
+
+# ─── Static Frontend (Next.js export) ────────────────
+_frontend_dir = Path(__file__).parent / "web" / "out"
+if _frontend_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")

@@ -1,0 +1,236 @@
+// ============================================================================
+// Jhaveri Intelligence Platform — Constants
+// Ported from dashboard.py (lines 629–738)
+// ============================================================================
+
+export const TOP_25_INDICES: string[] = [
+  "NIFTY 50",
+  "NIFTY BANK",
+  "NIFTY IT",
+  "NIFTY NEXT 50",
+  "NIFTY FINANCIAL SERVICES",
+  "NIFTY MIDCAP SELECT",
+  "NIFTY 100",
+  "NIFTY 500",
+  "NIFTY PHARMA",
+  "NIFTY AUTO",
+  "NIFTY FMCG",
+  "NIFTY METAL",
+  "NIFTY REALTY",
+  "NIFTY ENERGY",
+  "NIFTY MIDCAP 50",
+  "NIFTY MIDCAP 100",
+  "NIFTY SMALLCAP 100",
+  "NIFTY SMALLCAP 250",
+  "NIFTY PSU BANK",
+  "NIFTY PRIVATE BANK",
+  "NIFTY HEALTHCARE INDEX",
+  "NIFTY CONSUMER DURABLES",
+  "NIFTY OIL & GAS",
+  "NIFTY MEDIA",
+  "INDIA VIX",
+];
+
+export const INDEX_SECTOR_MAP: Record<string, string> = {
+  // Broad Market
+  "NIFTY 50": "Broad Market",
+  "NIFTY NEXT 50": "Broad Market",
+  "NIFTY 100": "Broad Market",
+  "NIFTY 200": "Broad Market",
+  "NIFTY 500": "Broad Market",
+  "NIFTY TOTAL MARKET": "Broad Market",
+  "NIFTY MIDCAP SELECT": "Broad Market",
+  "NIFTY500 MULTICAP 50:25:25": "Broad Market",
+  "NIFTY LARGEMIDCAP 250": "Broad Market",
+  // Banking & Financial
+  "NIFTY BANK": "Banking & Financial",
+  "NIFTY FINANCIAL SERVICES": "Banking & Financial",
+  "NIFTY PSU BANK": "Banking & Financial",
+  "NIFTY PRIVATE BANK": "Banking & Financial",
+  "NIFTY FINANCIAL SERVICES 25/50": "Banking & Financial",
+  "NIFTY FINANCIAL SERVICES EX-BANK": "Banking & Financial",
+  "NIFTY MIDSMALL FINANCIAL SERVICES": "Banking & Financial",
+  "NIFTY CAPITAL MARKETS": "Banking & Financial",
+  // IT & Technology
+  "NIFTY IT": "IT & Technology",
+  "NIFTY MIDSMALL IT & TELECOM": "IT & Technology",
+  "NIFTY INDIA DIGITAL": "IT & Technology",
+  "NIFTY INDIA INTERNET": "IT & Technology",
+  // Pharma & Healthcare
+  "NIFTY PHARMA": "Pharma & Healthcare",
+  "NIFTY HEALTHCARE INDEX": "Pharma & Healthcare",
+  "NIFTY MIDSMALL HEALTHCARE": "Pharma & Healthcare",
+  "NIFTY500 HEALTHCARE": "Pharma & Healthcare",
+  // Auto & Mobility
+  "NIFTY AUTO": "Auto & Mobility",
+  "NIFTY EV & NEW AGE AUTOMOTIVE": "Auto & Mobility",
+  "NIFTY MOBILITY": "Auto & Mobility",
+  "NIFTY TRANSPORTATION & LOGISTICS": "Auto & Mobility",
+  // Consumer & FMCG
+  "NIFTY FMCG": "Consumer & FMCG",
+  "NIFTY CONSUMER DURABLES": "Consumer & FMCG",
+  "NIFTY INDIA CONSUMPTION": "Consumer & FMCG",
+  "NIFTY INDIA NEW AGE CONSUMPTION": "Consumer & FMCG",
+  "NIFTY MIDSMALL INDIA CONSUMPTION": "Consumer & FMCG",
+  "NIFTY NON-CYCLICAL CONSUMER": "Consumer & FMCG",
+  // Commodities & Energy
+  "NIFTY METAL": "Commodities & Energy",
+  "NIFTY ENERGY": "Commodities & Energy",
+  "NIFTY OIL & GAS": "Commodities & Energy",
+  "NIFTY COMMODITIES": "Commodities & Energy",
+  "NIFTY CHEMICALS": "Commodities & Energy",
+  // Infra & Realty
+  "NIFTY REALTY": "Infra & Realty",
+  "NIFTY INFRASTRUCTURE": "Infra & Realty",
+  "NIFTY CORE HOUSING": "Infra & Realty",
+  "NIFTY HOUSING": "Infra & Realty",
+  "NIFTY INDIA INFRASTRUCTURE & LOGISTICS": "Infra & Realty",
+  "NIFTY500 MULTICAP INFRASTRUCTURE 50:30:20": "Infra & Realty",
+  // Mid & Small Cap
+  "NIFTY MIDCAP 50": "Mid & Small Cap",
+  "NIFTY MIDCAP 100": "Mid & Small Cap",
+  "NIFTY MIDCAP 150": "Mid & Small Cap",
+  "NIFTY SMALLCAP 50": "Mid & Small Cap",
+  "NIFTY SMALLCAP 100": "Mid & Small Cap",
+  "NIFTY SMALLCAP 250": "Mid & Small Cap",
+  "NIFTY MIDSMALLCAP 400": "Mid & Small Cap",
+  "NIFTY MICROCAP 250": "Mid & Small Cap",
+  // Thematic
+  "NIFTY MEDIA": "Thematic",
+  "NIFTY MNC": "Thematic",
+  "NIFTY CPSE": "Thematic",
+  "NIFTY PSE": "Thematic",
+  "NIFTY SERVICES SECTOR": "Thematic",
+  "NIFTY INDIA MANUFACTURING": "Thematic",
+  "NIFTY500 MULTICAP INDIA MANUFACTURING 50:30:20": "Thematic",
+  "NIFTY INDIA DEFENCE": "Thematic",
+  "NIFTY INDIA TOURISM": "Thematic",
+  "NIFTY RURAL": "Thematic",
+  "NIFTY INDIA RAILWAYS PSU": "Thematic",
+  "NIFTY CONGLOMERATE 50": "Thematic",
+  "NIFTY IPO": "Thematic",
+  "NIFTY INDIA CORPORATE GROUP INDEX - TATA GROUP 25% CAP": "Thematic",
+  "NIFTY INDIA SELECT 5 CORPORATE GROUPS (MAATR)": "Thematic",
+  // Strategy & Factor
+  "NIFTY ALPHA 50": "Strategy",
+  "NIFTY50 VALUE 20": "Strategy",
+  "NIFTY100 QUALITY 30": "Strategy",
+  "NIFTY50 EQUAL WEIGHT": "Strategy",
+  "NIFTY100 EQUAL WEIGHT": "Strategy",
+  "NIFTY100 LOW VOLATILITY 30": "Strategy",
+  "NIFTY200 QUALITY 30": "Strategy",
+  "NIFTY200 MOMENTUM 30": "Strategy",
+  "NIFTY200 ALPHA 30": "Strategy",
+  "NIFTY200 VALUE 30": "Strategy",
+  "NIFTY ALPHA LOW-VOLATILITY 30": "Strategy",
+  "NIFTY MIDCAP150 QUALITY 50": "Strategy",
+  "NIFTY MIDCAP150 MOMENTUM 50": "Strategy",
+  "NIFTY500 MOMENTUM 50": "Strategy",
+  "NIFTY DIVIDEND OPPORTUNITIES 50": "Strategy",
+  "NIFTY GROWTH SECTORS 15": "Strategy",
+  "NIFTY HIGH BETA 50": "Strategy",
+  "NIFTY LOW VOLATILITY 50": "Strategy",
+  "NIFTY QUALITY LOW-VOLATILITY 30": "Strategy",
+  "NIFTY SMALLCAP250 QUALITY 50": "Strategy",
+  "NIFTY SMALLCAP250 MOMENTUM QUALITY 100": "Strategy",
+  "NIFTY MIDSMALLCAP400 MOMENTUM QUALITY 100": "Strategy",
+  "NIFTY500 EQUAL WEIGHT": "Strategy",
+  "NIFTY500 VALUE 50": "Strategy",
+  "NIFTY500 QUALITY 50": "Strategy",
+  "NIFTY500 LOW VOLATILITY 50": "Strategy",
+  "NIFTY WAVES": "Strategy",
+  "NIFTY TOP 10 EQUAL WEIGHT": "Strategy",
+  "NIFTY TOP 15 EQUAL WEIGHT": "Strategy",
+  "NIFTY TOP 20 EQUAL WEIGHT": "Strategy",
+  "NIFTY500 MULTICAP MOMENTUM QUALITY 50": "Strategy",
+  "NIFTY ALPHA QUALITY LOW-VOLATILITY 30": "Strategy",
+  "NIFTY ALPHA QUALITY VALUE LOW-VOLATILITY 30": "Strategy",
+  "NIFTY100 ALPHA 30": "Strategy",
+  "NIFTY500 MULTIFACTOR MQVLV 50": "Strategy",
+  "NIFTY500 FLEXICAP QUALITY 30": "Strategy",
+  "NIFTY TOTAL MARKET MOMENTUM QUALITY 50": "Strategy",
+  // Fixed Income
+  "NIFTY 8-13 YR G-SEC": "Fixed Income",
+  "NIFTY 10 YR BENCHMARK G-SEC": "Fixed Income",
+  "NIFTY 10 YR BENCHMARK G-SEC (CLEAN PRICE)": "Fixed Income",
+  "NIFTY 4-8 YR G-SEC INDEX": "Fixed Income",
+  "NIFTY 11-15 YR G-SEC INDEX": "Fixed Income",
+  "NIFTY 15 YR AND ABOVE G-SEC INDEX": "Fixed Income",
+  "NIFTY COMPOSITE G-SEC INDEX": "Fixed Income",
+  "NIFTY BHARAT BOND INDEX - APRIL 2030": "Fixed Income",
+  "NIFTY BHARAT BOND INDEX - APRIL 2031": "Fixed Income",
+  "NIFTY BHARAT BOND INDEX - APRIL 2032": "Fixed Income",
+  "NIFTY BHARAT BOND INDEX - APRIL 2033": "Fixed Income",
+  // Volatility
+  "INDIA VIX": "Volatility",
+  // ESG & Shariah
+  "NIFTY100 ESG SECTOR LEADERS": "ESG & Shariah",
+  "NIFTY100 ESG": "ESG & Shariah",
+  "NIFTY100 ENHANCED ESG": "ESG & Shariah",
+  "NIFTY SHARIAH 25": "ESG & Shariah",
+  "NIFTY50 SHARIAH": "ESG & Shariah",
+  "NIFTY500 SHARIAH": "ESG & Shariah",
+  // Leveraged / Derived
+  "NIFTY50 TR 2X LEVERAGE": "Leveraged",
+  "NIFTY50 PR 2X LEVERAGE": "Leveraged",
+  "NIFTY50 TR 1X INVERSE": "Leveraged",
+  "NIFTY50 PR 1X INVERSE": "Leveraged",
+  "NIFTY50 DIVIDEND POINTS": "Leveraged",
+  "NIFTY50 USD": "Leveraged",
+};
+
+export const SECTOR_ORDER: string[] = [
+  "Broad Market",
+  "Banking & Financial",
+  "IT & Technology",
+  "Pharma & Healthcare",
+  "Auto & Mobility",
+  "Consumer & FMCG",
+  "Commodities & Energy",
+  "Infra & Realty",
+  "Mid & Small Cap",
+  "Thematic",
+  "Strategy",
+  "Fixed Income",
+  "Volatility",
+  "ESG & Shariah",
+  "Leveraged",
+  "Other",
+];
+
+export const BASE_INDEX_OPTIONS = [
+  "NIFTY",
+  "SENSEX",
+  "BANKNIFTY",
+  "NIFTYIT",
+  "NIFTYPHARMA",
+  "NIFTYFMCG",
+  "NIFTYAUTO",
+  "NIFTYMETAL",
+];
+
+export const PERIOD_OPTIONS = ["1D", "1W", "1M", "3M", "6M", "12M"];
+
+export const ACTION_OPTIONS = [
+  "BUY",
+  "SELL",
+  "HOLD",
+  "RATIO",
+  "ACCUMULATE",
+  "REDUCE",
+  "SWITCH",
+  "WATCH",
+];
+
+export const PRIORITY_OPTIONS = [
+  { label: "Immediately", value: "IMMEDIATELY" },
+  { label: "Within a Week", value: "WITHIN_A_WEEK" },
+  { label: "Within a Month", value: "WITHIN_A_MONTH" },
+];
+
+// Derived helpers
+export const TOP_25_SET = new Set(TOP_25_INDICES);
+
+export function getSector(nseName: string): string {
+  return INDEX_SECTOR_MAP[nseName] ?? "Other";
+}
