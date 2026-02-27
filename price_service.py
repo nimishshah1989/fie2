@@ -171,12 +171,28 @@ def fetch_nse_index_history(nse_display_name, days=365, _session=None):
         }
         resp = session.get(url, headers=api_headers, timeout=15)
         if resp.status_code != 200:
-            logger.debug("NSE history API returned %d for %s", resp.status_code, nse_display_name)
+            logger.warning("NSE history API returned %d for %s", resp.status_code, nse_display_name)
             return []
 
-        data_items = resp.json().get("data", [])
+        resp_json = resp.json()
+        data_items = resp_json.get("data", [])
+
+        # Diagnostic: log response structure for first call
         if not data_items:
+            # Log what keys the response has so we can debug
+            resp_keys = list(resp_json.keys()) if isinstance(resp_json, dict) else type(resp_json).__name__
+            logger.warning(
+                "NSE history: %s returned empty data. Response keys: %s, status: %d, content-length: %d",
+                nse_display_name, resp_keys, resp.status_code, len(resp.text),
+            )
             return []
+
+        # Diagnostic: log field names from first item
+        first_item = data_items[0]
+        logger.info(
+            "NSE history raw fields for %s: %s",
+            nse_display_name, list(first_item.keys()),
+        )
 
         rows = []
         for item in data_items:
@@ -433,129 +449,67 @@ def compute_returns(alert_price: float, current_price: float, direction: str = "
     return {"return_pct": ret_pct, "return_absolute": round(ret_abs, 2)}
 
 
-def fetch_historical_indices(period: str = "1y") -> dict:
+def fetch_historical_indices_nse_sync(period: str = "1y") -> dict:
     """
-    Fetch historical daily OHLCV data for all indices.
-    Strategy:
-      1. NSE website API for all NSE indices (primary — gets full daily history)
-      2. yfinance for non-NSE indices only (commodities, BSE, currencies)
-      3. nsetools live reference values as final fallback (1d/1w/1m/12m)
+    Fetch historical daily data from NSE website API for all NSE indices.
+    Called as a background task AFTER startup (does NOT block the server).
     Returns {index_name: [{date, open, high, low, close, volume}, ...]}
     """
     period_days = {"1y": 365, "6m": 180, "3m": 90, "1m": 30, "1w": 7, "5d": 5}
     days = period_days.get(period, 365)
-
     results = {}
 
-    # ── Strategy 1: NSE historical API for all NSE indices ──
-    # Get the live index list from nsetools to know ALL available NSE indices
     try:
         live = fetch_live_indices()
-        if live:
-            session_tuple = _nse_session()
-            fetched_count = 0
-            failed_names = []
+        if not live:
+            logger.warning("NSE background: no live data to build index list")
+            return results
 
-            for item in live:
-                idx_name = item["index_name"]     # internal key (e.g., "NIFTY")
-                nse_name = item.get("nse_name")   # display name (e.g., "NIFTY 50")
+        session_tuple = _nse_session()
+        fetched_count = 0
 
-                if not nse_name:
-                    continue
+        for i, item in enumerate(live):
+            idx_name = item["index_name"]
+            nse_name = item.get("nse_name")
+            if not nse_name:
+                continue
 
-                try:
-                    rows = fetch_nse_index_history(nse_name, days=days, _session=session_tuple)
-                    if rows:
-                        results[idx_name] = rows
-                        fetched_count += 1
-                    else:
-                        failed_names.append(nse_name)
-
-                    # Rate limit: 0.5s between requests to be polite to NSE
-                    time.sleep(0.5)
-
-                    # Re-establish session every 30 requests (NSE may expire cookies)
-                    if fetched_count > 0 and fetched_count % 30 == 0:
-                        session_tuple = _nse_session()
-                        time.sleep(1)
-
-                except Exception as e:
-                    logger.debug("NSE history error for %s: %s", nse_name, e)
-                    failed_names.append(nse_name)
-
-            logger.info(
-                "NSE historical API: fetched %d/%d indices, %d failed",
-                fetched_count, len(live), len(failed_names),
-            )
-            if failed_names:
-                logger.debug("NSE history failed for: %s", ", ".join(failed_names[:20]))
-    except Exception as e:
-        logger.warning("NSE historical strategy failed: %s", e)
-
-    # ── Strategy 2: yfinance for non-NSE indices (commodities, BSE, currencies) ──
-    non_nse_keys = ["GOLD", "SILVER", "CRUDEOIL", "USDINR", "SENSEX", "BSE500"]
-    yf_needed = [k for k in non_nse_keys if k not in results and k in NSE_INDEX_KEYS]
-
-    if yf_needed:
-        sym_map = {}
-        for key in yf_needed:
-            yf_sym = NSE_TICKER_MAP.get(key)
-            if yf_sym:
-                sym_map[yf_sym] = key
-
-        if sym_map:
             try:
-                import yfinance as yf
-                import pandas as pd
+                rows = fetch_nse_index_history(nse_name, days=days, _session=session_tuple)
+                if rows:
+                    results[idx_name] = rows
+                    fetched_count += 1
 
-                yf_symbols = list(sym_map.keys())
-                logger.info("yfinance fallback for %d non-NSE indices", len(yf_symbols))
+                # Rate limit
+                time.sleep(0.5)
 
-                raw = yf.download(
-                    tickers=" ".join(yf_symbols),
-                    period=period, auto_adjust=True, progress=False, threads=True,
-                )
-                multi = len(yf_symbols) > 1
+                # Re-establish session every 25 requests
+                if (i + 1) % 25 == 0:
+                    session_tuple = _nse_session()
+                    time.sleep(1)
 
-                for yf_sym, idx_name in sym_map.items():
-                    try:
-                        if multi:
-                            closes = raw["Close"][yf_sym].dropna()
-                            opens  = raw["Open"][yf_sym].dropna()
-                            highs  = raw["High"][yf_sym].dropna()
-                            lows   = raw["Low"][yf_sym].dropna()
-                            vols   = raw["Volume"][yf_sym].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series()
-                        else:
-                            closes = raw["Close"].dropna()
-                            opens  = raw["Open"].dropna()
-                            highs  = raw["High"].dropna()
-                            lows   = raw["Low"].dropna()
-                            vols   = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series()
-
-                        if closes.empty:
-                            continue
-
-                        rows = []
-                        for dt in closes.index:
-                            rows.append({
-                                "date":   dt.strftime("%Y-%m-%d"),
-                                "open":   float(opens[dt]) if dt in opens.index else None,
-                                "high":   float(highs[dt]) if dt in highs.index else None,
-                                "low":    float(lows[dt])  if dt in lows.index  else None,
-                                "close":  float(closes[dt]),
-                                "volume": float(vols[dt])  if not vols.empty and dt in vols.index else None,
-                            })
-                        results[idx_name] = rows
-                        logger.info("yfinance: %s — %d days", idx_name, len(rows))
-                    except Exception as e:
-                        logger.debug("yfinance parse error %s: %s", idx_name, e)
             except Exception as e:
-                logger.warning("yfinance fallback failed: %s", e)
+                logger.debug("NSE bg history error for %s: %s", nse_name, e)
 
-    # ── Strategy 3: nsetools live reference values as final fallback ──
-    # Adds today + 1d/1w/1m/12m reference points for any indices still missing
+        logger.info("NSE background fetch: %d/%d indices got data", fetched_count, len(live))
+    except Exception as e:
+        logger.warning("NSE background fetch failed: %s", e)
+
+    return results
+
+
+def fetch_historical_indices(period: str = "1y") -> dict:
+    """
+    Fast startup backfill — uses nsetools reference values for all NSE indices.
+    Provides today + 1d/1w/1m/12m synthetic reference points.
+    The NSE historical API fetch runs in background AFTER startup (see server.py).
+    Returns {index_name: [{date, open, high, low, close, volume}, ...]}
+    """
+    results = {}
+
+    # nsetools live data gives us reference values for ALL 135+ NSE indices
     try:
-        live_data = fetch_live_indices() if not live else live
+        live = fetch_live_indices()
         today = date_type.today()
         ref_fields = [
             ("previousClose",  1),
@@ -563,24 +517,23 @@ def fetch_historical_indices(period: str = "1y") -> dict:
             ("oneMonthAgoVal", 30),
             ("oneYearAgoVal",  365),
         ]
-        fallback_count = 0
-        for item in live_data:
+        for item in live:
             idx_name = item["index_name"]
-            if idx_name not in results:
-                results[idx_name] = []
-                fallback_count += 1
-            existing_dates = {r["date"] for r in results.get(idx_name, [])}
+            results[idx_name] = []
+            existing_dates = set()
 
             # Add today's data
-            if item.get("last") and today.strftime("%Y-%m-%d") not in existing_dates:
+            if item.get("last"):
+                today_str = today.strftime("%Y-%m-%d")
                 results[idx_name].append({
-                    "date": today.strftime("%Y-%m-%d"),
+                    "date": today_str,
                     "open": item.get("open"), "high": item.get("high"),
                     "low": item.get("low"), "close": item.get("last"),
                     "volume": None,
                 })
+                existing_dates.add(today_str)
 
-            # Add synthetic reference points
+            # Add synthetic reference points (1d, 1w, 1m, 12m from nsetools)
             for field, days_ago in ref_fields:
                 val = item.get(field)
                 if val and val > 0:
@@ -590,10 +543,11 @@ def fetch_historical_indices(period: str = "1y") -> dict:
                             "date": ref_date, "close": val,
                             "open": None, "high": None, "low": None, "volume": None,
                         })
-        if fallback_count > 0:
-            logger.info("Synthetic fallback: %d indices needed reference points", fallback_count)
+                        existing_dates.add(ref_date)
+
+        logger.info("Startup: nsetools reference points for %d indices", len(results))
     except Exception as e:
-        logger.warning("Synthetic historical failed: %s", e)
+        logger.warning("Startup historical fetch failed: %s", e)
 
     return results
 

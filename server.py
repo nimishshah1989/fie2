@@ -92,11 +92,30 @@ def _parse_bullets(raw_text: str) -> list:
 
 # ─── Startup ───────────────────────────────────────────
 
+def _background_nse_history_fetch():
+    """Background thread: fetch full 1Y daily history from NSE API for all indices."""
+    import threading
+    logger.info("Background NSE history fetch starting (thread: %s)...", threading.current_thread().name)
+    try:
+        from price_service import fetch_historical_indices_nse_sync
+        db = SessionLocal()
+        hist_data = fetch_historical_indices_nse_sync(period="1y")
+        stored = 0
+        for idx_name, rows in hist_data.items():
+            for row in rows:
+                if _upsert_price_row(db, idx_name, row):
+                    stored += 1
+        db.commit()
+        db.close()
+        logger.info("Background NSE history: stored %d records across %d indices", stored, len(hist_data))
+    except Exception as e:
+        logger.warning("Background NSE history fetch failed (non-fatal): %s", e)
+
+
 @app.on_event("startup")
 async def startup():
     init_db()
-    # Backfill 1Y historical index data for ratio/index return computations (1d/1w/1m/3m/6m/12m)
-    # Strategy: NSE API for all NSE indices, yfinance only for commodities/BSE/currencies
+    # Phase 1 (fast, ~5s): nsetools reference points for all 135+ indices
     try:
         from price_service import fetch_historical_indices
         db = SessionLocal()
@@ -107,7 +126,7 @@ async def startup():
             or (datetime.now() - datetime.strptime(latest, "%Y-%m-%d")).days > 2
         )
         if needs_backfill:
-            logger.info("Backfilling 1Y historical index data (NSE API primary, yfinance for non-NSE)...")
+            logger.info("Startup: storing nsetools reference points for all NSE indices...")
             hist_data = fetch_historical_indices(period="1y")
             stored = 0
             for idx_name, rows in hist_data.items():
@@ -115,12 +134,19 @@ async def startup():
                     if _upsert_price_row(db, idx_name, row):
                         stored += 1
             db.commit()
-            logger.info("Startup backfill: stored %d price records across %d indices", stored, len(hist_data))
+            logger.info("Startup: stored %d reference records for %d indices", stored, len(hist_data))
         else:
             logger.info("Historical data is recent (latest=%s), skipping backfill", latest)
         db.close()
     except Exception as e:
-        logger.warning("Startup historical fetch failed (non-fatal): %s", e)
+        logger.warning("Startup reference fetch failed (non-fatal): %s", e)
+
+    # Phase 2 (background thread): try NSE historical API for full daily data
+    # This does NOT block the server — runs in background
+    import threading
+    bg_thread = threading.Thread(target=_background_nse_history_fetch, daemon=True, name="nse-history")
+    bg_thread.start()
+    logger.info("Startup complete — NSE history fetch running in background")
 
 
 # ─── Webhook ───────────────────────────────────────────
@@ -593,11 +619,11 @@ async def fetch_eod(db: Session = Depends(get_db)):
 
 @app.post("/api/indices/fetch-historical")
 async def fetch_historical(db: Session = Depends(get_db)):
-    """Fetch 1Y historical data: NSE API for all NSE indices + yfinance for non-NSE + today's live."""
-    from price_service import fetch_historical_indices, fetch_live_indices
+    """Fetch 1Y historical data from NSE API for all indices + today's live from nsetools."""
+    from price_service import fetch_historical_indices_nse_sync, fetch_live_indices
 
-    # 1. Fetch 1Y history — NSE API primary, yfinance for non-NSE only
-    hist_data = fetch_historical_indices(period="1y")
+    # 1. Fetch 1Y history from NSE historical API
+    hist_data = fetch_historical_indices_nse_sync(period="1y")
     stored = 0
     for idx_name, rows in hist_data.items():
         for row in rows:
