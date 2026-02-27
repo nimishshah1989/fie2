@@ -268,16 +268,17 @@ div[data-testid="stButton"] > button {
     color: #475569 !important;
     border: 1px solid #e5e7eb !important;
     border-radius: 6px !important;
-    font-size: 12px !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
-    padding: 5px 14px !important;
-    height: 32px !important;
-    min-height: 32px !important;
+    padding: 4px 12px !important;
+    height: 30px !important;
+    min-height: 30px !important;
     transition: all 0.15s !important;
     box-shadow: none !important;
     font-family: 'Inter', system-ui, sans-serif !important;
     white-space: nowrap !important;
     letter-spacing: 0.01em !important;
+    line-height: 1 !important;
 }
 div[data-testid="stButton"] > button:hover {
     background: #f1f5f9 !important;
@@ -375,19 +376,23 @@ div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
 }
 .ac .fm-strip-inline .fm-action-label { font-weight: 700; color: #0f172a; font-size: 12px; }
 /* Button gap fix for Trade Center */
-.trade-card-wrap { margin-bottom: 8px; }
+.trade-card-wrap { margin-bottom: 6px; }
+/* Detail panel styling */
+.detail-section { margin-bottom: 14px; }
+.detail-title { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
 
 /* ── COMPACT CARD (Trade Center 3-col) ── */
+.ac-sm { margin-bottom: 6px; }
 .ac-sm .ac-main { padding: 10px 12px; gap: 10px; }
 .ac-sm .ac-ticker { font-size: 13px; }
 .ac-sm .ac-name { font-size: 10px; max-width: 180px; }
 .ac-sm .ac-meta { font-size: 9px; }
-.ac-sm .ac-price { font-size: 14px; }
+.ac-sm .ac-price { font-size: 13px; }
 .ac-sm .ac-price-lbl { font-size: 9px; }
-.ac-sm .ac-ohlcv { padding: 4px 12px; }
+.ac-sm .ac-ohlcv { padding: 3px 12px; }
 .ac-sm .ac-o-lbl { font-size: 8px; }
-.ac-sm .ac-o-val { font-size: 10px; }
-.ac-sm .ac-msg { font-size: 10px; padding: 5px 12px; max-height: 36px; }
+.ac-sm .ac-o-val { font-size: 9px; }
+.ac-sm .ac-msg { font-size: 10px; padding: 4px 12px; max-height: 30px; }
 .ac-sm .ac-ts { font-size: 8px; }
 
 /* ── FM ACTION PANEL ── */
@@ -885,7 +890,17 @@ def main():
         if np_count and t == "trade":
             st.caption(f"{np_count} pending")
 
-        st.markdown(f'<div style="font-size:10px;color:#b0b8c4;margin-top:16px;text-align:center;">{datetime.now().strftime("%A, %d %b %Y")}<br/>Auto-refreshing</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size:10px;color:#b0b8c4;margin-top:16px;text-align:center;">{datetime.now().strftime("%A, %d %b %Y")}<br/>{datetime.now().strftime("%I:%M %p")}<br/>Auto-refreshing</div>', unsafe_allow_html=True)
+
+    # ── Reset cross-page session state on nav change ──
+    if "last_page" not in st.session_state:
+        st.session_state.last_page = t
+    if st.session_state.last_page != t:
+        st.session_state.last_page = t
+        # Clear action/detail states from other pages
+        for k in ["action_card_id", "approved_detail_id", "detail_alert_id"]:
+            if k in st.session_state:
+                st.session_state[k] = None
 
     # ── API key warning ──
     try:
@@ -913,8 +928,6 @@ def main():
   <div class="stat"><div class="stat-lbl">Bullish ▲</div><div class="stat-val g">{bull}</div><div class="stat-sub">Signals</div></div>
   <div class="stat"><div class="stat-lbl">Bearish ▼</div><div class="stat-val r">{bear}</div><div class="stat-sub">Signals</div></div>
 </div>""", unsafe_allow_html=True)
-
-        st.markdown(f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;"><span style="font-size:11px;color:#94a3b8;">Last refreshed: {datetime.now().strftime("%d-%b-%y %I:%M %p")}</span></div>', unsafe_allow_html=True)
 
         if not pending:
             st.markdown('<div class="empty"><div class="empty-icon">📡</div><h3>No pending alerts</h3><p>Waiting for incoming TradingView webhooks</p></div>', unsafe_allow_html=True)
@@ -1007,23 +1020,19 @@ def main():
                             if cf:
                                 cf.seek(0)
                                 b64 = base64.b64encode(cf.read()).decode("utf-8")
-                            if b64:
-                                st.info("Sending chart to Claude…")
-                            else:
-                                st.info("Running text analysis…")
-                            res = post_action({
-                                "alert_id": active_id, "decision": "APPROVED",
-                                "action_call": act, "is_ratio": is_ratio,
-                                "ratio_long": rl if is_ratio else None,
-                                "ratio_short": rs if is_ratio else None,
-                                "ratio_numerator_ticker": rnt if is_ratio else None,
-                                "ratio_denominator_ticker": rdt if is_ratio else None,
-                                "priority": prio, "chart_image_b64": b64,
-                                "fm_notes": fm_notes if fm_notes else None,
-                            })
+                            with st.spinner("Approving…"):
+                                res = post_action({
+                                    "alert_id": active_id, "decision": "APPROVED",
+                                    "action_call": act, "is_ratio": is_ratio,
+                                    "ratio_long": rl if is_ratio else None,
+                                    "ratio_short": rs if is_ratio else None,
+                                    "ratio_numerator_ticker": rnt if is_ratio else None,
+                                    "ratio_denominator_ticker": rdt if is_ratio else None,
+                                    "priority": prio, "chart_image_b64": b64,
+                                    "fm_notes": fm_notes if fm_notes else None,
+                                })
                             if res.get("success"):
                                 st.session_state.action_card_id = None
-                                st.success("Approved — moved to Approved Cards")
                                 st.rerun()
                             else:
                                 st.error(f"Error: {res.get('error','Unknown')}")
@@ -1067,7 +1076,7 @@ def main():
             if "approved_detail_id" not in st.session_state:
                 st.session_state.approved_detail_id = None
 
-            # Build approved cards as HTML in 3-col grid
+            # Build approved cards as HTML in 3-col grid — same base as Command Center card
             def _approved_card_html(a):
                 action = a.get("action") or {}
                 prio = action.get("priority", "")
@@ -1082,8 +1091,15 @@ def main():
                 name = a.get("alert_name") or ""
                 t_up = ticker.replace("&amp;", "&")
                 name_s = esc(name) if name.upper() not in [t_up.upper(), "ALERT", "", "UNKNOWN ALERT"] else ""
+                exch = esc(a.get("exchange") or "—")
+                intv = esc(a.get("interval") or "—")
                 price = a.get("price_at_alert") or a.get("price_close")
                 action_call = esc(action.get("action_call") or "—")
+                t1 = ft(a.get("time_utc") or "")
+                t2 = ft(a.get("received_at") or "")
+                ts_html = ""
+                if t1 != "—": ts_html += f'<span>Alert: {t1}</span>'
+                if t2 != "—": ts_html += f'<span>Recv: {t2}</span>'
 
                 # FM strip
                 legs_html = ""
@@ -1104,10 +1120,12 @@ def main():
     <div class="ac-left">
       <div class="ac-ticker">{ticker} {sig_chip(sig)}</div>
       {f'<div class="ac-name">{name_s}</div>' if name_s else ""}
+      <div class="ac-meta">{exch}&nbsp;·&nbsp;<span class="ac-itv">{intv}</span></div>
     </div>
     <div class="ac-right">
       <div class="ac-price-lbl">Alert Price</div>
       <div class="ac-price">{fp(price)}</div>
+      <div class="ac-ts">{ts_html}</div>
     </div>
   </div>
   <div class="fm-strip-inline">
@@ -1115,7 +1133,7 @@ def main():
     {prio_chip(prio)}
     {legs_html}
   </div>
-  {f'<div style="padding:4px 16px;font-size:10px;color:#64748b;background:#f8fafc;border-top:1px solid #f1f5f9;">{mode_icon} {analysis_count} Claude insights</div>' if analysis_count else ''}
+  {f'<div style="padding:4px 16px;font-size:10px;color:#64748b;background:#f8fafc;border-top:1px solid #f1f5f9;">{mode_icon} {analysis_count} insights</div>' if analysis_count else ''}
 </div>"""
 
             # Render grid
@@ -1141,32 +1159,14 @@ def main():
 <div style="font-size:11px;color:#64748b;">FM decision: <strong>{esc(action.get("action_call","—"))}</strong> · {prio_chip(prio)}</div>
 </div>""", unsafe_allow_html=True)
 
-                    detail_cols = st.columns([3, 2])
-                    with detail_cols[0]:
-                        # Claude insights
-                        analysis = action.get("chart_analysis")
-                        if analysis:
-                            valid = [b for b in analysis if b and b != "—"]
-                            if valid:
-                                mode_label = "🔭 Vision" if action.get("has_chart") else "📝 Text"
-                                insights_html = f'<div class="detail-title">Claude Analysis · {mode_label} · {len(valid)} points</div><div class="detail-insights">'
-                                for bi, bv in enumerate(valid):
-                                    insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
-                                insights_html += '</div>'
-                                st.markdown(insights_html, unsafe_allow_html=True)
-                            else:
-                                st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
-                        else:
-                            st.markdown('<div style="font-size:12px;color:#94a3b8;">No Claude analysis available</div>', unsafe_allow_html=True)
+                    # Chart first (bigger), then insights
+                    has_chart_img = action.get("has_chart")
+                    chart_col_w = 3 if has_chart_img else 0
+                    insight_col_w = 2 if has_chart_img else 1
 
-                        # FM notes
-                        fm_n = action.get("fm_notes")
-                        if fm_n:
-                            st.markdown(f'<div style="margin-top:12px;"><div class="detail-title">FM Commentary</div><div class="detail-fm-notes">{esc(fm_n)}</div></div>', unsafe_allow_html=True)
-
-                    with detail_cols[1]:
-                        # Chart image
-                        if action.get("has_chart"):
+                    if has_chart_img:
+                        detail_cols = st.columns([chart_col_w, insight_col_w])
+                        with detail_cols[0]:
                             try:
                                 r = requests.get(f"{API_URL}/api/alerts/{detail_id}/chart", timeout=8)
                                 b64_data = r.json().get("chart_image_b64", "")
@@ -1177,8 +1177,39 @@ def main():
                                     st.image(b64_data, use_container_width=True)
                             except Exception:
                                 pass
+                        with detail_cols[1]:
+                            # Insights
+                            analysis = action.get("chart_analysis")
+                            if analysis:
+                                valid = [b for b in analysis if b and b != "—"]
+                                if valid:
+                                    insights_html = f'<div class="detail-title">Insights · {len(valid)} points</div><div class="detail-insights">'
+                                    for bi, bv in enumerate(valid):
+                                        insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
+                                    insights_html += '</div>'
+                                    st.markdown(insights_html, unsafe_allow_html=True)
+                            # FM notes
+                            fm_n = action.get("fm_notes")
+                            if fm_n:
+                                st.markdown(f'<div style="margin-top:12px;"><div class="detail-title">FM Commentary</div><div class="detail-fm-notes">{esc(fm_n)}</div></div>', unsafe_allow_html=True)
+                    else:
+                        # No chart — full width insights
+                        analysis = action.get("chart_analysis")
+                        if analysis:
+                            valid = [b for b in analysis if b and b != "—"]
+                            if valid:
+                                insights_html = f'<div class="detail-title">Insights · {len(valid)} points</div><div class="detail-insights">'
+                                for bi, bv in enumerate(valid):
+                                    insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
+                                insights_html += '</div>'
+                                st.markdown(insights_html, unsafe_allow_html=True)
+                            else:
+                                st.markdown('<div style="font-size:12px;color:#94a3b8;">No insights available yet</div>', unsafe_allow_html=True)
                         else:
-                            st.markdown('<div style="font-size:12px;color:#94a3b8;margin-top:20px;">No chart uploaded</div>', unsafe_allow_html=True)
+                            st.markdown('<div style="font-size:12px;color:#94a3b8;">No insights available yet</div>', unsafe_allow_html=True)
+                        fm_n = action.get("fm_notes")
+                        if fm_n:
+                            st.markdown(f'<div style="margin-top:12px;"><div class="detail-title">FM Commentary</div><div class="detail-fm-notes">{esc(fm_n)}</div></div>', unsafe_allow_html=True)
 
                     if st.button("Close Details", key="close_app_detail"):
                         st.session_state.approved_detail_id = None
@@ -1492,7 +1523,7 @@ def main():
                                 valid = [b for b in analysis if b and b != "—"]
                                 if valid:
                                     mode_label = "🔭 Vision" if action_d.get("has_chart") else "📝 Text"
-                                    insights_html = f'<div class="detail-title">Claude Analysis · {mode_label} · {len(valid)} points</div><div class="detail-insights">'
+                                    insights_html = f'<div class="detail-title">Insights · {len(valid)} points</div><div class="detail-insights">'
                                     for bi, bv in enumerate(valid):
                                         insights_html += f'<div class="di-item"><span class="di-num">{bi+1}.</span><span>{esc(bv)}</span></div>'
                                     insights_html += '</div>'
