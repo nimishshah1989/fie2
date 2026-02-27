@@ -395,20 +395,8 @@ div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
 .ac-sm .ac-msg { font-size: 10px; padding: 4px 12px; max-height: 30px; }
 .ac-sm .ac-ts { font-size: 8px; }
 
-/* ── FM ACTION PANEL ── */
-.fm-panel {
-    background: #f0fdf4; border: 1px solid #a7f3d0; border-radius: 10px;
-    padding: 16px 20px; margin-top: 12px;
-}
-.fm-panel-hdr { font-size: 13px; font-weight: 700; color: #059669; margin-bottom: 2px; }
-.fm-panel-sub { font-size: 11px; color: #64748b; margin-bottom: 12px; }
-
-/* ── CHART PREVIEW: constrain uploaded images in FM panel ── */
-/* Don't globally restrict — only in file-uploader context */
-
 /* ── DETAIL DIALOG STYLING ── */
-div[data-testid="stDialog"] { }
-div[data-testid="stDialog"] > div { max-width: 720px !important; }
+div[data-testid="stDialog"] > div { border-radius: 12px !important; }
 .detail-section { margin-bottom: 14px; }
 .detail-title { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
 .detail-insights { background: #eff6ff; border-radius: 8px; padding: 12px 16px; }
@@ -833,6 +821,84 @@ def card(a: dict):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FM ACTION DIALOG — Modal popup for approving alerts
+# ══════════════════════════════════════════════════════════════════════════════
+
+@st.dialog("FM Action Panel", width="large")
+def fm_action_dialog(alert_id, ticker_name):
+    """Modal dialog for FM to approve an alert with action details."""
+    _PRIO_MAP = {
+        "Immediately": "IMMEDIATELY",
+        "Within a Week": "WITHIN_A_WEEK",
+        "Within a Month": "WITHIN_A_MONTH",
+    }
+
+    st.markdown(f"""<div style="display:flex;align-items:center;gap:12px;padding:8px 0 12px;border-bottom:1px solid #e5e7eb;margin-bottom:12px;">
+<div style="width:32px;height:32px;border-radius:8px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;font-size:14px;">📊</div>
+<div>
+<div style="font-size:14px;font-weight:700;color:#0f172a;">{esc(ticker_name)}</div>
+<div style="font-size:11px;color:#64748b;">Alert #{alert_id} · Complete the fields below and submit</div>
+</div>
+</div>""", unsafe_allow_html=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        act = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key="dlg_act")
+    with c2:
+        prio_label = st.selectbox("Priority / Intensity", list(_PRIO_MAP.keys()), key="dlg_prio")
+    prio = _PRIO_MAP[prio_label]
+
+    c3, c4 = st.columns(2)
+    with c3:
+        fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key="dlg_notes", height=120)
+    with c4:
+        cf = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key="dlg_chart")
+        if cf:
+            cf.seek(0)
+            st.image(cf.read(), caption="Chart ready", width=200)
+
+    is_ratio = (act == "RATIO")
+    rl = rs = rnt = rdt = None
+    if is_ratio:
+        r1, r2 = st.columns(2)
+        with r1:
+            rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key="dlg_rl")
+            rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key="dlg_rnt")
+        with r2:
+            rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key="dlg_rs")
+            rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key="dlg_rdt")
+
+    st.markdown('<div style="height:4px;"></div>', unsafe_allow_html=True)
+    sb1, sb2, _ = st.columns([2, 2, 6])
+    with sb1:
+        if st.button("Submit Approval", type="primary", use_container_width=True, key="dlg_submit"):
+            b64 = None
+            if cf:
+                cf.seek(0)
+                b64 = base64.b64encode(cf.read()).decode("utf-8")
+            with st.spinner("Approving…"):
+                res = post_action({
+                    "alert_id": alert_id, "decision": "APPROVED",
+                    "action_call": act, "is_ratio": is_ratio,
+                    "ratio_long": rl if is_ratio else None,
+                    "ratio_short": rs if is_ratio else None,
+                    "ratio_numerator_ticker": rnt if is_ratio else None,
+                    "ratio_denominator_ticker": rdt if is_ratio else None,
+                    "priority": prio, "chart_image_b64": b64,
+                    "fm_notes": fm_notes if fm_notes else None,
+                })
+            if res.get("success"):
+                st.session_state.action_card_id = None
+                st.rerun()
+            else:
+                st.error(f"Error: {res.get('error','Unknown')}")
+    with sb2:
+        if st.button("Cancel", use_container_width=True, key="dlg_cancel"):
+            st.session_state.action_card_id = None
+            st.rerun()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -950,74 +1016,6 @@ def main():
         if "action_card_id" not in st.session_state:
             st.session_state.action_card_id = None
 
-        # Priority display mapping
-        _PRIO_DISPLAY = {"Immediately": "IMMEDIATELY", "Within a Week": "WITHIN_A_WEEK", "Within a Month": "WITHIN_A_MONTH"}
-        _PRIO_LABELS = list(_PRIO_DISPLAY.keys())
-
-        # ── FM Action Panel — shown at TOP when Approve is clicked ──
-        active_id = st.session_state.get("action_card_id")
-        if active_id:
-            active_alert = next((a for a in pending if a["id"] == active_id), None)
-            if active_alert:
-                st.markdown(f"""<div style="background:#ecfdf5;border:2px solid #a7f3d0;border-radius:10px;padding:16px 20px;margin-bottom:12px;">
-<div style="font-size:14px;font-weight:700;color:#059669;">FM Action Panel — {esc(active_alert.get("ticker",""))} #{active_id}</div>
-<div style="font-size:11px;color:#64748b;">Complete the fields below and submit to approve</div>
-</div>""", unsafe_allow_html=True)
-
-                c1, c2, c3 = st.columns([2, 2, 3])
-                with c1:
-                    act = st.selectbox("Action", ["BUY","SELL","HOLD","RATIO","ACCUMULATE","REDUCE","SWITCH","WATCH"], key=f"ac_{active_id}")
-                    prio_label = st.selectbox("Priority / Intensity", _PRIO_LABELS, key=f"pr_{active_id}")
-                    prio = _PRIO_DISPLAY[prio_label]
-                with c2:
-                    fm_notes = st.text_area("FM Commentary (optional)", placeholder="Add your notes, thesis, or observations...", key=f"fn_{active_id}", height=100)
-                with c3:
-                    cf = st.file_uploader("Chart Screenshot (optional)", type=["png","jpg","jpeg","webp"], key=f"cf_{active_id}")
-                    if cf:
-                        cf.seek(0)
-                        st.image(cf.read(), caption="Chart ready", width=180)
-
-                is_ratio = (act == "RATIO")
-                rl = rs = rnt = rdt = None
-                if is_ratio:
-                    r1, r2 = st.columns(2)
-                    with r1:
-                        rl = st.text_input("Long leg", placeholder="LONG 60% RELIANCE", key=f"rl_{active_id}")
-                        rnt = st.text_input("Numerator Ticker", placeholder="e.g. RELIANCE", key=f"rnt_{active_id}")
-                    with r2:
-                        rs = st.text_input("Short leg", placeholder="SHORT 40% HDFCBANK", key=f"rs_{active_id}")
-                        rdt = st.text_input("Denominator Ticker", placeholder="e.g. HDFCBANK", key=f"rdt_{active_id}")
-
-                sb1, sb2, _ = st.columns([1.5, 1.5, 7])
-                with sb1:
-                    if st.button("Submit Approval", key=f"submit_{active_id}", use_container_width=True, type="primary"):
-                        b64 = None
-                        if cf:
-                            cf.seek(0)
-                            b64 = base64.b64encode(cf.read()).decode("utf-8")
-                        with st.spinner("Approving…"):
-                            res = post_action({
-                                "alert_id": active_id, "decision": "APPROVED",
-                                "action_call": act, "is_ratio": is_ratio,
-                                "ratio_long": rl if is_ratio else None,
-                                "ratio_short": rs if is_ratio else None,
-                                "ratio_numerator_ticker": rnt if is_ratio else None,
-                                "ratio_denominator_ticker": rdt if is_ratio else None,
-                                "priority": prio, "chart_image_b64": b64,
-                                "fm_notes": fm_notes if fm_notes else None,
-                            })
-                        if res.get("success"):
-                            st.session_state.action_card_id = None
-                            st.rerun()
-                        else:
-                            st.error(f"Error: {res.get('error','Unknown')}")
-                with sb2:
-                    if st.button("Cancel", key=f"cancel_{active_id}", use_container_width=True):
-                        st.session_state.action_card_id = None
-                        st.rerun()
-
-                st.markdown("---")
-
         # ── Filters ──
         f1, f2, _ = st.columns([2, 2, 6])
         with f1: tc_sf = st.selectbox("Signal", ["All","BULLISH","BEARISH"], key="tc_s")
@@ -1031,16 +1029,11 @@ def main():
         if not tc_list:
             st.markdown('<div class="empty"><div class="empty-icon">✅</div><h3>All caught up</h3><p>No pending alerts</p></div>', unsafe_allow_html=True)
         else:
-            # Render cards in 3-col grid — card HTML in grid, buttons below each
-            cards_html = ""
-            for a in tc_list:
-                cards_html += f'<div class="ac-sm">{card_html(a)}</div>'
-            st.markdown(f'<div class="card-grid" style="margin-bottom:8px;">{cards_html}</div>', unsafe_allow_html=True)
-
-            # Action buttons in 3-col grid below cards
+            # Render cards in 3-col grid with approve/deny buttons
             cols = st.columns(3)
             for i, a in enumerate(tc_list):
                 with cols[i % 3]:
+                    st.markdown(f'<div class="ac-sm">{card_html(a)}</div>', unsafe_allow_html=True)
                     b1, b2 = st.columns(2)
                     with b1:
                         if st.button("Approve", key=f"apbtn_{a['id']}", use_container_width=True, type="primary"):
@@ -1051,6 +1044,14 @@ def main():
                             res = post_action({"alert_id": a["id"], "decision": "DENIED"})
                             if res.get("success"): st.rerun()
                             else: st.error(f"Error: {res.get('error','Unknown')}")
+                    st.markdown('<div style="height:10px;"></div>', unsafe_allow_html=True)
+
+        # ── Open FM Action dialog if Approve was clicked ──
+        active_id = st.session_state.get("action_card_id")
+        if active_id:
+            active_alert = next((a for a in pending if a["id"] == active_id), None)
+            if active_alert:
+                fm_action_dialog(active_id, active_alert.get("ticker", "—"))
 
     # ══════════════════════════════
     # APPROVED CARDS — Grid layout
