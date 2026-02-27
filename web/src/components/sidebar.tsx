@@ -11,7 +11,6 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { useAlerts } from "@/hooks/use-alerts";
 
 const navItems = [
@@ -25,26 +24,25 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const { alerts, pending, approved, isLoading } = useAlerts();
-  const [now, setNow] = useState<Date>(new Date());
+  const [istString, setIstString] = useState("");
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
+    const fmt = () =>
+      new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: true,
+      });
+    setIstString(fmt());
+    const timer = setInterval(() => setIstString(fmt()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const istString = now.toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
 
   return (
     <aside className="w-64 h-screen bg-card border-r border-border flex flex-col p-4">
@@ -119,9 +117,9 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="mt-auto">
-        <Separator className="mb-4" />
+        <hr className="border-border mb-4" />
         <div className="text-xs text-muted-foreground space-y-1">
-          <div>{istString}</div>
+          <div>{istString || "\u00A0"}</div>
           <div className="text-[10px]">Auto-refreshing every 30s</div>
         </div>
       </div>
