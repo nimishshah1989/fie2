@@ -66,9 +66,9 @@ export function AlertCardCompact({
 
       {/* Price at alert */}
       {alert.price_at_alert != null && (
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Price at Alert</span>
-          <span className="font-semibold text-foreground">
+        <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-1.5 flex items-center justify-between">
+          <span className="text-xs font-medium text-blue-700">Price at Alert</span>
+          <span className="text-sm font-bold text-blue-900">
             {formatPrice(alert.price_at_alert)}
           </span>
         </div>

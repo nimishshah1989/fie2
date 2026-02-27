@@ -66,9 +66,9 @@ export function AlertCard({
 
       {/* Price at alert */}
       {alert.price_at_alert != null && (
-        <div className="mt-2 text-sm text-muted-foreground">
-          Price at Alert:{" "}
-          <span className="font-semibold text-foreground">
+        <div className="mt-2 rounded-md bg-blue-50 border border-blue-100 px-3 py-1.5 flex items-center justify-between">
+          <span className="text-xs font-medium text-blue-700">Price at Alert</span>
+          <span className="text-sm font-bold text-blue-900">
             {formatPrice(alert.price_at_alert)}
           </span>
         </div>

@@ -20,6 +20,7 @@ interface SignalChipProps {
 }
 
 export function SignalChip({ signal }: SignalChipProps) {
+  if (signal === "NEUTRAL") return null;
   const { classes, label } = config[signal];
   return (
     <span

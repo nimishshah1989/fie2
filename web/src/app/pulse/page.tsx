@@ -5,7 +5,6 @@ import { useIndices } from "@/hooks/use-indices";
 import { IndexTable } from "@/components/index-table";
 import { SignalHeatmap } from "@/components/signal-heatmap";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -138,7 +137,7 @@ export default function PulsePage() {
             <SignalHeatmap indices={data.indices} />
           </div>
 
-          <Separator />
+          <hr className="border-border" />
 
           {/* Index Table */}
           <IndexTable indices={filteredIndices} period={period} />
