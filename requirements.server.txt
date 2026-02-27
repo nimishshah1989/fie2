@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+requests
+pandas
+yfinance
+nsetools
+pytz
+httpx
+python-dateutil
+apscheduler
+psycopg2-binary
+nselib>=2.4

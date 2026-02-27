@@ -14,13 +14,18 @@ COPY web/ .
 RUN npx next build
 
 # ── Stage 2: Python runtime ─────────────────────────
-FROM python:3.11-slim
+FROM python:3.11
 
 WORKDIR /app
 
-# Install Python deps
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# System deps for psycopg2, pandas, lxml, etc.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev gcc g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python deps (server-only, skip Streamlit)
+COPY requirements.server.txt .
+RUN pip install --no-cache-dir -r requirements.server.txt
 
 # Copy backend source
 COPY server.py models.py price_service.py ./
