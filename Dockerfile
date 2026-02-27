@@ -33,11 +33,7 @@ COPY server.py models.py price_service.py ./
 # Copy built frontend from Stage 1
 COPY --from=frontend /app/web/out ./web/out
 
-# Entrypoint script (shell properly expands $PORT)
-COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
-
-ENV PORT=8000
 EXPOSE 8000
 
-ENTRYPOINT ["./entrypoint.sh"]
+# Use Python to read PORT — bypasses all shell expansion issues
+CMD ["python", "-c", "import os,uvicorn;uvicorn.run('server:app',host='0.0.0.0',port=int(os.environ.get('PORT','8000')))"]
