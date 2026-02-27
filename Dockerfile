@@ -33,9 +33,11 @@ COPY server.py models.py price_service.py ./
 # Copy built frontend from Stage 1
 COPY --from=frontend /app/web/out ./web/out
 
-# Railway sets PORT dynamically
+# Entrypoint script (shell properly expands $PORT)
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
 ENV PORT=8000
 EXPOSE 8000
 
-# Use shell form so $PORT is expanded at runtime
-CMD uvicorn server:app --host 0.0.0.0 --port $PORT
+ENTRYPOINT ["./entrypoint.sh"]
