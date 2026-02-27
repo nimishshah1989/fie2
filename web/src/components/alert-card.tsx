@@ -29,7 +29,7 @@ export function AlertCard({
   return (
     <div
       className={cn(
-        "bg-card rounded-xl border shadow-sm hover:shadow-md transition-shadow p-4 border-l-4",
+        "bg-card rounded-xl border shadow-sm hover:shadow-md transition-shadow p-4 border-l-4 overflow-hidden",
         borderColor[alert.signal_direction]
       )}
     >

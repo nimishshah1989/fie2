@@ -29,7 +29,7 @@ export function AlertCardCompact({
   return (
     <div
       className={cn(
-        "rounded-xl border border-l-4 bg-card shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3",
+        "rounded-xl border border-l-4 bg-card shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden",
         borderColor
       )}
     >

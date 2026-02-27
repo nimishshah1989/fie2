@@ -6,6 +6,7 @@ Jhaveri Intelligence Platform
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import json, os, logging
 from pathlib import Path
 from datetime import datetime
@@ -965,4 +966,15 @@ async def root():
 # ─── Static Frontend (Next.js export) ────────────────
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
+    # Explicit page routes — Starlette StaticFiles incorrectly resolves
+    # /pulse to the pulse/ directory (RSC payloads) instead of pulse.html
+    for _page in ("pulse", "approved", "trade", "performance"):
+        _html = _frontend_dir / f"{_page}.html"
+        if _html.is_file():
+            def _make_page_handler(path: Path):
+                async def _handler():
+                    return FileResponse(path, media_type="text/html")
+                return _handler
+            app.add_api_route(f"/{_page}", _make_page_handler(_html), methods=["GET", "HEAD"])
+
     app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
