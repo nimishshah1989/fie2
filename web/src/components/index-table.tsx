@@ -106,8 +106,9 @@ function SectorSection({
         const name = idx.nse_name || idx.index_name;
         const isTop25 = TOP_25_SET.has(name);
         const pctChange = idx.percentChange ?? null;
-        const ratioReturn = idx.ratio_returns?.[period] ?? null;
-        const indexReturn = idx.index_returns?.[period] ?? null;
+        const pk = period.toLowerCase();
+        const ratioReturn = idx.ratio_returns?.[pk] ?? null;
+        const indexReturn = idx.index_returns?.[pk] ?? null;
         const signal = idx.signal as "BULLISH" | "BEARISH" | "NEUTRAL";
 
         return (

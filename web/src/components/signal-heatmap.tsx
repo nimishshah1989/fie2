@@ -8,11 +8,19 @@ interface SignalHeatmapProps {
   indices: LiveIndex[];
 }
 
-const signalStyles = {
+const BULL_SIGNALS = new Set(["BULLISH", "STRONG OW", "OVERWEIGHT"]);
+const BEAR_SIGNALS = new Set(["BEARISH", "STRONG UW", "UNDERWEIGHT"]);
+
+const signalStyles: Record<string, string> = {
   BULLISH: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  "STRONG OW": "bg-emerald-200 text-emerald-900 border-emerald-400",
+  OVERWEIGHT: "bg-emerald-100 text-emerald-800 border-emerald-300",
   BEARISH: "bg-red-100 text-red-800 border-red-300",
+  "STRONG UW": "bg-red-200 text-red-900 border-red-400",
+  UNDERWEIGHT: "bg-red-100 text-red-800 border-red-300",
+  BASE: "bg-blue-100 text-blue-700 border-blue-300",
   NEUTRAL: "bg-slate-100 text-slate-600 border-slate-300",
-} as const;
+};
 
 function getShortName(name: string): string {
   return name.replace(/^NIFTY\s+/i, "");
@@ -26,9 +34,9 @@ export function SignalHeatmap({ indices }: SignalHeatmapProps) {
   });
 
   // Count signals
-  const bullCount = top25.filter((i) => i.signal === "BULLISH").length;
-  const bearCount = top25.filter((i) => i.signal === "BEARISH").length;
-  const neutralCount = top25.filter((i) => i.signal === "NEUTRAL").length;
+  const bullCount = top25.filter((i) => BULL_SIGNALS.has(i.signal)).length;
+  const bearCount = top25.filter((i) => BEAR_SIGNALS.has(i.signal)).length;
+  const neutralCount = top25.length - bullCount - bearCount;
 
   if (top25.length === 0) {
     return null;
@@ -44,8 +52,7 @@ export function SignalHeatmap({ indices }: SignalHeatmapProps) {
       <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
         {top25.map((idx) => {
           const name = idx.nse_name || idx.index_name;
-          const signal = idx.signal as keyof typeof signalStyles;
-          const style = signalStyles[signal] ?? signalStyles.NEUTRAL;
+          const style = signalStyles[idx.signal] ?? signalStyles.NEUTRAL;
 
           return (
             <div
@@ -54,7 +61,7 @@ export function SignalHeatmap({ indices }: SignalHeatmapProps) {
                 "rounded-lg border px-2 py-2 text-center text-xs font-medium transition-shadow hover:shadow-sm",
                 style
               )}
-              title={`${name} — ${signal}`}
+              title={`${name} — ${idx.signal}`}
             >
               {getShortName(name)}
             </div>
