@@ -21,6 +21,21 @@ import {
 import { getSector, SECTOR_ORDER, TOP_25_SET } from "@/lib/constants";
 import type { LiveIndex } from "@/lib/types";
 
+/** Small (i) icon with a hover tooltip explaining a formula */
+function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="group relative inline-flex ml-1 cursor-help">
+      <span className="inline-flex items-center justify-center size-3.5 rounded-full bg-muted-foreground/20 text-[9px] font-bold leading-none text-muted-foreground">
+        i
+      </span>
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 rounded-md bg-foreground px-3 py-2 text-[11px] leading-snug font-normal text-background shadow-lg opacity-0 transition-opacity group-hover:opacity-100 z-50 normal-case tracking-normal whitespace-pre-line">
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-foreground" />
+      </span>
+    </span>
+  );
+}
+
 interface IndexTableProps {
   indices: LiveIndex[];
   period: string;
@@ -65,12 +80,30 @@ export function IndexTable({ indices, period }: IndexTableProps) {
           <TableRow className="bg-muted/30">
             <TableHead>Index Name</TableHead>
             <TableHead className="text-right">Last Price</TableHead>
-            <TableHead className="text-right">Change %</TableHead>
-            <TableHead className="text-right">Ratio ({period})</TableHead>
-            <TableHead className="text-center">Signal</TableHead>
-            <TableHead className="text-right">Return % ({period})</TableHead>
-            <TableHead className="text-right">XIRR %</TableHead>
-            <TableHead className="text-right">Index Ret ({period})</TableHead>
+            <TableHead className="text-right">
+              Change %
+              <InfoTip text="Today's daily price change from NSE.{'\n'}= (Last - Prev Close) / Prev Close" />
+            </TableHead>
+            <TableHead className="text-right">
+              Ratio ({period})
+              <InfoTip text={"Relative performance vs base index over the selected period.\n= (Index today / Index old) \u00F7 (Base today / Base old)\n> 1 = outperformed base\n< 1 = underperformed base"} />
+            </TableHead>
+            <TableHead className="text-center">
+              Signal
+              <InfoTip text={"> 1.05 = Strong OW\n> 1.00 = Overweight\n< 1.00 = Underweight\n< 0.95 = Strong UW\nBased on the Ratio value."} />
+            </TableHead>
+            <TableHead className="text-right">
+              Return % ({period})
+              <InfoTip text={"Excess return over the base index.\n= (Ratio \u2212 1) \u00D7 100\nShows how much the index outperformed (+) or underperformed (\u2212) the base."} />
+            </TableHead>
+            <TableHead className="text-right">
+              XIRR %
+              <InfoTip text={"Annualized return (projected yearly rate).\n= (Ratio ^ (365 / days)) \u2212 1\nExtrapolates the period return to a full year."} />
+            </TableHead>
+            <TableHead className="text-right">
+              Index Ret ({period})
+              <InfoTip text={"The index's own absolute return over the period.\n= (Price today / Price old \u2212 1) \u00D7 100\nThis is the index's standalone performance, not relative to the base."} />
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
