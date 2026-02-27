@@ -1,11 +1,12 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, getRelativeSignal } from "@/lib/utils";
 import { TOP_25_SET } from "@/lib/constants";
 import type { LiveIndex } from "@/lib/types";
 
 interface SignalHeatmapProps {
   indices: LiveIndex[];
+  period: string;
 }
 
 const BULL_SIGNALS = new Set(["BULLISH", "STRONG OW", "OVERWEIGHT"]);
@@ -26,7 +27,16 @@ function getShortName(name: string): string {
   return name.replace(/^NIFTY\s+/i, "");
 }
 
-export function SignalHeatmap({ indices }: SignalHeatmapProps) {
+export function SignalHeatmap({ indices, period }: SignalHeatmapProps) {
+  const pk = period.toLowerCase();
+
+  function getPeriodSignal(idx: LiveIndex): string {
+    if (idx.signal === "BASE") return "BASE";
+    const ratioReturn = idx.ratio_returns?.[pk] ?? null;
+    if (ratioReturn == null) return "NEUTRAL";
+    return getRelativeSignal(1 + ratioReturn / 100);
+  }
+
   // Filter to only TOP_25 indices
   const top25 = indices.filter((idx) => {
     const name = idx.nse_name || idx.index_name;
@@ -34,8 +44,8 @@ export function SignalHeatmap({ indices }: SignalHeatmapProps) {
   });
 
   // Count signals
-  const bullCount = top25.filter((i) => BULL_SIGNALS.has(i.signal)).length;
-  const bearCount = top25.filter((i) => BEAR_SIGNALS.has(i.signal)).length;
+  const bullCount = top25.filter((i) => BULL_SIGNALS.has(getPeriodSignal(i))).length;
+  const bearCount = top25.filter((i) => BEAR_SIGNALS.has(getPeriodSignal(i))).length;
   const neutralCount = top25.length - bullCount - bearCount;
 
   if (top25.length === 0) {
@@ -52,7 +62,8 @@ export function SignalHeatmap({ indices }: SignalHeatmapProps) {
       <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
         {top25.map((idx) => {
           const name = idx.nse_name || idx.index_name;
-          const style = signalStyles[idx.signal] ?? signalStyles.NEUTRAL;
+          const periodSignal = getPeriodSignal(idx);
+          const style = signalStyles[periodSignal] ?? signalStyles.NEUTRAL;
 
           return (
             <div
@@ -61,7 +72,7 @@ export function SignalHeatmap({ indices }: SignalHeatmapProps) {
                 "rounded-lg border px-2 py-2 text-center text-xs font-medium transition-shadow hover:shadow-sm",
                 style
               )}
-              title={`${name} — ${idx.signal}`}
+              title={`${name} — ${periodSignal}`}
             >
               {getShortName(name)}
             </div>

@@ -134,7 +134,7 @@ export default function PulsePage() {
         <>
           {/* Signal Heatmap */}
           <div className="rounded-lg border bg-card p-4">
-            <SignalHeatmap indices={data.indices} />
+            <SignalHeatmap indices={data.indices} period={period} />
           </div>
 
           <hr className="border-border" />

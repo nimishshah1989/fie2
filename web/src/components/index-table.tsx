@@ -9,7 +9,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SignalChip } from "@/components/signal-chip";
-import { formatPrice, formatPct, cn } from "@/lib/utils";
+import {
+  formatPrice,
+  formatPct,
+  formatRatio,
+  cn,
+  getRelativeSignal,
+  computeXirr,
+  PERIOD_DAYS,
+} from "@/lib/utils";
 import { getSector, SECTOR_ORDER, TOP_25_SET } from "@/lib/constants";
 import type { LiveIndex } from "@/lib/types";
 
@@ -58,9 +66,10 @@ export function IndexTable({ indices, period }: IndexTableProps) {
             <TableHead>Index Name</TableHead>
             <TableHead className="text-right">Last Price</TableHead>
             <TableHead className="text-right">Change %</TableHead>
-            <TableHead className="text-right">Ratio</TableHead>
+            <TableHead className="text-right">Ratio ({period})</TableHead>
             <TableHead className="text-center">Signal</TableHead>
-            <TableHead className="text-right">Ratio Ret ({period})</TableHead>
+            <TableHead className="text-right">Return % ({period})</TableHead>
+            <TableHead className="text-right">XIRR %</TableHead>
             <TableHead className="text-right">Index Ret ({period})</TableHead>
           </TableRow>
         </TableHeader>
@@ -92,7 +101,7 @@ function SectorSection({
     <>
       {/* Sector header row */}
       <TableRow className="bg-muted/50 hover:bg-muted/50">
-        <TableCell colSpan={7} className="py-2 px-3">
+        <TableCell colSpan={8} className="py-2 px-3">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             {sector}
           </span>
@@ -109,7 +118,15 @@ function SectorSection({
         const pk = period.toLowerCase();
         const ratioReturn = idx.ratio_returns?.[pk] ?? null;
         const indexReturn = idx.index_returns?.[pk] ?? null;
-        const signal = idx.signal as "BULLISH" | "BEARISH" | "NEUTRAL";
+
+        // Compute period-relative ratio from ratio_returns
+        const relRatio = ratioReturn != null ? 1 + ratioReturn / 100 : null;
+        const isBase = idx.signal === "BASE";
+        const signal = isBase ? "BASE" : getRelativeSignal(relRatio);
+
+        // XIRR: annualized return
+        const days = PERIOD_DAYS[pk] ?? 30;
+        const xirr = isBase ? 0 : computeXirr(relRatio, days);
 
         return (
           <TableRow
@@ -135,8 +152,17 @@ function SectorSection({
             >
               {pctChange != null ? formatPct(pctChange) : "---"}
             </TableCell>
-            <TableCell className="text-right font-mono text-sm">
-              {idx.ratio != null ? idx.ratio.toFixed(4) : "---"}
+            <TableCell
+              className={cn(
+                "text-right font-mono text-sm",
+                relRatio != null && relRatio > 1.0
+                  ? "text-emerald-600"
+                  : relRatio != null && relRatio < 1.0
+                    ? "text-red-600"
+                    : ""
+              )}
+            >
+              {formatRatio(relRatio)}
             </TableCell>
             <TableCell className="text-center">
               <SignalChip signal={signal} />
@@ -150,6 +176,18 @@ function SectorSection({
               )}
             >
               {ratioReturn != null ? formatPct(ratioReturn) : "---"}
+            </TableCell>
+            <TableCell
+              className={cn(
+                "text-right font-mono text-sm",
+                xirr != null && xirr > 0
+                  ? "text-emerald-600"
+                  : xirr != null && xirr < 0
+                    ? "text-red-600"
+                    : ""
+              )}
+            >
+              {xirr != null ? formatPct(xirr) : "---"}
             </TableCell>
             <TableCell
               className={cn(
