@@ -24,14 +24,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source
 COPY server.py models.py price_service.py ./
-COPY start.sh .
-RUN chmod +x start.sh
 
 # Copy built frontend from Stage 1
 COPY --from=frontend /app/web/out ./web/out
 
-# Expose port
+# Railway sets PORT dynamically
+ENV PORT=8000
 EXPOSE 8000
 
-# Start server (skip frontend build since it's already done)
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use shell form so $PORT is expanded at runtime
+CMD uvicorn server:app --host 0.0.0.0 --port $PORT

@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Build Next.js frontend (static export)
-if [ -d "web" ] && [ -f "web/package.json" ]; then
+# Build Next.js frontend if Node.js is available and out/ doesn't exist yet
+if [ -d "web" ] && [ -f "web/package.json" ] && command -v npm &> /dev/null && [ ! -d "web/out" ]; then
   echo "Building frontend..."
   cd web
   npm ci --production=false
