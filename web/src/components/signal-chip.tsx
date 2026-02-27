@@ -21,15 +21,16 @@ interface SignalChipProps {
 
 export function SignalChip({ signal }: SignalChipProps) {
   if (signal === "NEUTRAL") return null;
-  const { classes, label } = config[signal];
+  const entry = config[signal as keyof typeof config];
+  if (!entry) return null;
   return (
     <span
       className={cn(
         "inline-flex items-center text-xs font-medium rounded-full px-2 py-0.5 border",
-        classes
+        entry.classes
       )}
     >
-      {label}
+      {entry.label}
     </span>
   );
 }
