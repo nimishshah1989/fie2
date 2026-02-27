@@ -651,6 +651,29 @@ async def fetch_historical(db: Session = Depends(get_db)):
     return {"success": True, "stored_historical": stored, "stored_live": live_stored, "indices": len(hist_data)}
 
 
+@app.post("/api/indices/bulk-upload")
+async def bulk_upload_indices(request: Request, db: Session = Depends(get_db)):
+    """Accept bulk historical index data (from local backfill script running on India IP)."""
+    body = await request.json()
+    data = body.get("data", {})
+    if not data:
+        return {"success": False, "error": "No data provided"}
+
+    stored = 0
+    indices_count = 0
+    for idx_name, rows in data.items():
+        if not rows:
+            continue
+        indices_count += 1
+        for row in rows:
+            if _upsert_price_row(db, idx_name, row):
+                stored += 1
+
+    db.commit()
+    logger.info("Bulk upload: %d records across %d indices", stored, indices_count)
+    return {"success": True, "stored": stored, "indices": indices_count}
+
+
 @app.post("/api/stocks/fetch-history")
 async def fetch_stock_history_endpoint(db: Session = Depends(get_db)):
     """Fetch 12M history for all stocks in the alert database."""

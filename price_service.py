@@ -134,28 +134,46 @@ def _nse_session():
     return session, _headers
 
 
+def _parse_nse_history_response(data_items):
+    """Parse NSE historical API response items into standardized rows."""
+    rows = []
+    for item in data_items:
+        row = {"open": None, "high": None, "low": None, "close": None, "volume": None, "date": None}
+        for k, v in item.items():
+            ku = k.upper()
+            if "CLOSE" in ku and "INDEX" in ku:
+                row["close"] = _safe_float(v)
+            elif "OPEN" in ku and "INDEX" in ku:
+                row["open"] = _safe_float(v)
+            elif "HIGH" in ku and "INDEX" in ku:
+                row["high"] = _safe_float(v)
+            elif "LOW" in ku and "INDEX" in ku:
+                row["low"] = _safe_float(v)
+            elif "TIMESTAMP" in ku and not ku.startswith("HI"):
+                raw_date = str(v).strip()
+                # NSE returns dates like "12-JUN-2025" (dd-MMM-YYYY)
+                for fmt in ("%d-%b-%Y", "%d %b %Y", "%d-%m-%Y", "%Y-%m-%d"):
+                    try:
+                        row["date"] = datetime.strptime(raw_date, fmt).strftime("%Y-%m-%d")
+                        break
+                    except ValueError:
+                        continue
+            elif "TRADED" in ku:
+                row["volume"] = _safe_float(v)
+
+        if row["close"] and row["date"]:
+            rows.append(row)
+    return rows
+
+
 def fetch_nse_index_history(nse_display_name, days=365, _session=None):
     """
     Fetch historical daily data for a single NSE index from NSE's website API.
+    NSE API returns max ~70-90 days per request, so we chunk into 90-day segments.
     nse_display_name: e.g., "NIFTY 50", "NIFTY BANK"
     days: number of days of history to fetch (default 365)
     Returns [{date, open, high, low, close, volume}, ...]
     """
-    import requests as _req
-
-    to_date = date_type.today()
-    from_date = to_date - timedelta(days=days)
-
-    from_str = from_date.strftime("%d-%m-%Y")
-    to_str = to_date.strftime("%d-%m-%Y")
-
-    encoded_name = quote(nse_display_name)
-    url = (
-        f"https://www.nseindia.com/api/historicalOR/indicesHistory"
-        f"?indexType={encoded_name}&from={from_str}&to={to_str}"
-    )
-    origin_url = "https://www.nseindia.com/reports-indices-historical-index-data"
-
     try:
         if _session:
             session, base_headers = _session
@@ -169,62 +187,52 @@ def fetch_nse_index_history(nse_display_name, days=365, _session=None):
             "Sec-Fetch-Site": "same-origin",
             "Sec-Fetch-Mode": "cors",
         }
-        resp = session.get(url, headers=api_headers, timeout=15)
-        if resp.status_code != 200:
-            logger.warning("NSE history API returned %d for %s", resp.status_code, nse_display_name)
-            return []
 
-        resp_json = resp.json()
-        data_items = resp_json.get("data", [])
+        encoded_name = quote(nse_display_name)
+        all_rows = []
+        seen_dates = set()
 
-        # Diagnostic: log response structure for first call
-        if not data_items:
-            # Log what keys the response has so we can debug
-            resp_keys = list(resp_json.keys()) if isinstance(resp_json, dict) else type(resp_json).__name__
-            logger.warning(
-                "NSE history: %s returned empty data. Response keys: %s, status: %d, content-length: %d",
-                nse_display_name, resp_keys, resp.status_code, len(resp.text),
+        # Chunk into 90-day segments (NSE API limits per request)
+        end = date_type.today()
+        start = end - timedelta(days=days)
+        chunk_start = start
+
+        while chunk_start < end:
+            chunk_end = min(chunk_start + timedelta(days=89), end)
+            from_str = chunk_start.strftime("%d-%m-%Y")
+            to_str = chunk_end.strftime("%d-%m-%Y")
+
+            url = (
+                f"https://www.nseindia.com/api/historicalOR/indicesHistory"
+                f"?indexType={encoded_name}&from={from_str}&to={to_str}"
             )
-            return []
 
-        # Diagnostic: log field names from first item
-        first_item = data_items[0]
-        logger.info(
-            "NSE history raw fields for %s: %s",
-            nse_display_name, list(first_item.keys()),
-        )
+            resp = session.get(url, headers=api_headers, timeout=15)
+            if resp.status_code != 200:
+                logger.debug("NSE history chunk returned %d for %s (%s-%s)",
+                             resp.status_code, nse_display_name, from_str, to_str)
+                chunk_start = chunk_end + timedelta(days=1)
+                continue
 
-        rows = []
-        for item in data_items:
-            # Parse fields by key pattern (NSE API field names may vary)
-            row = {"open": None, "high": None, "low": None, "close": None, "volume": None, "date": None}
-            for k, v in item.items():
-                ku = k.upper()
-                if "CLOSE" in ku and "INDEX" in ku:
-                    row["close"] = _safe_float(v)
-                elif "OPEN" in ku and "INDEX" in ku:
-                    row["open"] = _safe_float(v)
-                elif "HIGH" in ku and "INDEX" in ku:
-                    row["high"] = _safe_float(v)
-                elif "LOW" in ku and "INDEX" in ku:
-                    row["low"] = _safe_float(v)
-                elif "TIMESTAMP" in ku and not ku.startswith("HI"):
-                    raw_date = str(v).strip()
-                    # Try "27 Feb 2026" format first, then "dd-mm-YYYY"
-                    for fmt in ("%d %b %Y", "%d-%m-%Y", "%Y-%m-%d"):
-                        try:
-                            row["date"] = datetime.strptime(raw_date, fmt).strftime("%Y-%m-%d")
-                            break
-                        except ValueError:
-                            continue
-                elif "TRADED" in ku:
-                    row["volume"] = _safe_float(v)
+            resp_json = resp.json()
+            data_items = resp_json.get("data", [])
 
-            if row["close"] and row["date"]:
-                rows.append(row)
+            if data_items:
+                rows = _parse_nse_history_response(data_items)
+                for r in rows:
+                    if r["date"] not in seen_dates:
+                        all_rows.append(r)
+                        seen_dates.add(r["date"])
 
-        logger.info("NSE history: %s — %d days fetched", nse_display_name, len(rows))
-        return rows
+            chunk_start = chunk_end + timedelta(days=1)
+            time.sleep(0.2)  # small delay between chunks
+
+        if all_rows:
+            logger.info("NSE history: %s — %d days fetched", nse_display_name, len(all_rows))
+        else:
+            logger.debug("NSE history: %s — 0 days (API returned no data)", nse_display_name)
+
+        return all_rows
 
     except Exception as e:
         logger.debug("NSE history fetch failed for %s: %s", nse_display_name, e)
