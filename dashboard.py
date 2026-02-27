@@ -382,16 +382,16 @@ div[data-testid="stHorizontalBlock"] { gap: 16px !important; }
 .detail-title { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
 
 /* ── COMPACT CARD (Trade Center 3-col) ── */
-.ac-sm { margin-bottom: 0; }
+.ac-sm { margin-bottom: 8px; }
 .ac-sm .ac-main { padding: 10px 12px; gap: 10px; }
 .ac-sm .ac-ticker { font-size: 13px; }
 .ac-sm .ac-name { font-size: 10px; max-width: 180px; }
 .ac-sm .ac-meta { font-size: 9px; }
 .ac-sm .ac-price { font-size: 14px; }
 .ac-sm .ac-price-lbl { font-size: 9px; }
-.ac-sm .ac-ohlcv { padding: 4px 12px; }
-.ac-sm .ac-o-lbl { font-size: 8px; }
-.ac-sm .ac-o-val { font-size: 10px; }
+.ac-sm .ac-ohlcv { padding: 6px 12px 8px; }
+.ac-sm .ac-o-lbl { font-size: 9px; }
+.ac-sm .ac-o-val { font-size: 11px; font-weight: 600; }
 .ac-sm .ac-msg { font-size: 10px; padding: 4px 12px; max-height: 30px; }
 .ac-sm .ac-ts { font-size: 8px; }
 
