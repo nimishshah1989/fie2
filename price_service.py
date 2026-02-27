@@ -2,11 +2,14 @@
 FIE — Price Service
 Robust live price fetching for NSE/BSE indices and Indian market instruments.
 Primary: nsetools for NSE indices (135+ indices directly from NSE).
+Historical: NSE website API for index history (all NSE indices).
 Fallback: yfinance for individual stocks, BSE, commodities, currencies.
 """
 
 import logging
+import time
 from datetime import datetime, timedelta, date as date_type
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +114,105 @@ NSE_DISPLAY_MAP = {
 _NSE_REVERSE_MAP = {}
 for _k, _v in NSE_DISPLAY_MAP.items():
     _NSE_REVERSE_MAP[_v.upper()] = _k
+
+
+# ─── NSE Historical API (direct HTTP, no nselib dependency) ────
+
+def _nse_session():
+    """Create an HTTP session with NSE cookies for authenticated API access."""
+    import requests
+    session = requests.Session()
+    _headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        session.get("https://www.nseindia.com", headers=_headers, timeout=10)
+    except Exception as e:
+        logger.warning("NSE session init failed: %s", e)
+    return session, _headers
+
+
+def fetch_nse_index_history(nse_display_name, days=365, _session=None):
+    """
+    Fetch historical daily data for a single NSE index from NSE's website API.
+    nse_display_name: e.g., "NIFTY 50", "NIFTY BANK"
+    days: number of days of history to fetch (default 365)
+    Returns [{date, open, high, low, close, volume}, ...]
+    """
+    import requests as _req
+
+    to_date = date_type.today()
+    from_date = to_date - timedelta(days=days)
+
+    from_str = from_date.strftime("%d-%m-%Y")
+    to_str = to_date.strftime("%d-%m-%Y")
+
+    encoded_name = quote(nse_display_name)
+    url = (
+        f"https://www.nseindia.com/api/historicalOR/indicesHistory"
+        f"?indexType={encoded_name}&from={from_str}&to={to_str}"
+    )
+    origin_url = "https://www.nseindia.com/reports-indices-historical-index-data"
+
+    try:
+        if _session:
+            session, base_headers = _session
+        else:
+            session, base_headers = _nse_session()
+
+        api_headers = {
+            **base_headers,
+            "referer": "https://www.nseindia.com/",
+            "Accept": "application/json, text/html, */*",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+        }
+        resp = session.get(url, headers=api_headers, timeout=15)
+        if resp.status_code != 200:
+            logger.debug("NSE history API returned %d for %s", resp.status_code, nse_display_name)
+            return []
+
+        data_items = resp.json().get("data", [])
+        if not data_items:
+            return []
+
+        rows = []
+        for item in data_items:
+            # Parse fields by key pattern (NSE API field names may vary)
+            row = {"open": None, "high": None, "low": None, "close": None, "volume": None, "date": None}
+            for k, v in item.items():
+                ku = k.upper()
+                if "CLOSE" in ku and "INDEX" in ku:
+                    row["close"] = _safe_float(v)
+                elif "OPEN" in ku and "INDEX" in ku:
+                    row["open"] = _safe_float(v)
+                elif "HIGH" in ku and "INDEX" in ku:
+                    row["high"] = _safe_float(v)
+                elif "LOW" in ku and "INDEX" in ku:
+                    row["low"] = _safe_float(v)
+                elif "TIMESTAMP" in ku and not ku.startswith("HI"):
+                    raw_date = str(v).strip()
+                    # Try "27 Feb 2026" format first, then "dd-mm-YYYY"
+                    for fmt in ("%d %b %Y", "%d-%m-%Y", "%Y-%m-%d"):
+                        try:
+                            row["date"] = datetime.strptime(raw_date, fmt).strftime("%Y-%m-%d")
+                            break
+                        except ValueError:
+                            continue
+                elif "TRADED" in ku:
+                    row["volume"] = _safe_float(v)
+
+            if row["close"] and row["date"]:
+                rows.append(row)
+
+        logger.info("NSE history: %s — %d days fetched", nse_display_name, len(rows))
+        return rows
+
+    except Exception as e:
+        logger.debug("NSE history fetch failed for %s: %s", nse_display_name, e)
+        return []
 
 
 def _safe_float(val):
@@ -335,105 +437,125 @@ def fetch_historical_indices(period: str = "1y") -> dict:
     """
     Fetch historical daily OHLCV data for all indices.
     Strategy:
-      1. Try yfinance batch download
-      2. If batch fails, try individual ticker downloads
-      3. Generate synthetic historical points from nsetools reference values
+      1. NSE website API for all NSE indices (primary — gets full daily history)
+      2. yfinance for non-NSE indices only (commodities, BSE, currencies)
+      3. nsetools live reference values as final fallback (1d/1w/1m/12m)
     Returns {index_name: [{date, open, high, low, close, volume}, ...]}
     """
+    period_days = {"1y": 365, "6m": 180, "3m": 90, "1m": 30, "1w": 7, "5d": 5}
+    days = period_days.get(period, 365)
+
     results = {}
 
-    # Build unique symbol map: yf_symbol -> our internal key
-    sym_map = {}
-    for key in NSE_INDEX_KEYS:
-        yf_sym = NSE_TICKER_MAP.get(key)
-        if yf_sym and yf_sym not in sym_map:
-            sym_map[yf_sym] = key
-
-    # Strategy 1: yfinance batch download
-    if sym_map:
-        try:
-            import yfinance as yf
-            import pandas as pd
-
-            yf_symbols = list(sym_map.keys())
-            logger.info("Trying yfinance batch for %d indices (period=%s)", len(yf_symbols), period)
-
-            raw = yf.download(
-                tickers=" ".join(yf_symbols),
-                period=period, auto_adjust=True, progress=False, threads=True,
-            )
-            multi = len(yf_symbols) > 1
-
-            for yf_sym, idx_name in sym_map.items():
-                try:
-                    if multi:
-                        closes = raw["Close"][yf_sym].dropna()
-                        opens  = raw["Open"][yf_sym].dropna()
-                        highs  = raw["High"][yf_sym].dropna()
-                        lows   = raw["Low"][yf_sym].dropna()
-                        vols   = raw["Volume"][yf_sym].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series()
-                    else:
-                        closes = raw["Close"].dropna()
-                        opens  = raw["Open"].dropna()
-                        highs  = raw["High"].dropna()
-                        lows   = raw["Low"].dropna()
-                        vols   = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series()
-
-                    if closes.empty:
-                        continue
-
-                    rows = []
-                    for dt in closes.index:
-                        rows.append({
-                            "date":   dt.strftime("%Y-%m-%d"),
-                            "open":   float(opens[dt]) if dt in opens.index else None,
-                            "high":   float(highs[dt]) if dt in highs.index else None,
-                            "low":    float(lows[dt])  if dt in lows.index  else None,
-                            "close":  float(closes[dt]),
-                            "volume": float(vols[dt])  if not vols.empty and dt in vols.index else None,
-                        })
-                    results[idx_name] = rows
-                    logger.info("Historical batch: %s — %d days", idx_name, len(rows))
-                except Exception as e:
-                    logger.debug("Batch parse error %s (%s): %s", idx_name, yf_sym, e)
-        except Exception as e:
-            logger.warning("yfinance batch failed: %s, trying individual", e)
-
-    # Strategy 2: Individual ticker downloads for missing indices
-    if sym_map and len(results) < len(sym_map):
-        try:
-            import yfinance as yf
-            for yf_sym, idx_name in sym_map.items():
-                if idx_name in results:
-                    continue
-                try:
-                    hist = yf.Ticker(yf_sym).history(period=period)
-                    if hist is not None and not hist.empty:
-                        rows = []
-                        for dt, row in hist.iterrows():
-                            c = row.get("Close")
-                            if c is None:
-                                continue
-                            rows.append({
-                                "date":   dt.strftime("%Y-%m-%d"),
-                                "open":   float(row["Open"])   if row.get("Open")   else None,
-                                "high":   float(row["High"])   if row.get("High")   else None,
-                                "low":    float(row["Low"])    if row.get("Low")    else None,
-                                "close":  float(c),
-                                "volume": float(row["Volume"]) if row.get("Volume") else None,
-                            })
-                        if rows:
-                            results[idx_name] = rows
-                            logger.info("Historical individual: %s — %d days", idx_name, len(rows))
-                except Exception as e:
-                    logger.debug("Individual fetch error %s: %s", idx_name, e)
-        except Exception:
-            pass
-
-    # Strategy 3: Synthetic historical from nsetools reference values
-    # This provides 1D, 1W, 1M, 12M reference points for ALL NSE indices
+    # ── Strategy 1: NSE historical API for all NSE indices ──
+    # Get the live index list from nsetools to know ALL available NSE indices
     try:
         live = fetch_live_indices()
+        if live:
+            session_tuple = _nse_session()
+            fetched_count = 0
+            failed_names = []
+
+            for item in live:
+                idx_name = item["index_name"]     # internal key (e.g., "NIFTY")
+                nse_name = item.get("nse_name")   # display name (e.g., "NIFTY 50")
+
+                if not nse_name:
+                    continue
+
+                try:
+                    rows = fetch_nse_index_history(nse_name, days=days, _session=session_tuple)
+                    if rows:
+                        results[idx_name] = rows
+                        fetched_count += 1
+                    else:
+                        failed_names.append(nse_name)
+
+                    # Rate limit: 0.5s between requests to be polite to NSE
+                    time.sleep(0.5)
+
+                    # Re-establish session every 30 requests (NSE may expire cookies)
+                    if fetched_count > 0 and fetched_count % 30 == 0:
+                        session_tuple = _nse_session()
+                        time.sleep(1)
+
+                except Exception as e:
+                    logger.debug("NSE history error for %s: %s", nse_name, e)
+                    failed_names.append(nse_name)
+
+            logger.info(
+                "NSE historical API: fetched %d/%d indices, %d failed",
+                fetched_count, len(live), len(failed_names),
+            )
+            if failed_names:
+                logger.debug("NSE history failed for: %s", ", ".join(failed_names[:20]))
+    except Exception as e:
+        logger.warning("NSE historical strategy failed: %s", e)
+
+    # ── Strategy 2: yfinance for non-NSE indices (commodities, BSE, currencies) ──
+    non_nse_keys = ["GOLD", "SILVER", "CRUDEOIL", "USDINR", "SENSEX", "BSE500"]
+    yf_needed = [k for k in non_nse_keys if k not in results and k in NSE_INDEX_KEYS]
+
+    if yf_needed:
+        sym_map = {}
+        for key in yf_needed:
+            yf_sym = NSE_TICKER_MAP.get(key)
+            if yf_sym:
+                sym_map[yf_sym] = key
+
+        if sym_map:
+            try:
+                import yfinance as yf
+                import pandas as pd
+
+                yf_symbols = list(sym_map.keys())
+                logger.info("yfinance fallback for %d non-NSE indices", len(yf_symbols))
+
+                raw = yf.download(
+                    tickers=" ".join(yf_symbols),
+                    period=period, auto_adjust=True, progress=False, threads=True,
+                )
+                multi = len(yf_symbols) > 1
+
+                for yf_sym, idx_name in sym_map.items():
+                    try:
+                        if multi:
+                            closes = raw["Close"][yf_sym].dropna()
+                            opens  = raw["Open"][yf_sym].dropna()
+                            highs  = raw["High"][yf_sym].dropna()
+                            lows   = raw["Low"][yf_sym].dropna()
+                            vols   = raw["Volume"][yf_sym].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series()
+                        else:
+                            closes = raw["Close"].dropna()
+                            opens  = raw["Open"].dropna()
+                            highs  = raw["High"].dropna()
+                            lows   = raw["Low"].dropna()
+                            vols   = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series()
+
+                        if closes.empty:
+                            continue
+
+                        rows = []
+                        for dt in closes.index:
+                            rows.append({
+                                "date":   dt.strftime("%Y-%m-%d"),
+                                "open":   float(opens[dt]) if dt in opens.index else None,
+                                "high":   float(highs[dt]) if dt in highs.index else None,
+                                "low":    float(lows[dt])  if dt in lows.index  else None,
+                                "close":  float(closes[dt]),
+                                "volume": float(vols[dt])  if not vols.empty and dt in vols.index else None,
+                            })
+                        results[idx_name] = rows
+                        logger.info("yfinance: %s — %d days", idx_name, len(rows))
+                    except Exception as e:
+                        logger.debug("yfinance parse error %s: %s", idx_name, e)
+            except Exception as e:
+                logger.warning("yfinance fallback failed: %s", e)
+
+    # ── Strategy 3: nsetools live reference values as final fallback ──
+    # Adds today + 1d/1w/1m/12m reference points for any indices still missing
+    try:
+        live_data = fetch_live_indices() if not live else live
         today = date_type.today()
         ref_fields = [
             ("previousClose",  1),
@@ -441,10 +563,12 @@ def fetch_historical_indices(period: str = "1y") -> dict:
             ("oneMonthAgoVal", 30),
             ("oneYearAgoVal",  365),
         ]
-        for item in live:
+        fallback_count = 0
+        for item in live_data:
             idx_name = item["index_name"]
             if idx_name not in results:
                 results[idx_name] = []
+                fallback_count += 1
             existing_dates = {r["date"] for r in results.get(idx_name, [])}
 
             # Add today's data
@@ -456,7 +580,7 @@ def fetch_historical_indices(period: str = "1y") -> dict:
                     "volume": None,
                 })
 
-            # Add synthetic historical points
+            # Add synthetic reference points
             for field, days_ago in ref_fields:
                 val = item.get(field)
                 if val and val > 0:
@@ -466,7 +590,8 @@ def fetch_historical_indices(period: str = "1y") -> dict:
                             "date": ref_date, "close": val,
                             "open": None, "high": None, "low": None, "volume": None,
                         })
-        logger.info("Synthetic: added reference points for %d indices", len(live))
+        if fallback_count > 0:
+            logger.info("Synthetic fallback: %d indices needed reference points", fallback_count)
     except Exception as e:
         logger.warning("Synthetic historical failed: %s", e)
 

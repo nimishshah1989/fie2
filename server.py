@@ -95,7 +95,8 @@ def _parse_bullets(raw_text: str) -> list:
 @app.on_event("startup")
 async def startup():
     init_db()
-    # Backfill 12M historical index data for ratio return computations (3M/6M etc.)
+    # Backfill 1Y historical index data for ratio/index return computations (1d/1w/1m/3m/6m/12m)
+    # Strategy: NSE API for all NSE indices, yfinance only for commodities/BSE/currencies
     try:
         from price_service import fetch_historical_indices
         db = SessionLocal()
@@ -106,7 +107,7 @@ async def startup():
             or (datetime.now() - datetime.strptime(latest, "%Y-%m-%d")).days > 2
         )
         if needs_backfill:
-            logger.info("Backfilling 12M historical index data...")
+            logger.info("Backfilling 1Y historical index data (NSE API primary, yfinance for non-NSE)...")
             hist_data = fetch_historical_indices(period="1y")
             stored = 0
             for idx_name, rows in hist_data.items():
@@ -114,7 +115,7 @@ async def startup():
                     if _upsert_price_row(db, idx_name, row):
                         stored += 1
             db.commit()
-            logger.info("Startup: stored %d historical price records", stored)
+            logger.info("Startup backfill: stored %d price records across %d indices", stored, len(hist_data))
         else:
             logger.info("Historical data is recent (latest=%s), skipping backfill", latest)
         db.close()
@@ -592,10 +593,10 @@ async def fetch_eod(db: Session = Depends(get_db)):
 
 @app.post("/api/indices/fetch-historical")
 async def fetch_historical(db: Session = Depends(get_db)):
-    """Fetch 12M historical data for all indices (yfinance) + today's live data (nsetools)."""
+    """Fetch 1Y historical data: NSE API for all NSE indices + yfinance for non-NSE + today's live."""
     from price_service import fetch_historical_indices, fetch_live_indices
 
-    # 1. Fetch 12M history from yfinance for all mapped indices
+    # 1. Fetch 1Y history — NSE API primary, yfinance for non-NSE only
     hist_data = fetch_historical_indices(period="1y")
     stored = 0
     for idx_name, rows in hist_data.items():
@@ -620,7 +621,7 @@ async def fetch_historical(db: Session = Depends(get_db)):
             live_stored += 1
 
     db.commit()
-    logger.info("Historical fetch: %d yfinance records + %d live nsetools records", stored, live_stored)
+    logger.info("Historical fetch: %d historical records + %d live records", stored, live_stored)
     return {"success": True, "stored_historical": stored, "stored_live": live_stored, "indices": len(hist_data)}
 
 

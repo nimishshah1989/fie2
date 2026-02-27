@@ -20,19 +20,29 @@ import {
 import { getSector, SECTOR_ORDER, TOP_25_SET } from "@/lib/constants";
 import type { LiveIndex } from "@/lib/types";
 import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 
-/** Small (i) icon with a hover tooltip explaining a formula */
+/** Small (i) icon with a portal-based tooltip (not clipped by overflow) */
 function InfoTip({ text }: { text: string }) {
   return (
-    <span className="group relative inline-flex ml-1 cursor-help">
-      <span className="inline-flex items-center justify-center size-3.5 rounded-full bg-muted-foreground/20 text-[9px] font-bold leading-none text-muted-foreground">
-        i
-      </span>
-      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 rounded-md bg-foreground px-3 py-2 text-[11px] leading-snug font-normal text-background shadow-lg opacity-0 transition-opacity group-hover:opacity-100 z-50 normal-case tracking-normal whitespace-pre-line">
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center justify-center size-3.5 rounded-full bg-muted-foreground/20 text-[9px] font-bold leading-none text-muted-foreground ml-1 cursor-help">
+          i
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        sideOffset={6}
+        className="max-w-64 whitespace-pre-line text-[11px] leading-snug font-normal normal-case tracking-normal"
+      >
         {text}
-        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-foreground" />
-      </span>
-    </span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
