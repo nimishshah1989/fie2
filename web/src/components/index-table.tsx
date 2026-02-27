@@ -131,6 +131,7 @@ function SectorSection({
         return (
           <TableRow
             key={name}
+            id={`idx-${name.replace(/\s+/g, "-")}`}
             className={cn(isTop25 && "bg-primary/5")}
           >
             <TableCell className="font-medium text-sm">
@@ -147,7 +148,9 @@ function SectorSection({
                 "text-right font-mono text-sm",
                 pctChange != null && pctChange >= 0
                   ? "text-emerald-600"
-                  : "text-red-600"
+                  : pctChange != null
+                    ? "text-red-600"
+                    : ""
               )}
             >
               {pctChange != null ? formatPct(pctChange) : "---"}
@@ -172,7 +175,9 @@ function SectorSection({
                 "text-right font-mono text-sm",
                 ratioReturn != null && ratioReturn >= 0
                   ? "text-emerald-600"
-                  : "text-red-600"
+                  : ratioReturn != null
+                    ? "text-red-600"
+                    : ""
               )}
             >
               {ratioReturn != null ? formatPct(ratioReturn) : "---"}
@@ -194,7 +199,9 @@ function SectorSection({
                 "text-right font-mono text-sm",
                 indexReturn != null && indexReturn >= 0
                   ? "text-emerald-600"
-                  : "text-red-600"
+                  : indexReturn != null
+                    ? "text-red-600"
+                    : ""
               )}
             >
               {indexReturn != null ? formatPct(indexReturn) : "---"}

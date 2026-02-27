@@ -66,16 +66,26 @@ export function SignalHeatmap({ indices, period }: SignalHeatmapProps) {
           const style = signalStyles[periodSignal] ?? signalStyles.NEUTRAL;
 
           return (
-            <div
+            <button
               key={name}
+              type="button"
               className={cn(
-                "rounded-lg border px-2 py-2 text-center text-xs font-medium transition-shadow hover:shadow-sm",
+                "rounded-lg border px-2 py-2 text-center text-xs font-medium transition-shadow hover:shadow-md hover:scale-[1.03] cursor-pointer",
                 style
               )}
-              title={`${name} — ${periodSignal}`}
+              title={`${name} — ${periodSignal} · Click to scroll`}
+              onClick={() => {
+                const id = `idx-${name.replace(/\s+/g, "-")}`;
+                const el = document.getElementById(id);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                  el.classList.add("ring-2", "ring-blue-400");
+                  setTimeout(() => el.classList.remove("ring-2", "ring-blue-400"), 2000);
+                }
+              }}
             >
               {getShortName(name)}
-            </div>
+            </button>
           );
         })}
       </div>
