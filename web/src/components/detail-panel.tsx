@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, ImageOff, Lightbulb } from "lucide-react";
+import { ImageOff, Lightbulb, Pencil, Trash2 } from "lucide-react";
 import type { Alert } from "@/lib/types";
 import { fetchChart } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -11,9 +11,11 @@ import { OhlcvStrip } from "@/components/ohlcv-strip";
 interface DetailPanelProps {
   alert: Alert;
   onClose: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
-export function DetailPanel({ alert, onClose }: DetailPanelProps) {
+export function DetailPanel({ alert, onClose, onEdit, onDelete }: DetailPanelProps) {
   const [chartData, setChartData] = useState<string>("");
   const [chartLoading, setChartLoading] = useState(true);
 
@@ -44,20 +46,29 @@ export function DetailPanel({ alert, onClose }: DetailPanelProps) {
   const insights = action?.chart_analysis ?? [];
 
   return (
-    <div className="bg-card rounded-xl border shadow-lg p-6 mb-6 animate-in fade-in slide-in-from-top-2 duration-300">
+    <div className="space-y-6">
       {/* Header row */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
           <h2 className="text-xl font-bold">{alert.ticker}</h2>
-          <span className="text-sm text-muted-foreground">{alert.alert_name}</span>
+          <span className="text-sm text-muted-foreground truncate">{alert.alert_name}</span>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="shrink-0">
-          <X className="h-5 w-5" />
-        </Button>
+        <div className="flex items-center gap-1 shrink-0">
+          {onEdit && (
+            <Button variant="ghost" size="icon" onClick={onEdit} title="Edit action">
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {onDelete && (
+            <Button variant="ghost" size="icon" onClick={onDelete} title="Delete alert" className="text-red-500 hover:text-red-600 hover:bg-red-50">
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Two-column content: Chart + Insights */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      {/* Content: Chart + Insights (stacked in sheet) */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Left: Chart */}
         <div className="flex flex-col">
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
@@ -111,12 +122,43 @@ export function DetailPanel({ alert, onClose }: DetailPanelProps) {
 
       {/* FM Notes */}
       {action?.fm_notes && (
-        <div className="mb-6">
+        <div>
           <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
             FM Notes
           </h3>
           <div className="bg-muted/50 rounded-lg px-4 py-3 text-sm text-foreground leading-relaxed">
             {action.fm_notes}
+          </div>
+        </div>
+      )}
+
+      {/* Trade Parameters */}
+      {action && (action.entry_price_low != null || action.entry_price_high != null || action.stop_loss != null || action.target_price != null) && (
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            Trade Parameters
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {(action.entry_price_low != null || action.entry_price_high != null) && (
+              <div className="bg-blue-50 rounded-lg px-3 py-2.5">
+                <div className="text-[11px] text-blue-600 font-medium uppercase tracking-wide">Entry Range</div>
+                <div className="text-sm font-semibold text-blue-800 mt-0.5">
+                  ₹{action.entry_price_low ?? "—"} – ₹{action.entry_price_high ?? "—"}
+                </div>
+              </div>
+            )}
+            {action.stop_loss != null && (
+              <div className="bg-red-50 rounded-lg px-3 py-2.5">
+                <div className="text-[11px] text-red-600 font-medium uppercase tracking-wide">Stop Loss</div>
+                <div className="text-sm font-semibold text-red-800 mt-0.5">₹{action.stop_loss}</div>
+              </div>
+            )}
+            {action.target_price != null && (
+              <div className="bg-emerald-50 rounded-lg px-3 py-2.5">
+                <div className="text-[11px] text-emerald-600 font-medium uppercase tracking-wide">Target Price</div>
+                <div className="text-sm font-semibold text-emerald-800 mt-0.5">₹{action.target_price}</div>
+              </div>
+            )}
           </div>
         </div>
       )}

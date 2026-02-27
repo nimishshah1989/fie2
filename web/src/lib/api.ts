@@ -44,6 +44,27 @@ export async function fetchIndicesLive(base = "NIFTY"): Promise<IndicesResponse>
   return res.json();
 }
 
+export async function updateAction(
+  alertId: number,
+  payload: Record<string, unknown>
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`${API}/api/alerts/${alertId}/action`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function deleteAlert(
+  alertId: number
+): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`${API}/api/alerts/${alertId}`, {
+    method: "DELETE",
+  });
+  return res.json();
+}
+
 export async function fetchStatus(): Promise<StatusResponse> {
   const res = await fetch(`${API}/api/status`);
   if (!res.ok) return { analysis_enabled: false, version: "3.0" };

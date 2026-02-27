@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 interface ApprovedCardProps {
   alert: Alert;
   onClick: () => void;
+  isSelected?: boolean;
 }
 
 const priorityBorderMap: Record<string, string> = {
@@ -36,10 +37,15 @@ function ActionCallBadge({ actionCall }: { actionCall: string }) {
   );
 }
 
-export function ApprovedCard({ alert, onClick }: ApprovedCardProps) {
+export function ApprovedCard({ alert, onClick, isSelected }: ApprovedCardProps) {
   const action = alert.action!;
   const priority = action.priority;
   const borderClass = priority ? priorityBorderMap[priority] ?? "" : "";
+  const hasTradeParams =
+    action.entry_price_low != null ||
+    action.entry_price_high != null ||
+    action.stop_loss != null ||
+    action.target_price != null;
 
   return (
     <div
@@ -47,7 +53,8 @@ export function ApprovedCard({ alert, onClick }: ApprovedCardProps) {
       className={cn(
         "rounded-xl border bg-card shadow-sm hover:shadow-md transition-all cursor-pointer p-4 border-t-4",
         borderClass,
-        !borderClass && "border-t-transparent"
+        !borderClass && "border-t-transparent",
+        isSelected && "ring-2 ring-blue-500 shadow-md"
       )}
     >
       {/* Header: Ticker + Signal + Interval */}
@@ -84,6 +91,32 @@ export function ApprovedCard({ alert, onClick }: ApprovedCardProps) {
           </Badge>
         )}
       </div>
+
+      {/* Trade Parameters Strip */}
+      {hasTradeParams && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mb-2">
+          {(action.entry_price_low != null || action.entry_price_high != null) && (
+            <span>
+              Entry:{" "}
+              <span className="font-medium text-foreground">
+                {action.entry_price_low != null ? `₹${action.entry_price_low}` : "?"}
+                –
+                {action.entry_price_high != null ? `₹${action.entry_price_high}` : "?"}
+              </span>
+            </span>
+          )}
+          {action.stop_loss != null && (
+            <span>
+              SL: <span className="font-medium text-red-600">₹{action.stop_loss}</span>
+            </span>
+          )}
+          {action.target_price != null && (
+            <span>
+              TP: <span className="font-medium text-emerald-600">₹{action.target_price}</span>
+            </span>
+          )}
+        </div>
+      )}
 
       {/* FM Notes preview */}
       {action.fm_notes && (

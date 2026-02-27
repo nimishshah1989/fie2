@@ -11,6 +11,10 @@ export interface AlertAction {
   chart_analysis: string[] | null;
   decision_at: string | null;
   fm_notes: string | null;
+  entry_price_low: number | null;
+  entry_price_high: number | null;
+  stop_loss: number | null;
+  target_price: number | null;
 }
 
 export interface Alert {
@@ -78,6 +82,10 @@ export interface ActionRequest {
   priority?: string;
   chart_image_b64?: string;
   fm_notes?: string;
+  entry_price_low?: number;
+  entry_price_high?: number;
+  stop_loss?: number;
+  target_price?: number;
 }
 
 export interface StatusResponse {

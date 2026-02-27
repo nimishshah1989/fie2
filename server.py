@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from models import (
-    init_db, get_db,
+    init_db, get_db, SessionLocal,
     TradingViewAlert, AlertAction, AlertStatus, ActionPriority, IndexPrice
 )
 
@@ -95,6 +95,31 @@ def _parse_bullets(raw_text: str) -> list:
 @app.on_event("startup")
 async def startup():
     init_db()
+    # Backfill 12M historical index data for ratio return computations (3M/6M etc.)
+    try:
+        from price_service import fetch_historical_indices
+        db = SessionLocal()
+        from sqlalchemy import func as sqlfunc2
+        latest = db.query(sqlfunc2.max(IndexPrice.date)).scalar()
+        needs_backfill = (
+            latest is None
+            or (datetime.now() - datetime.strptime(latest, "%Y-%m-%d")).days > 2
+        )
+        if needs_backfill:
+            logger.info("Backfilling 12M historical index data...")
+            hist_data = fetch_historical_indices(period="1y")
+            stored = 0
+            for idx_name, rows in hist_data.items():
+                for row in rows:
+                    if _upsert_price_row(db, idx_name, row):
+                        stored += 1
+            db.commit()
+            logger.info("Startup: stored %d historical price records", stored)
+        else:
+            logger.info("Historical data is recent (latest=%s), skipping backfill", latest)
+        db.close()
+    except Exception as e:
+        logger.warning("Startup historical fetch failed (non-fatal): %s", e)
 
 
 # ─── Webhook ───────────────────────────────────────────
@@ -173,6 +198,10 @@ def _serialize(a: TradingViewAlert) -> dict:
             "chart_analysis": json.loads(ac.chart_analysis) if ac.chart_analysis else None,
             "decision_at":    ac.decision_at.isoformat() if ac.decision_at else None,
             "fm_notes":       ac.fm_notes,
+            "entry_price_low":  ac.entry_price_low,
+            "entry_price_high": ac.entry_price_high,
+            "stop_loss":        ac.stop_loss,
+            "target_price":     ac.target_price,
         }
     return {
         "id":               a.id,
@@ -229,6 +258,10 @@ class ActionRequest(BaseModel):
     priority:        Optional[str] = None
     chart_image_b64: Optional[str] = None
     fm_notes:        Optional[str] = None
+    entry_price_low:  Optional[float] = None
+    entry_price_high: Optional[float] = None
+    stop_loss:        Optional[float] = None
+    target_price:     Optional[float] = None
 
 
 @app.post("/api/alerts/{alert_id}/action")
@@ -265,6 +298,12 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     if req.fm_notes:
         action.fm_notes = req.fm_notes
 
+    # Trade parameters
+    action.entry_price_low  = req.entry_price_low
+    action.entry_price_high = req.entry_price_high
+    action.stop_loss        = req.stop_loss
+    action.target_price     = req.target_price
+
     # Always run Claude analysis on APPROVED
     # Vision analysis if chart uploaded, text-only otherwise
     if decision == AlertStatus.APPROVED and ANTHROPIC_API_KEY:
@@ -300,6 +339,49 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
         except Exception as e:
             logger.warning("Stock history fetch for %s failed: %s", alert.ticker, e)
 
+    return {"success": True, "alert_id": alert_id}
+
+
+class UpdateActionRequest(BaseModel):
+    action_call:     Optional[str] = None
+    priority:        Optional[str] = None
+    fm_notes:        Optional[str] = None
+    entry_price_low:  Optional[float] = None
+    entry_price_high: Optional[float] = None
+    stop_loss:        Optional[float] = None
+    target_price:     Optional[float] = None
+
+
+@app.put("/api/alerts/{alert_id}/action")
+async def update_action(alert_id: int, req: UpdateActionRequest, db: Session = Depends(get_db)):
+    alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
+    if not action:
+        raise HTTPException(status_code=404, detail="No action found for this alert")
+
+    if req.action_call is not None:
+        action.action_call = req.action_call
+    if req.priority is not None:
+        try:
+            action.priority = ActionPriority(req.priority)
+        except Exception:
+            pass
+    if req.fm_notes is not None:
+        action.fm_notes = req.fm_notes
+    if req.entry_price_low is not None:
+        action.entry_price_low = req.entry_price_low
+    if req.entry_price_high is not None:
+        action.entry_price_high = req.entry_price_high
+    if req.stop_loss is not None:
+        action.stop_loss = req.stop_loss
+    if req.target_price is not None:
+        action.target_price = req.target_price
+
+    action.updated_at = datetime.now()
+    db.commit()
     return {"success": True, "alert_id": alert_id}
 
 
@@ -667,7 +749,7 @@ async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
         # Pre-load historical prices for ratio return computation (optimized: 7 queries total)
         period_map = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "6m": 180, "12m": 365}
         # Max allowed gap between target date and closest DB date
-        max_gap = {"1d": 5, "1w": 10, "1m": 15, "3m": 20, "6m": 25, "12m": 45}
+        max_gap = {"1d": 5, "1w": 10, "1m": 15, "3m": 45, "6m": 45, "12m": 45}
         historical_dates = {}
         for pk, days in period_map.items():
             target = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")

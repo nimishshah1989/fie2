@@ -1,15 +1,29 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { CheckCircle2, Search } from "lucide-react";
 import { useAlerts } from "@/hooks/use-alerts";
 import type { Alert } from "@/lib/types";
+import { deleteAlert } from "@/lib/api";
 import { StatsRow } from "@/components/stats-row";
 import { ApprovedCard } from "@/components/approved-card";
 import { DetailPanel } from "@/components/detail-panel";
+import { FmActionDialog } from "@/components/fm-action-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -22,12 +36,21 @@ type UrgencyFilter = "all" | "IMMEDIATELY" | "WITHIN_A_WEEK" | "WITHIN_A_MONTH";
 type SignalFilter = "all" | "BULLISH" | "BEARISH";
 
 export default function ApprovedPage() {
-  const { approved, isLoading } = useAlerts();
+  const { approved, isLoading, mutate } = useAlerts();
 
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>("all");
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
   const [search, setSearch] = useState("");
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
+
+  // Edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editAlert, setEditAlert] = useState<Alert | null>(null);
+
+  // Delete confirmation state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Alert | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Count urgency categories
   const immediatelyCount = useMemo(
@@ -63,6 +86,8 @@ export default function ApprovedPage() {
     return result;
   }, [approved, urgencyFilter, signalFilter, search]);
 
+  const sheetOpen = selectedAlert !== null;
+
   function handleCardClick(alert: Alert) {
     if (selectedAlert?.id === alert.id) {
       setSelectedAlert(null);
@@ -70,6 +95,44 @@ export default function ApprovedPage() {
       setSelectedAlert(alert);
     }
   }
+
+  const handleEdit = useCallback(() => {
+    if (!selectedAlert) return;
+    setEditAlert(selectedAlert);
+    setEditDialogOpen(true);
+  }, [selectedAlert]);
+
+  const handleEditSubmitted = useCallback(() => {
+    setEditDialogOpen(false);
+    setEditAlert(null);
+    mutate(); // Refresh data
+    // Re-select to get fresh data
+    setSelectedAlert(null);
+  }, [mutate]);
+
+  const handleDeleteRequest = useCallback(() => {
+    if (!selectedAlert) return;
+    setDeleteTarget(selectedAlert);
+    setDeleteDialogOpen(true);
+  }, [selectedAlert]);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const result = await deleteAlert(deleteTarget.id);
+      if (result.success) {
+        setDeleteDialogOpen(false);
+        setDeleteTarget(null);
+        setSelectedAlert(null);
+        mutate(); // Refresh data
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, mutate]);
 
   return (
     <div className="space-y-6">
@@ -148,14 +211,6 @@ export default function ApprovedPage() {
         </div>
       </div>
 
-      {/* Detail Panel */}
-      {selectedAlert && (
-        <DetailPanel
-          alert={selectedAlert}
-          onClose={() => setSelectedAlert(null)}
-        />
-      )}
-
       {/* Card Grid / Loading / Empty */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -180,10 +235,69 @@ export default function ApprovedPage() {
               key={alert.id}
               alert={alert}
               onClick={() => handleCardClick(alert)}
+              isSelected={selectedAlert?.id === alert.id}
             />
           ))}
         </div>
       )}
+
+      {/* Detail Sheet (right drawer) */}
+      <Sheet open={sheetOpen} onOpenChange={(open) => { if (!open) setSelectedAlert(null); }}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto p-0">
+          {selectedAlert && (
+            <div className="p-6">
+              <DetailPanel
+                alert={selectedAlert}
+                onClose={() => setSelectedAlert(null)}
+                onEdit={handleEdit}
+                onDelete={handleDeleteRequest}
+              />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* Edit Dialog */}
+      <FmActionDialog
+        alert={editAlert}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSubmitted={handleEditSubmitted}
+        mode="edit"
+        initialData={editAlert?.action ?? null}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete Alert</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the alert for{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.ticker}
+              </span>
+              ? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -140,7 +140,7 @@ export default function PulsePage() {
           <hr className="border-border" />
 
           {/* Index Table */}
-          <IndexTable indices={filteredIndices} period={period} />
+          <IndexTable indices={filteredIndices} period={period} timestamp={data.timestamp} />
         </>
       )}
 

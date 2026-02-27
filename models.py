@@ -111,6 +111,12 @@ class AlertAction(Base):
     # FM commentary
     fm_notes = Column(Text, nullable=True)
 
+    # Trade parameters (FM suggested)
+    entry_price_low   = Column(Float, nullable=True)
+    entry_price_high  = Column(Float, nullable=True)
+    stop_loss         = Column(Float, nullable=True)
+    target_price      = Column(Float, nullable=True)
+
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -160,6 +166,10 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN ratio_numerator_ticker VARCHAR(50)",
         "ALTER TABLE alert_actions ADD COLUMN ratio_denominator_ticker VARCHAR(50)",
         "ALTER TABLE alert_actions ADD COLUMN fm_notes TEXT",
+        "ALTER TABLE alert_actions ADD COLUMN entry_price_low FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN entry_price_high FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN stop_loss FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN target_price FLOAT",
     ]
     for sql in migrations:
         try:
