@@ -1194,7 +1194,7 @@ async def start_scheduler():
 # ─── Live Prices via curl + Yahoo Finance ────────────
 
 YAHOO_SYMBOL_MAP: Dict[str, Optional[str]] = {
-    "LIQUIDCASE": None,  # Internal liquid fund — no Yahoo proxy (LIQUIDBEES is a different instrument)
+    "LIQUIDCASE": "LIQUIDCASE.NS",  # Zerodha Nifty 1D Rate Liquid ETF (~₹112-113, NOT LIQUIDBEES)
     "CPSEETF": "CPSEETF.NS",
     "METALETF": "METALIETF.NS",
     "SENSEXETF": "SENSEXETF.NS",
