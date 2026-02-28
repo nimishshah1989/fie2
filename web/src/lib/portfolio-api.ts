@@ -1,6 +1,6 @@
 // ============================================================================
 // Jhaveri Intelligence Platform — Portfolio API
-// Connects to portfolio_server.py on port 8001 (isolated dev)
+// Uses same server as alerts (port 8000 / same-origin in production)
 // ============================================================================
 
 import type {
@@ -16,7 +16,7 @@ import type {
   CreateTransactionPayload,
 } from "@/lib/portfolio-types";
 
-const PORTFOLIO_API = process.env.NEXT_PUBLIC_PORTFOLIO_API_URL || "http://localhost:8001";
+const PORTFOLIO_API = process.env.NEXT_PUBLIC_API_URL || "";
 
 // ─── Portfolio CRUD ───────────────────────────────────
 
