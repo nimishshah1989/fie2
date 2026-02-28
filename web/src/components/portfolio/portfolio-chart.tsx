@@ -220,18 +220,18 @@ export function PortfolioChart({ portfolioId }: PortfolioChartProps) {
 
   return (
     <Card>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between mb-1">
+      <CardContent className="p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
           <div>
-            <h3 className="text-sm font-semibold text-foreground">
+            <h3 className="text-xs sm:text-sm font-semibold text-foreground">
               Performance (% Returns)
             </h3>
-            <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-lg font-bold text-slate-900">
+            <div className="flex items-center gap-2 sm:gap-3 mt-0.5 flex-wrap">
+              <span className="text-base sm:text-lg font-bold text-slate-900">
                 {formatINR(lastPoint.raw_portfolio)}
               </span>
               <span
-                className={`text-sm font-semibold ${
+                className={`text-xs sm:text-sm font-semibold ${
                   totalReturnPct >= 0 ? "text-emerald-600" : "text-red-600"
                 }`}
               >
@@ -239,7 +239,7 @@ export function PortfolioChart({ portfolioId }: PortfolioChartProps) {
                 {totalReturnPct.toFixed(2)}%
               </span>
               {benchmarkReturnPct != null && (
-                <span className="text-xs text-slate-400">
+                <span className="text-[10px] sm:text-xs text-slate-400">
                   vs NIFTY {benchmarkReturnPct >= 0 ? "+" : ""}{benchmarkReturnPct.toFixed(2)}%
                 </span>
               )}
@@ -248,7 +248,7 @@ export function PortfolioChart({ portfolioId }: PortfolioChartProps) {
           <PeriodToggle selected={period} onChange={setPeriod} />
         </div>
 
-        <ResponsiveContainer width="100%" height={340}>
+        <ResponsiveContainer width="100%" height={280} className="sm:!h-[340px]">
           <ComposedChart
             data={chartData}
             margin={{ top: 10, right: 10, left: 0, bottom: 5 }}

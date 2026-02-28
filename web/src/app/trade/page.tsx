@@ -136,11 +136,11 @@ export default function TradeCenterPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Trade Center</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground">Trade Center</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
           Pending alerts awaiting FM decision
         </p>
       </div>
@@ -152,37 +152,39 @@ export default function TradeCenterPage() {
       <StatsRow stats={stats} />
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <Select
-          value={signalFilter}
-          onValueChange={(v) => setSignalFilter(v as SignalFilter)}
-        >
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Signal" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Signals</SelectItem>
-            <SelectItem value="BULLISH">Bullish</SelectItem>
-            <SelectItem value="BEARISH">Bearish</SelectItem>
-            <SelectItem value="NEUTRAL">Neutral</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 sm:flex-wrap">
+        <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+          <Select
+            value={signalFilter}
+            onValueChange={(v) => setSignalFilter(v as SignalFilter)}
+          >
+            <SelectTrigger className="w-full sm:w-[150px]">
+              <SelectValue placeholder="Signal" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Signals</SelectItem>
+              <SelectItem value="BULLISH">Bullish</SelectItem>
+              <SelectItem value="BEARISH">Bearish</SelectItem>
+              <SelectItem value="NEUTRAL">Neutral</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Select
-          value={sortBy}
-          onValueChange={(v) => setSortBy(v as SortBy)}
-        >
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Sort by" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="newest">Newest</SelectItem>
-            <SelectItem value="oldest">Oldest</SelectItem>
-            <SelectItem value="ticker">Ticker</SelectItem>
-          </SelectContent>
-        </Select>
+          <Select
+            value={sortBy}
+            onValueChange={(v) => setSortBy(v as SortBy)}
+          >
+            <SelectTrigger className="w-full sm:w-[150px]">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest</SelectItem>
+              <SelectItem value="oldest">Oldest</SelectItem>
+              <SelectItem value="ticker">Ticker</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <span className="text-xs text-muted-foreground ml-auto">
+        <span className="text-xs text-muted-foreground sm:ml-auto">
           {filteredAlerts.length} alert{filteredAlerts.length !== 1 ? "s" : ""}
         </span>
       </div>

@@ -11,13 +11,13 @@ interface PeriodToggleProps {
 
 export function PeriodToggle({ selected, onChange }: PeriodToggleProps) {
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1 flex-wrap">
       {PERIODS.map((p) => (
         <Button
           key={p}
           variant={selected === p ? "default" : "outline"}
           size="sm"
-          className="text-xs h-7 px-3"
+          className="text-xs h-6 sm:h-7 px-2 sm:px-3"
           onClick={() => onChange(p)}
         >
           {p}

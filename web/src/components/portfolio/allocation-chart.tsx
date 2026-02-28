@@ -63,8 +63,8 @@ function AllocationPie({ title, data }: { title: string; data: AllocationItem[] 
       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">
         {title}
       </h4>
-      <div className="flex items-center gap-4">
-        <div className="w-40 h-40 shrink-0">
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div className="w-32 h-32 sm:w-40 sm:h-40 shrink-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -112,9 +112,9 @@ function AllocationPie({ title, data }: { title: string; data: AllocationItem[] 
 export function AllocationChart({ byStock, bySector }: AllocationChartProps) {
   return (
     <Card>
-      <CardContent className="p-6">
-        <h3 className="text-sm font-semibold text-foreground mb-4">Portfolio Allocation</h3>
-        <div className="flex gap-8 flex-col sm:flex-row">
+      <CardContent className="p-3 sm:p-6">
+        <h3 className="text-sm font-semibold text-foreground mb-3 sm:mb-4">Portfolio Allocation</h3>
+        <div className="flex gap-6 sm:gap-8 flex-col md:flex-row">
           <AllocationPie title="By Stock" data={byStock} />
           <AllocationPie title="By Sector" data={bySector} />
         </div>

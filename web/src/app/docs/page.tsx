@@ -16,15 +16,15 @@ import {
 
 export default function DocsPage() {
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-6 sm:space-y-8 max-w-4xl">
       {/* Page Header */}
       <div>
         <div className="flex items-center gap-2">
-          <BookOpen className="size-6 text-primary" />
-          <h1 className="text-2xl font-bold text-foreground">Documentation</h1>
+          <BookOpen className="size-5 sm:size-6 text-primary" />
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Documentation</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          Complete reference for the Jhaveri Intelligence Platform — formulas, data sources, and methodology
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+          Complete reference for the Jhaveri Intelligence Platform
         </p>
       </div>
 

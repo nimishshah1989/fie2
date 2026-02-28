@@ -54,14 +54,14 @@ export default function ActionablesPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <AlertTriangle className="size-6 text-amber-600" />
-          <h1 className="text-2xl font-bold text-foreground">Actionables</h1>
+          <AlertTriangle className="size-5 sm:size-6 text-amber-600" />
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Actionables</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
           Alerts where current price has hit stop loss or target price
         </p>
       </div>
@@ -70,12 +70,12 @@ export default function ActionablesPage() {
       {!isLoading && <StatsRow stats={stats} />}
 
       {/* Filters */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
         <Select
           value={triggerFilter}
           onValueChange={(v) => setTriggerFilter(v as TriggerFilter)}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Trigger type" />
           </SelectTrigger>
           <SelectContent>

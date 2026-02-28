@@ -33,14 +33,14 @@ export default function PerformancePage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <BarChart3 className="size-6 text-blue-600" />
-          <h1 className="text-2xl font-bold text-foreground">Alert Performance</h1>
+          <BarChart3 className="size-5 sm:size-6 text-blue-600" />
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Alert Performance</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
           Track returns on FM-approved alerts
         </p>
       </div>

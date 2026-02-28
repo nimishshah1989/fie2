@@ -79,15 +79,15 @@ function PortfolioListView() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <Briefcase className="size-6 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">Model Portfolios</h1>
+            <Briefcase className="size-5 sm:size-6 text-primary" />
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Model Portfolios</h1>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Create and manage model portfolio strategies
           </p>
         </div>
@@ -202,23 +202,23 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBack}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <Button variant="ghost" size="sm" onClick={onBack} className="self-start">
             <ArrowLeft className="h-4 w-4 mr-1" />
             Back
           </Button>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-foreground">{detail.name}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground">{detail.name}</h1>
               <Badge variant="outline" className="text-xs">
                 vs {detail.benchmark}
               </Badge>
             </div>
             {detail.description && (
-              <p className="text-sm text-muted-foreground mt-0.5">{detail.description}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">{detail.description}</p>
             )}
           </div>
         </div>
@@ -247,25 +247,27 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
       )}
 
       {/* Tab Toggle */}
-      <div className="flex items-center gap-2 border-b border-border pb-2">
-        <Button
-          variant={activeTab === "holdings" ? "default" : "ghost"}
-          size="sm"
-          className="text-xs"
-          onClick={() => setActiveTab("holdings")}
-        >
-          Holdings ({holdings.length})
-        </Button>
-        <Button
-          variant={activeTab === "transactions" ? "default" : "ghost"}
-          size="sm"
-          className="text-xs"
-          onClick={() => setActiveTab("transactions")}
-        >
-          Transactions ({transactions.length})
-        </Button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-b border-border pb-2">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={activeTab === "holdings" ? "default" : "ghost"}
+            size="sm"
+            className="text-xs"
+            onClick={() => setActiveTab("holdings")}
+          >
+            Holdings ({holdings.length})
+          </Button>
+          <Button
+            variant={activeTab === "transactions" ? "default" : "ghost"}
+            size="sm"
+            className="text-xs"
+            onClick={() => setActiveTab("transactions")}
+          >
+            Transactions ({transactions.length})
+          </Button>
+        </div>
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="sm:ml-auto flex items-center gap-3">
           {/* Prices timestamp */}
           {activeTab === "holdings" && <PricesAsOfBadge timestamp={pricesAsOf} />}
 

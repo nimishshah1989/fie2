@@ -45,23 +45,23 @@ export default function PulsePage() {
   }, [data.indices, sectorFilter]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <Activity className="size-6 text-blue-600" />
-          <h1 className="text-2xl font-bold text-foreground">Market Pulse</h1>
+          <Activity className="size-5 sm:size-6 text-blue-600" />
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Market Pulse</h1>
         </div>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
           Live NSE index signals and sector analysis
         </p>
       </div>
 
       {/* Filters Row */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-2 sm:gap-3">
         {/* Base Index */}
         <Select value={base} onValueChange={setBase}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-full sm:w-[160px]">
             <SelectValue placeholder="Base Index" />
           </SelectTrigger>
           <SelectContent>
@@ -75,7 +75,7 @@ export default function PulsePage() {
 
         {/* Period */}
         <Select value={period} onValueChange={setPeriod}>
-          <SelectTrigger className="w-[100px]">
+          <SelectTrigger className="w-full sm:w-[100px]">
             <SelectValue placeholder="Period" />
           </SelectTrigger>
           <SelectContent>
@@ -89,7 +89,7 @@ export default function PulsePage() {
 
         {/* Sector */}
         <Select value={sectorFilter} onValueChange={setSectorFilter}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full col-span-2 sm:w-[200px]">
             <SelectValue placeholder="Sector" />
           </SelectTrigger>
           <SelectContent>

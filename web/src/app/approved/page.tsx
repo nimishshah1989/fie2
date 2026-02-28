@@ -135,11 +135,11 @@ export default function ApprovedPage() {
   }, [deleteTarget, mutate]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Approved Cards</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Approved Cards</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground mt-1">
           FM-approved alerts with action recommendations
         </p>
       </div>
@@ -170,37 +170,39 @@ export default function ApprovedPage() {
       />
 
       {/* Filters Row */}
-      <div className="flex flex-wrap items-center gap-3">
-        <Select
-          value={urgencyFilter}
-          onValueChange={(v) => setUrgencyFilter(v as UrgencyFilter)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Urgency" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Urgencies</SelectItem>
-            <SelectItem value="IMMEDIATELY">Immediately</SelectItem>
-            <SelectItem value="WITHIN_A_WEEK">Within a Week</SelectItem>
-            <SelectItem value="WITHIN_A_MONTH">Within a Month</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+          <Select
+            value={urgencyFilter}
+            onValueChange={(v) => setUrgencyFilter(v as UrgencyFilter)}
+          >
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Urgency" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Urgencies</SelectItem>
+              <SelectItem value="IMMEDIATELY">Immediately</SelectItem>
+              <SelectItem value="WITHIN_A_WEEK">Within a Week</SelectItem>
+              <SelectItem value="WITHIN_A_MONTH">Within a Month</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Select
-          value={signalFilter}
-          onValueChange={(v) => setSignalFilter(v as SignalFilter)}
-        >
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="Signal" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Signals</SelectItem>
-            <SelectItem value="BULLISH">Bullish</SelectItem>
-            <SelectItem value="BEARISH">Bearish</SelectItem>
-          </SelectContent>
-        </Select>
+          <Select
+            value={signalFilter}
+            onValueChange={(v) => setSignalFilter(v as SignalFilter)}
+          >
+            <SelectTrigger className="w-full sm:w-[160px]">
+              <SelectValue placeholder="Signal" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Signals</SelectItem>
+              <SelectItem value="BULLISH">Bullish</SelectItem>
+              <SelectItem value="BEARISH">Bearish</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-        <div className="relative flex-1 min-w-[200px] max-w-xs">
+        <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by ticker..."

@@ -87,7 +87,8 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
-      <Table>
+      <div className="overflow-x-auto">
+      <Table className="min-w-[800px]">
         <TableHeader>
           <TableRow className="bg-muted/50">
             <TableHead className="w-[180px]"><SortHeader label="Ticker" field="ticker" /></TableHead>
@@ -222,6 +223,7 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

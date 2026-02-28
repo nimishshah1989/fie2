@@ -69,11 +69,11 @@ export default function CommandCenter() {
   }, [alerts, signalFilter, sortBy]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Page Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Command Center</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Command Center</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">
           Real-time overview of all TradingView alerts
         </p>
       </div>
@@ -85,12 +85,12 @@ export default function CommandCenter() {
       <StatsRow stats={stats} />
 
       {/* Filters Row */}
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 sm:items-center">
         <Select
           value={signalFilter}
           onValueChange={(v) => setSignalFilter(v as SignalFilter)}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="All Signals" />
           </SelectTrigger>
           <SelectContent>
@@ -105,7 +105,7 @@ export default function CommandCenter() {
           value={sortBy}
           onValueChange={(v) => setSortBy(v as SortBy)}
         >
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Newest First" />
           </SelectTrigger>
           <SelectContent>
