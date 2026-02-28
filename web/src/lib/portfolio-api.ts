@@ -69,11 +69,15 @@ export async function archivePortfolio(
 
 export async function fetchPortfolioHoldings(
   id: number
-): Promise<{ holdings: PortfolioHoldingRow[]; totals: HoldingsTotals }> {
+): Promise<{ holdings: PortfolioHoldingRow[]; totals: HoldingsTotals; prices_as_of: string | null }> {
   const res = await fetch(`${PORTFOLIO_API}/api/portfolios/${id}/holdings`);
-  if (!res.ok) return { holdings: [], totals: emptyTotals() };
+  if (!res.ok) return { holdings: [], totals: emptyTotals(), prices_as_of: null };
   const data = await res.json();
-  return { holdings: data.holdings || [], totals: data.totals || emptyTotals() };
+  return {
+    holdings: data.holdings || [],
+    totals: data.totals || emptyTotals(),
+    prices_as_of: data.prices_as_of || null,
+  };
 }
 
 // ─── Transactions ─────────────────────────────────────

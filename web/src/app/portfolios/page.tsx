@@ -3,7 +3,7 @@
 import { Suspense, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { usePortfolios } from "@/hooks/use-portfolios";
-import { usePortfolioDetail, useNAVHistory } from "@/hooks/use-portfolio-detail";
+import { usePortfolioDetail } from "@/hooks/use-portfolio-detail";
 import { PortfolioSummaryCard } from "@/components/portfolio/portfolio-summary-card";
 import { CreatePortfolioDialog } from "@/components/portfolio/create-portfolio-dialog";
 import { TransactionDialog } from "@/components/portfolio/transaction-dialog";
@@ -22,6 +22,8 @@ import {
   Briefcase,
   ArrowLeft,
   Download,
+  Plus,
+  Clock,
 } from "lucide-react";
 import { getHoldingsExportURL } from "@/lib/portfolio-api";
 
@@ -128,15 +130,66 @@ function PortfolioListView() {
   );
 }
 
+// ─── Prices As Of timestamp display ──────────────────
+
+function PricesAsOfBadge({ timestamp }: { timestamp: string | null }) {
+  if (!timestamp) return null;
+
+  try {
+    const d = new Date(timestamp);
+    const formatted = d.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }) + " " + d.toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    return (
+      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <Clock className="h-3 w-3" />
+        <span>Prices as of {formatted}</span>
+      </div>
+    );
+  } catch {
+    return null;
+  }
+}
+
 // ─── Detail View ──────────────────────────────────────
 
 function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void }) {
   const [activeTab, setActiveTab] = useState<"holdings" | "transactions">("holdings");
-  const { detail, holdings, totals, transactions, performance, allocation, refresh } = usePortfolioDetail(id);
+  const { detail, holdings, totals, pricesAsOf, transactions, performance, allocation, refresh } = usePortfolioDetail(id);
+
+  // Transaction dialog state for pre-filled buy/sell from holding actions
+  const [txnDialogOpen, setTxnDialogOpen] = useState(false);
+  const [prefillTicker, setPrefillTicker] = useState("");
+  const [prefillSector, setPrefillSector] = useState("");
+  const [prefillTxnType, setPrefillTxnType] = useState<"BUY" | "SELL">("BUY");
 
   const handleTransactionComplete = useCallback(() => {
+    setTxnDialogOpen(false);
+    setPrefillTicker("");
+    setPrefillSector("");
     refresh();
   }, [refresh]);
+
+  const handleBuyMore = useCallback((ticker: string, sector: string | null) => {
+    setPrefillTicker(ticker);
+    setPrefillSector(sector || "");
+    setPrefillTxnType("BUY");
+    setTxnDialogOpen(true);
+  }, []);
+
+  const handleSell = useCallback((ticker: string) => {
+    setPrefillTicker(ticker);
+    setPrefillSector("");
+    setPrefillTxnType("SELL");
+    setTxnDialogOpen(true);
+  }, []);
 
   if (!detail) {
     return (
@@ -169,7 +222,17 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
             )}
           </div>
         </div>
-        <TransactionDialog portfolioId={id} onCompleted={handleTransactionComplete} />
+        <div className="flex items-center gap-2">
+          <TransactionDialog
+            portfolioId={id}
+            onCompleted={handleTransactionComplete}
+            open={txnDialogOpen}
+            onOpenChange={setTxnDialogOpen}
+            prefillTicker={prefillTicker}
+            prefillSector={prefillSector}
+            prefillTxnType={prefillTxnType}
+          />
+        </div>
       </div>
 
       {/* KPI Strip */}
@@ -202,19 +265,23 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
           Transactions ({transactions.length})
         </Button>
 
-        {activeTab === "holdings" && (
-          <a
-            href={getHoldingsExportURL(id)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto"
-          >
-            <Button variant="outline" size="sm" className="text-xs h-7 gap-1">
-              <Download className="h-3 w-3" />
-              Export Holdings
-            </Button>
-          </a>
-        )}
+        <div className="ml-auto flex items-center gap-3">
+          {/* Prices timestamp */}
+          {activeTab === "holdings" && <PricesAsOfBadge timestamp={pricesAsOf} />}
+
+          {activeTab === "holdings" && (
+            <a
+              href={getHoldingsExportURL(id)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline" size="sm" className="text-xs h-7 gap-1">
+                <Download className="h-3 w-3" />
+                Export
+              </Button>
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -226,7 +293,12 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
               description="Add your first position using the 'Add Transaction' button above."
             />
           ) : (
-            <HoldingsTable holdings={holdings} totals={totals} />
+            <HoldingsTable
+              holdings={holdings}
+              totals={totals}
+              onBuyMore={handleBuyMore}
+              onSell={handleSell}
+            />
           )}
         </>
       )}

@@ -45,6 +45,7 @@ export function usePortfolioDetail(id: number | null) {
     detail,
     holdings: holdingsData?.holdings ?? [],
     totals: holdingsData?.totals ?? null,
+    pricesAsOf: holdingsData?.prices_as_of ?? null,
     transactions: transactions ?? [],
     performance: performance ?? null,
     allocation: allocation ?? { by_stock: [], by_sector: [] },

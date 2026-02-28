@@ -43,6 +43,7 @@ export interface PortfolioHoldingRow {
   unrealized_pnl_pct: number | null;
   day_change_pct: number | null;
   weight_pct: number | null;
+  price_source: string | null;  // Yahoo Finance symbol used (e.g. LIQUIDBEES.NS)
 }
 
 export interface HoldingsTotals {

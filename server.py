@@ -1234,7 +1234,22 @@ def _fetch_live_price_curl(yf_symbol: str) -> Optional[Dict]:
         change_pct = None
         if prev_close and prev_close > 0:
             change_pct = round(((current_price / prev_close) - 1) * 100, 2)
-        return {"current_price": current_price, "change_pct": change_pct}
+        # Extract market time for data freshness display
+        market_time = meta.get("regularMarketTime")  # Unix timestamp
+        market_time_str = None
+        if market_time:
+            try:
+                from datetime import timezone
+                dt = datetime.fromtimestamp(market_time, tz=timezone.utc)
+                market_time_str = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            except Exception:
+                pass
+        return {
+            "current_price": current_price,
+            "change_pct": change_pct,
+            "yf_symbol": yf_symbol,
+            "market_time": market_time_str,
+        }
     except Exception as exc:
         logger.debug("curl price fetch failed for %s: %s", yf_symbol, exc)
         return None
@@ -1513,10 +1528,16 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
     total_invested = 0.0
     total_current = 0.0
     rows = []
+    # Track oldest market_time across all holdings for "prices as of" display
+    market_times = []
     for h in holdings:
         price_data = prices.get(h.ticker, {})
         current_price = price_data.get("current_price")
         day_change_pct = price_data.get("change_pct")
+        yf_symbol = price_data.get("yf_symbol")
+        market_time = price_data.get("market_time")
+        if market_time:
+            market_times.append(market_time)
         current_value = (h.quantity * current_price) if current_price else None
         unrealized_pnl = (current_value - h.total_cost) if current_value else None
         unrealized_pnl_pct = (((current_price / h.avg_cost) - 1) * 100) if current_price and h.avg_cost > 0 else None
@@ -1531,6 +1552,7 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
             "unrealized_pnl_pct": round(unrealized_pnl_pct, 2) if unrealized_pnl_pct is not None else None,
             "day_change_pct": round(day_change_pct, 2) if day_change_pct is not None else None,
             "weight_pct": None,
+            "price_source": yf_symbol,
         })
     for row in rows:
         cv = row["current_value"] or row["total_cost"]
@@ -1542,13 +1564,16 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
         .scalar()
     ) or 0.0
 
+    # Use the latest market time across all fetched prices
+    prices_as_of = max(market_times) if market_times else None
+
     totals = {
         "total_invested": round(total_invested, 2), "current_value": round(total_current, 2),
         "unrealized_pnl": round(total_current - total_invested, 2),
         "unrealized_pnl_pct": round(((total_current - total_invested) / total_invested) * 100, 2) if total_invested > 0 else 0.0,
         "realized_pnl": round(realized_total, 2), "num_holdings": len(rows),
     }
-    return {"success": True, "holdings": rows, "totals": totals}
+    return {"success": True, "holdings": rows, "totals": totals, "prices_as_of": prices_as_of}
 
 
 # ─── Portfolio NAV Computation ───────────────────────
@@ -2016,7 +2041,7 @@ _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
     # Explicit page routes — Starlette StaticFiles incorrectly resolves
     # /pulse to the pulse/ directory (RSC payloads) instead of pulse.html
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):

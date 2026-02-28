@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -24,17 +24,40 @@ import { Plus } from "lucide-react";
 
 const SECTOR_OPTIONS = [
   "Banking", "IT", "Pharma", "Energy", "Auto", "FMCG", "Metal",
-  "Realty", "Infra", "Telecom", "Media", "Financial Services", "Other",
+  "Realty", "Infra", "Telecom", "Media", "Financial Services",
+  "Cash", "ETF", "Other",
 ];
 
 interface TransactionDialogProps {
   portfolioId: number;
   onCompleted: () => void;
   trigger?: React.ReactNode;
+  // Controlled mode — for opening from holding action buttons
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  prefillTicker?: string;
+  prefillSector?: string;
+  prefillTxnType?: "BUY" | "SELL";
 }
 
-export function TransactionDialog({ portfolioId, onCompleted, trigger }: TransactionDialogProps) {
-  const [open, setOpen] = useState(false);
+export function TransactionDialog({
+  portfolioId,
+  onCompleted,
+  trigger,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  prefillTicker,
+  prefillSector,
+  prefillTxnType,
+}: TransactionDialogProps) {
+  // Internal state for uncontrolled mode
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const isOpen = isControlled ? controlledOpen : internalOpen;
+  const setIsOpen = isControlled
+    ? (v: boolean) => controlledOnOpenChange?.(v)
+    : setInternalOpen;
+
   const [txnType, setTxnType] = useState<"BUY" | "SELL">("BUY");
   const [ticker, setTicker] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -45,6 +68,16 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Apply prefill values when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      if (prefillTicker) setTicker(prefillTicker);
+      if (prefillSector) setSector(prefillSector);
+      if (prefillTxnType) setTxnType(prefillTxnType);
+      setTxnDate(new Date().toISOString().split("T")[0]);
+    }
+  }, [isOpen, prefillTicker, prefillSector, prefillTxnType]);
+
   function reset() {
     setTicker("");
     setQuantity("");
@@ -53,6 +86,11 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
     setSector("");
     setNotes("");
     setError("");
+  }
+
+  function handleOpenChange(v: boolean) {
+    setIsOpen(v);
+    if (!v) reset();
   }
 
   async function handleSubmit() {
@@ -76,7 +114,7 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
         sector: sector || undefined,
       });
       if (result.success) {
-        setOpen(false);
+        handleOpenChange(false);
         reset();
         onCompleted();
       } else {
@@ -92,18 +130,35 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
   const totalValue = (parseInt(quantity) || 0) * (parseFloat(price) || 0);
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-      <DialogTrigger asChild>
-        {trigger || (
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      {/* Only show trigger in uncontrolled mode */}
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {trigger || (
+            <Button size="sm" className="gap-1.5">
+              <Plus className="h-4 w-4" />
+              Add Transaction
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
+      {/* Always show trigger button in controlled mode too */}
+      {isControlled && (
+        <DialogTrigger asChild>
           <Button size="sm" className="gap-1.5">
             <Plus className="h-4 w-4" />
             Add Transaction
           </Button>
-        )}
-      </DialogTrigger>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Record Transaction</DialogTitle>
+          <DialogTitle>
+            {prefillTicker && isControlled
+              ? `${prefillTxnType === "SELL" ? "Sell" : "Buy More"} ${prefillTicker}`
+              : "Record Transaction"
+            }
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           {/* BUY / SELL Toggle */}
@@ -134,6 +189,7 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
               placeholder="e.g. RELIANCE"
               value={ticker}
               onChange={(e) => setTicker(e.target.value.toUpperCase())}
+              disabled={!!prefillTicker && isControlled}
             />
           </div>
 
@@ -151,7 +207,7 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="price">Price (₹)</Label>
+              <Label htmlFor="price">Price (\u20B9)</Label>
               <Input
                 id="price"
                 type="number"
@@ -168,7 +224,7 @@ export function TransactionDialog({ portfolioId, onCompleted, trigger }: Transac
           {totalValue > 0 && (
             <div className="text-sm text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
               Total Value: <span className="font-semibold text-foreground">
-                ₹{totalValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                \u20B9{totalValue.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
               </span>
             </div>
           )}
