@@ -76,7 +76,7 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
     const isActive = sortKey === field;
     return (
       <button
-        className={`flex items-center gap-1 hover:text-foreground transition-colors ${align === "right" ? "ml-auto" : ""}`}
+        className={`flex items-center gap-1 hover:text-foreground transition-colors ${align === "center" ? "mx-auto" : align === "right" ? "ml-auto" : ""}`}
         onClick={() => handleSort(field)}
       >
         {label}
@@ -91,11 +91,11 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
         <TableHeader>
           <TableRow className="bg-muted/50">
             <TableHead className="w-[180px]"><SortHeader label="Ticker" field="ticker" /></TableHead>
-            <TableHead className="text-right w-[60px]"><SortHeader label="Qty" field="quantity" align="right" /></TableHead>
-            <TableHead className="text-right w-[100px]"><SortHeader label="Avg Cost" field="avg_cost" align="right" /></TableHead>
-            <TableHead className="text-right w-[100px]"><SortHeader label="CMP" field="current_price" align="right" /></TableHead>
-            <TableHead className="text-right w-[110px]"><SortHeader label="Value" field="current_value" align="right" /></TableHead>
-            <TableHead className="text-right w-[90px]"><SortHeader label="P&L %" field="unrealized_pnl_pct" align="right" /></TableHead>
+            <TableHead className="text-center w-[60px]"><SortHeader label="Qty" field="quantity" align="center" /></TableHead>
+            <TableHead className="text-center w-[100px]"><SortHeader label="Avg Cost" field="avg_cost" align="center" /></TableHead>
+            <TableHead className="text-center w-[100px]"><SortHeader label="CMP" field="current_price" align="center" /></TableHead>
+            <TableHead className="text-center w-[110px]"><SortHeader label="Value" field="current_value" align="center" /></TableHead>
+            <TableHead className="text-center w-[90px]"><SortHeader label="P&L %" field="unrealized_pnl_pct" align="center" /></TableHead>
             <TableHead className="w-[150px]"><SortHeader label="Weight" field="weight_pct" /></TableHead>
             {(onBuyMore || onSell) && <TableHead className="w-[100px] text-center">Actions</TableHead>}
           </TableRow>
@@ -122,26 +122,26 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
                 </TableCell>
 
                 {/* Quantity */}
-                <TableCell className="text-right font-mono text-sm tabular-nums">{h.quantity}</TableCell>
+                <TableCell className="text-center font-mono text-sm tabular-nums">{h.quantity}</TableCell>
 
                 {/* Avg Cost */}
-                <TableCell className="text-right font-mono text-sm tabular-nums">{formatPrice(h.avg_cost)}</TableCell>
+                <TableCell className="text-center font-mono text-sm tabular-nums">{formatPrice(h.avg_cost)}</TableCell>
 
                 {/* CMP */}
-                <TableCell className="text-right font-mono text-sm tabular-nums">
+                <TableCell className="text-center font-mono text-sm tabular-nums">
                   {h.current_price ? formatPrice(h.current_price) : (
-                    <span className="text-muted-foreground">\u2014</span>
+                    <span className="text-muted-foreground">{"—"}</span>
                   )}
                 </TableCell>
 
                 {/* Current Value */}
-                <TableCell className="text-right font-mono text-sm tabular-nums">
+                <TableCell className="text-center font-mono text-sm tabular-nums">
                   {formatPrice(h.current_value ?? h.total_cost)}
                 </TableCell>
 
                 {/* P&L % */}
-                <TableCell className={`text-right font-mono text-sm font-semibold tabular-nums ${pnlColor}`}>
-                  {h.unrealized_pnl_pct != null ? formatPct(h.unrealized_pnl_pct) : "\u2014"}
+                <TableCell className={`text-center font-mono text-sm font-semibold tabular-nums ${pnlColor}`}>
+                  {h.unrealized_pnl_pct != null ? formatPct(h.unrealized_pnl_pct) : "—"}
                 </TableCell>
 
                 {/* Weight with allocation bar */}
@@ -162,7 +162,7 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
                 {/* Action Buttons */}
                 {(onBuyMore || onSell) && (
                   <TableCell className="text-center">
-                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-center gap-1">
                       {onBuyMore && (
                         <Button
                           variant="ghost"
@@ -197,14 +197,14 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
             <TableRow className="bg-muted/50 font-semibold border-t-2">
               <TableCell className="text-sm">TOTAL ({totals.num_holdings})</TableCell>
               <TableCell />
-              <TableCell className="text-right font-mono text-sm tabular-nums">
+              <TableCell className="text-center font-mono text-sm tabular-nums">
                 {formatPrice(totals.total_invested)}
               </TableCell>
               <TableCell />
-              <TableCell className="text-right font-mono text-sm tabular-nums">
+              <TableCell className="text-center font-mono text-sm tabular-nums">
                 {formatPrice(totals.current_value)}
               </TableCell>
-              <TableCell className={`text-right font-mono text-sm tabular-nums ${
+              <TableCell className={`text-center font-mono text-sm tabular-nums ${
                 totals.unrealized_pnl_pct >= 0 ? "text-emerald-600" : "text-red-600"
               }`}>
                 {formatPct(totals.unrealized_pnl_pct)}
