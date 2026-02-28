@@ -1922,6 +1922,77 @@ def _background_fetch_stock_history(ticker: str):
     thread.start()
 
 
+# ─── Bulk Import (for data migration) ────────────────
+
+@app.post("/api/portfolios/bulk-import")
+async def bulk_import_portfolio(request: Request, db: Session = Depends(get_db)):
+    """Bulk import portfolio data: portfolio + holdings + transactions + NAV + index prices."""
+    data = await request.json()
+
+    # Create portfolio
+    p_data = data.get("portfolio", {})
+    p = ModelPortfolio(
+        name=p_data["name"], description=p_data.get("description"),
+        benchmark=p_data.get("benchmark", "NIFTY"),
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    pid = p.id
+
+    # Insert holdings directly
+    for h in data.get("holdings", []):
+        db.add(PortfolioHolding(
+            portfolio_id=pid, ticker=h["ticker"], exchange=h.get("exchange", "NSE"),
+            quantity=h["quantity"], avg_cost=h["avg_cost"], total_cost=h["total_cost"],
+            sector=h.get("sector"),
+        ))
+
+    # Insert transactions
+    for t in data.get("transactions", []):
+        tt = TransactionType.BUY if t["txn_type"] == "BUY" else TransactionType.SELL
+        db.add(PortfolioTransaction(
+            portfolio_id=pid, ticker=t["ticker"], exchange=t.get("exchange", "NSE"),
+            txn_type=tt, quantity=t["quantity"], price=t["price"],
+            total_value=t["total_value"], txn_date=t["txn_date"], notes=t.get("notes"),
+            realized_pnl=t.get("realized_pnl"), realized_pnl_pct=t.get("realized_pnl_pct"),
+            cost_basis_at_sell=t.get("cost_basis_at_sell"),
+        ))
+
+    # Insert NAV history
+    for n in data.get("nav_history", []):
+        db.add(PortfolioNAV(
+            portfolio_id=pid, date=n["date"], total_value=n["total_value"],
+            total_cost=n["total_cost"], unrealized_pnl=n.get("unrealized_pnl"),
+            realized_pnl_cumulative=n.get("realized_pnl_cumulative"),
+            num_holdings=n.get("num_holdings"),
+        ))
+
+    db.commit()
+
+    # Insert index prices (deduped)
+    idx_inserted = 0
+    for ip in data.get("index_prices", []):
+        existing = db.query(IndexPrice).filter_by(date=ip["date"], index_name=ip["index_name"]).first()
+        if not existing:
+            db.add(IndexPrice(
+                date=ip["date"], index_name=ip["index_name"],
+                close_price=ip.get("close_price"), open_price=ip.get("open_price"),
+                high_price=ip.get("high_price"), low_price=ip.get("low_price"),
+                volume=ip.get("volume"),
+            ))
+            idx_inserted += 1
+    db.commit()
+
+    return {
+        "success": True, "portfolio_id": pid,
+        "holdings": len(data.get("holdings", [])),
+        "transactions": len(data.get("transactions", [])),
+        "nav_rows": len(data.get("nav_history", [])),
+        "index_prices_inserted": idx_inserted,
+    }
+
+
 # ─── Server Status ────────────────────────────────────
 
 @app.get("/api/status")
