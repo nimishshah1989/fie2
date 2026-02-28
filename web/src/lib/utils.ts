@@ -7,8 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatPrice(v: number | null | undefined): string {
   if (v == null) return "—";
-  if (v > 100) return `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return v.toFixed(5);
+  if (v > 100) return `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  return v.toFixed(2);
 }
 
 export function formatVolume(v: number | null | undefined): string {

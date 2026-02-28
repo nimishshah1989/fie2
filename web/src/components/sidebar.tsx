@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Activity,
   AlertTriangle,
+  Briefcase,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAlerts } from "@/hooks/use-alerts";
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/actionables", label: "Actionables", icon: AlertTriangle },
   { href: "/performance", label: "Alert Performance", icon: TrendingUp },
   { href: "/pulse", label: "Market Pulse", icon: Activity },
+  { href: "/portfolios", label: "Model Portfolios", icon: Briefcase },
 ];
 
 export function Sidebar() {

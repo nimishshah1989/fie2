@@ -16,8 +16,8 @@ export function StatsRow({ stats }: StatsRowProps) {
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
       {stats.map((stat) => (
         <Card key={stat.label} className="py-0">
-          <CardContent className="p-3">
-            <div className={cn("text-2xl font-bold", stat.color)}>
+          <CardContent className="p-3 text-center">
+            <div className={cn("text-base font-bold", stat.color)}>
               {stat.value}
             </div>
             <div className="text-xs text-muted-foreground uppercase tracking-wider mt-1">
