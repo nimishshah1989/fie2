@@ -1213,7 +1213,20 @@ def _get_yahoo_symbol(ticker: str) -> Optional[str]:
     return f"{ticker}.NS"
 
 
+# ─── Price Cache (60s TTL) to avoid redundant Yahoo calls ──
+_price_cache: Dict[str, Dict] = {}
+_price_cache_ts: Dict[str, float] = {}
+_PRICE_CACHE_TTL = 60  # seconds
+
+
 def _fetch_live_price_curl(yf_symbol: str) -> Optional[Dict]:
+    """Fetch live price from Yahoo Finance with caching."""
+    import time as _time
+    now = _time.time()
+    # Check cache first
+    if yf_symbol in _price_cache and (now - _price_cache_ts.get(yf_symbol, 0)) < _PRICE_CACHE_TTL:
+        return _price_cache[yf_symbol]
+
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}"
         f"?interval=1d&range=2d"
@@ -1221,7 +1234,7 @@ def _fetch_live_price_curl(yf_symbol: str) -> Optional[Dict]:
     try:
         result = subprocess.run(
             ["curl", "-s", url, "-H", "User-Agent: Mozilla/5.0"],
-            capture_output=True, text=True, timeout=15
+            capture_output=True, text=True, timeout=10
         )
         if result.returncode != 0:
             return None
@@ -1244,26 +1257,52 @@ def _fetch_live_price_curl(yf_symbol: str) -> Optional[Dict]:
                 market_time_str = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
             except Exception:
                 pass
-        return {
+        price_data = {
             "current_price": current_price,
             "change_pct": change_pct,
             "yf_symbol": yf_symbol,
             "market_time": market_time_str,
         }
+        # Store in cache
+        _price_cache[yf_symbol] = price_data
+        _price_cache_ts[yf_symbol] = now
+        return price_data
     except Exception as exc:
         logger.debug("curl price fetch failed for %s: %s", yf_symbol, exc)
         return None
 
 
 def _portfolio_get_live_prices(tickers: List[str]) -> Dict[str, Dict]:
-    prices: Dict[str, Dict] = {}
+    """Fetch live prices for multiple tickers in PARALLEL using ThreadPoolExecutor."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Build ticker → yahoo symbol map, skip None mappings
+    ticker_to_yf: Dict[str, str] = {}
     for ticker in tickers:
         yf_sym = _get_yahoo_symbol(ticker)
-        if not yf_sym:
-            continue
-        data = _fetch_live_price_curl(yf_sym)
-        if data:
-            prices[ticker] = data
+        if yf_sym:
+            ticker_to_yf[ticker] = yf_sym
+
+    if not ticker_to_yf:
+        return {}
+
+    prices: Dict[str, Dict] = {}
+
+    # Fetch all in parallel (max 8 concurrent to be polite to Yahoo)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_ticker = {
+            executor.submit(_fetch_live_price_curl, yf_sym): ticker
+            for ticker, yf_sym in ticker_to_yf.items()
+        }
+        for future in as_completed(future_to_ticker, timeout=20):
+            ticker = future_to_ticker[future]
+            try:
+                data = future.result()
+                if data:
+                    prices[ticker] = data
+            except Exception as exc:
+                logger.debug("Parallel price fetch failed for %s: %s", ticker, exc)
+
     return prices
 
 
