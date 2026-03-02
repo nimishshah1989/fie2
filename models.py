@@ -310,3 +310,47 @@ class PortfolioNAV(Base):
         Index('idx_nav_portfolio_date', 'portfolio_id', 'date', unique=True),
         Index('idx_nav_portfolio', 'portfolio_id'),
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  MICROBASKET TABLES (custom stock baskets with ratio analysis)
+# ═══════════════════════════════════════════════════════════
+
+class BasketStatus(str, enum.Enum):
+    ACTIVE   = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class Microbasket(Base):
+    __tablename__ = "microbaskets"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    name        = Column(String(100), nullable=False, unique=True)
+    slug        = Column(String(100), nullable=False, unique=True)   # "MB_HEALTHCARE"
+    description = Column(Text, nullable=True)
+    benchmark   = Column(String(50), default="NIFTY")
+    status      = Column(SQLEnum(BasketStatus), default=BasketStatus.ACTIVE)
+    created_at  = Column(DateTime, default=func.now())
+    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    constituents = relationship(
+        "MicrobasketConstituent", back_populates="basket",
+        cascade="all, delete-orphan",
+    )
+
+
+class MicrobasketConstituent(Base):
+    __tablename__ = "microbasket_constituents"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    basket_id    = Column(Integer, ForeignKey("microbaskets.id"), nullable=False)
+    ticker       = Column(String(50), nullable=False)
+    company_name = Column(String(200), nullable=True)
+    weight_pct   = Column(Float, nullable=False)   # e.g. 20.0 = 20%
+    added_at     = Column(DateTime, default=func.now())
+
+    basket = relationship("Microbasket", back_populates="constituents")
+
+    __table_args__ = (
+        Index('idx_constituent_basket_ticker', 'basket_id', 'ticker', unique=True),
+    )

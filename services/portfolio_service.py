@@ -37,7 +37,10 @@ YAHOO_SYMBOL_MAP: Dict[str, Optional[str]] = {
 
 
 def get_yahoo_symbol(ticker: str) -> Optional[str]:
-    """Map a portfolio ticker to its Yahoo Finance symbol."""
+    """Map a portfolio ticker to its Yahoo Finance symbol.
+    Returns None for microbasket tickers (MB_*) — they use basket NAV, not Yahoo."""
+    if ticker.upper().startswith("MB_"):
+        return None
     if ticker in YAHOO_SYMBOL_MAP:
         return YAHOO_SYMBOL_MAP[ticker]
     return f"{ticker}.NS"
@@ -112,30 +115,60 @@ def fetch_live_price(yf_symbol: str) -> Optional[Dict]:
 
 
 def get_live_prices(tickers: List[str]) -> Dict[str, Dict]:
-    """Fetch live prices for multiple tickers in parallel (max 8 concurrent)."""
+    """Fetch live prices for multiple tickers in parallel (max 8 concurrent).
+    Handles MB_ (microbasket) tickers by computing live basket values."""
     ticker_to_yf: Dict[str, str] = {}
-    for ticker in tickers:
-        yf_sym = get_yahoo_symbol(ticker)
-        if yf_sym:
-            ticker_to_yf[ticker] = yf_sym
+    basket_tickers: List[str] = []
 
-    if not ticker_to_yf:
-        return {}
+    for ticker in tickers:
+        if ticker.upper().startswith("MB_"):
+            basket_tickers.append(ticker.upper())
+        else:
+            yf_sym = get_yahoo_symbol(ticker)
+            if yf_sym:
+                ticker_to_yf[ticker] = yf_sym
 
     prices: Dict[str, Dict] = {}
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        future_to_ticker = {
-            executor.submit(fetch_live_price, yf_sym): ticker
-            for ticker, yf_sym in ticker_to_yf.items()
-        }
-        for future in as_completed(future_to_ticker, timeout=20):
-            ticker = future_to_ticker[future]
-            try:
-                data = future.result()
-                if data:
-                    prices[ticker] = data
-            except Exception as exc:
-                logger.debug("Parallel price fetch failed for %s: %s", ticker, exc)
+
+    # Fetch regular Yahoo Finance prices
+    if ticker_to_yf:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_ticker = {
+                executor.submit(fetch_live_price, yf_sym): ticker
+                for ticker, yf_sym in ticker_to_yf.items()
+            }
+            for future in as_completed(future_to_ticker, timeout=20):
+                ticker = future_to_ticker[future]
+                try:
+                    data = future.result()
+                    if data:
+                        prices[ticker] = data
+                except Exception as exc:
+                    logger.debug("Parallel price fetch failed for %s: %s", ticker, exc)
+
+    # Fetch microbasket live prices
+    if basket_tickers:
+        try:
+            from models import SessionLocal, Microbasket, BasketStatus
+            from services.basket_service import compute_basket_live_value
+
+            db = SessionLocal()
+            for slug in basket_tickers:
+                basket = db.query(Microbasket).filter(
+                    Microbasket.slug == slug,
+                    Microbasket.status == BasketStatus.ACTIVE,
+                ).first()
+                if basket and basket.constituents:
+                    live_data = compute_basket_live_value(basket.constituents)
+                    if live_data:
+                        prices[slug] = {
+                            "current_price": live_data["current_price"],
+                            "change_pct": None,
+                            "yf_symbol": slug,
+                        }
+            db.close()
+        except Exception as exc:
+            logger.debug("Basket live price fetch failed: %s", exc)
 
     return prices
 

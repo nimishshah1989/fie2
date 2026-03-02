@@ -26,7 +26,7 @@ from models import (
 from services.data_helpers import upsert_price_row, get_all_portfolio_tickers_with_inception
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import health, alerts, indices, portfolios
+from routers import health, alerts, indices, portfolios, baskets
 
 logger = logging.getLogger("fie_v3")
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +90,7 @@ app.include_router(health.router)
 app.include_router(alerts.router)
 app.include_router(indices.router)
 app.include_router(portfolios.router)
+app.include_router(baskets.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -171,6 +172,38 @@ def _background_yfinance_backfill():
             db.commit()
             logger.info("Backfill: stored %d alert records across %d tickers",
                         alert_stored, len(alert_data))
+
+        # 5. Microbasket constituent prices + NAV computation
+        try:
+            from services.basket_service import (
+                get_all_basket_constituent_tickers, compute_today_basket_navs, backfill_basket_nav,
+            )
+            from models import Microbasket, BasketStatus
+
+            basket_tickers = get_all_basket_constituent_tickers(db)
+            # Deduplicate against already-fetched tickers
+            already_fetched = set(t.upper() for t in (ticker_inception or {}).keys())
+            already_fetched.update(t.upper() for t in etf_tickers)
+            already_fetched.update(t.upper() for t in new_alert_tickers)
+            new_basket_tickers = [t for t in basket_tickers if t.upper() not in already_fetched]
+
+            if new_basket_tickers:
+                logger.info("Backfill: fetching 1Y history for %d basket constituent tickers...", len(new_basket_tickers))
+                basket_data = fetch_yfinance_bulk_stock_history(new_basket_tickers, period="1y")
+                bkt_stored = 0
+                for ticker, rows in basket_data.items():
+                    for row in rows:
+                        if upsert_price_row(db, ticker, row):
+                            bkt_stored += 1
+                db.commit()
+                logger.info("Backfill: stored %d basket constituent records", bkt_stored)
+
+            # Compute NAV series for all active baskets
+            active_baskets = db.query(Microbasket).filter(Microbasket.status == BasketStatus.ACTIVE).all()
+            for basket in active_baskets:
+                backfill_basket_nav(basket, db, days=365)
+        except Exception as e:
+            logger.warning("Basket backfill step failed (non-fatal): %s", e)
 
         db.close()
         logger.info("Background yfinance backfill complete")
@@ -269,10 +302,30 @@ def _scheduled_eod_fetch():
                     if upsert_price_row(db, ticker, row):
                         alert_stored += 1
 
+        # 5. Compute today's basket NAVs from constituent prices
+        basket_nav_count = 0
+        try:
+            from services.basket_service import (
+                get_all_basket_constituent_tickers, compute_today_basket_navs,
+            )
+            # Fetch basket constituent prices that aren't already covered
+            basket_tickers = get_all_basket_constituent_tickers(db)
+            covered.update(t.upper() for t in stock_tickers)
+            new_basket_tickers = [t for t in basket_tickers if t.upper() not in covered]
+            if new_basket_tickers:
+                bkt_data = fetch_yfinance_bulk_stock_history(new_basket_tickers, period="5d")
+                for ticker, rows in bkt_data.items():
+                    for row in rows:
+                        upsert_price_row(db, ticker, row)
+
+            basket_nav_count = compute_today_basket_navs(db)
+        except Exception as e:
+            logger.warning("Basket EOD step failed (non-fatal): %s", e)
+
         db.commit()
         logger.info(
-            "Scheduled EOD: %d nsetools + %d yf-fallback index, %d ETF, %d stock, %d alert records",
-            idx_stored, yf_idx_stored, etf_stored, stk_stored, alert_stored,
+            "Scheduled EOD: %d nsetools + %d yf-fallback index, %d ETF, %d stock, %d alert, %d basket NAV records",
+            idx_stored, yf_idx_stored, etf_stored, stk_stored, alert_stored, basket_nav_count,
         )
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)
@@ -320,7 +373,7 @@ async def start_scheduler():
 
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):
