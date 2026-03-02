@@ -95,24 +95,59 @@ def _parse_bullets(raw_text: str) -> list:
 
 # ─── Startup ───────────────────────────────────────────
 
-def _background_nse_history_fetch():
-    """Background thread: fetch full 1Y daily history from NSE API for all indices."""
+def _background_yfinance_backfill():
+    """Background thread: fetch 2Y daily history via yfinance for indices, ETFs, and portfolio stocks."""
     import threading
-    logger.info("Background NSE history fetch starting (thread: %s)...", threading.current_thread().name)
+    logger.info("Background yfinance backfill starting (thread: %s)...", threading.current_thread().name)
     try:
-        from price_service import fetch_historical_indices_nse_sync
+        from price_service import (
+            fetch_yfinance_bulk_history, fetch_yfinance_bulk_stock_history,
+            NSE_INDEX_KEYS, NSE_ETF_UNIVERSE,
+        )
         db = SessionLocal()
-        hist_data = fetch_historical_indices_nse_sync(period="1y")
-        stored = 0
-        for idx_name, rows in hist_data.items():
+
+        # 1. Indices — 2Y history via yfinance
+        logger.info("Backfill: fetching 2Y history for %d indices...", len(NSE_INDEX_KEYS))
+        idx_data = fetch_yfinance_bulk_history(NSE_INDEX_KEYS, period="2y")
+        idx_stored = 0
+        for idx_name, rows in idx_data.items():
             for row in rows:
                 if _upsert_price_row(db, idx_name, row):
-                    stored += 1
+                    idx_stored += 1
         db.commit()
+        logger.info("Backfill: stored %d index records across %d indices", idx_stored, len(idx_data))
+
+        # 2. ETFs — 2Y history via yfinance
+        etf_tickers = list(NSE_ETF_UNIVERSE.keys())
+        logger.info("Backfill: fetching 2Y history for %d ETFs...", len(etf_tickers))
+        etf_data = fetch_yfinance_bulk_stock_history(etf_tickers, period="2y")
+        etf_stored = 0
+        for ticker, rows in etf_data.items():
+            for row in rows:
+                if _upsert_price_row(db, ticker, row):
+                    etf_stored += 1
+        db.commit()
+        logger.info("Backfill: stored %d ETF records across %d ETFs", etf_stored, len(etf_data))
+
+        # 3. Portfolio stocks — 2Y history via yfinance
+        stock_tickers = _get_portfolio_tickers(db)
+        if stock_tickers:
+            logger.info("Backfill: fetching 2Y history for %d portfolio stocks...", len(stock_tickers))
+            stock_data = fetch_yfinance_bulk_stock_history(stock_tickers, period="2y")
+            stk_stored = 0
+            for ticker, rows in stock_data.items():
+                for row in rows:
+                    if _upsert_price_row(db, ticker, row):
+                        stk_stored += 1
+            db.commit()
+            logger.info("Backfill: stored %d stock records across %d stocks", stk_stored, len(stock_data))
+        else:
+            logger.info("Backfill: no portfolio stocks to fetch")
+
         db.close()
-        logger.info("Background NSE history: stored %d records across %d indices", stored, len(hist_data))
+        logger.info("Background yfinance backfill complete")
     except Exception as e:
-        logger.warning("Background NSE history fetch failed (non-fatal): %s", e)
+        logger.warning("Background yfinance backfill failed (non-fatal): %s", e)
 
 
 @app.on_event("startup")
@@ -144,12 +179,12 @@ async def startup():
     except Exception as e:
         logger.warning("Startup reference fetch failed (non-fatal): %s", e)
 
-    # Phase 2 (background thread): try NSE historical API for full daily data
+    # Phase 2 (background thread): fetch 2Y data via yfinance for all indices, ETFs, stocks
     # This does NOT block the server — runs in background
     import threading
-    bg_thread = threading.Thread(target=_background_nse_history_fetch, daemon=True, name="nse-history")
+    bg_thread = threading.Thread(target=_background_yfinance_backfill, daemon=True, name="yfinance-backfill")
     bg_thread.start()
-    logger.info("Startup complete — NSE history fetch running in background")
+    logger.info("Startup complete — yfinance backfill running in background")
 
 
 # ─── Webhook ───────────────────────────────────────────
@@ -605,6 +640,35 @@ def _upsert_price_row(db, idx_name, row):
     return True
 
 
+def _get_portfolio_tickers(db) -> list:
+    """Unique stock tickers from active portfolios (excluding ETFs/indices)."""
+    from price_service import NSE_ETF_UNIVERSE, NSE_TICKER_MAP
+    try:
+        holdings = (
+            db.query(PortfolioHolding.ticker)
+            .join(ModelPortfolio, PortfolioHolding.portfolio_id == ModelPortfolio.id)
+            .filter(
+                ModelPortfolio.status == PortfolioStatus.ACTIVE,
+                PortfolioHolding.quantity > 0,
+            )
+            .distinct()
+            .all()
+        )
+        etf_keys = set(k.upper() for k in NSE_ETF_UNIVERSE)
+        index_keys = set(k.upper() for k in NSE_TICKER_MAP)
+        tickers = []
+        for (ticker,) in holdings:
+            if not ticker:
+                continue
+            clean = ticker.upper().strip()
+            if clean not in etf_keys and clean not in index_keys:
+                tickers.append(clean)
+        return tickers
+    except Exception as e:
+        logger.warning("Failed to get portfolio tickers: %s", e)
+        return []
+
+
 @app.post("/api/indices/fetch-eod")
 async def fetch_eod(db: Session = Depends(get_db)):
     """Fetch EOD data for all NSE indices and store in DB."""
@@ -836,6 +900,25 @@ async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
             "12m": "oneYearAgoVal",
         }
 
+        def _interpolate_price(close_val, pct_1m, pct_12m, months):
+            """Estimate historical price N months ago by interpolating between 1m and 12m % changes.
+            Uses linear interpolation of monthly returns between known 1m and 12m data points."""
+            if close_val and pct_1m is not None and pct_12m is not None:
+                try:
+                    # Monthly rate from 1m and 12m
+                    monthly_rate_1m = float(pct_1m)
+                    monthly_rate_12m = float(pct_12m) / 12.0
+                    # Weighted average: closer periods weight toward 1m rate
+                    weight = (months - 1) / 11.0  # 0 at month 1, 1 at month 12
+                    avg_monthly = monthly_rate_1m * (1 - weight) + monthly_rate_12m * weight
+                    total_pct = avg_monthly * months
+                    estimated_old = close_val / (1 + total_pct / 100)
+                    if estimated_old > 0:
+                        return estimated_old
+                except (ValueError, TypeError, ZeroDivisionError):
+                    pass
+            return None
+
         # Enrich each item
         for item in data:
             close = item.get("last")
@@ -890,6 +973,15 @@ async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
                                 ratio_old = old_idx_val / old_base_val
                                 if ratio_old > 0:
                                     ratio_returns[pk] = round(((ratio_today / ratio_old) - 1) * 100, 2)
+                        elif pk in ("3m", "6m"):
+                            # Interpolate 3m/6m from nsetools 1m and 12m % changes
+                            months = 3 if pk == "3m" else 6
+                            est_idx = _interpolate_price(close, item.get("perChange30d"), item.get("perChange365d"), months)
+                            est_base = _interpolate_price(base_close, base_item.get("perChange30d"), base_item.get("perChange365d"), months)
+                            if est_idx and est_base and est_base > 0:
+                                ratio_old = est_idx / est_base
+                                if ratio_old > 0:
+                                    ratio_returns[pk] = round(((ratio_today / ratio_old) - 1) * 100, 2)
 
             item["ratio_returns"] = ratio_returns
 
@@ -915,6 +1007,12 @@ async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
                             old_val = item.get(ref_key)
                             if old_val and old_val > 0:
                                 index_returns[pk] = round(((close / old_val) - 1) * 100, 2)
+                        elif pk in ("3m", "6m"):
+                            # Interpolate 3m/6m from nsetools 1m and 12m % changes
+                            months = 3 if pk == "3m" else 6
+                            est_old = _interpolate_price(close, item.get("perChange30d"), item.get("perChange365d"), months)
+                            if est_old and est_old > 0:
+                                index_returns[pk] = round(((close / est_old) - 1) * 100, 2)
             item["index_returns"] = index_returns
 
         return {
@@ -1099,8 +1197,11 @@ async def actionables(db: Session = Depends(get_db)):
 # ─── APScheduler: Daily EOD Fetch ─────────────────────
 
 def _scheduled_eod_fetch():
-    """Background job: store ALL nsetools indices + alerted stock data daily."""
-    from price_service import fetch_live_indices, fetch_stock_history
+    """Background job: store ALL nsetools indices + ETFs + portfolio stocks daily."""
+    from price_service import (
+        fetch_live_indices, fetch_yfinance_bulk_stock_history,
+        NSE_ETF_UNIVERSE,
+    )
     from models import SessionLocal as SchedSession
 
     logger.info("Scheduled EOD fetch starting...")
@@ -1132,33 +1233,48 @@ def _scheduled_eod_fetch():
                 ))
             idx_stored += 1
 
-        # 2. Fetch recent data for all alerted stocks
-        tickers = [
+        # 2. Fetch recent ETF prices via yfinance
+        etf_tickers = list(NSE_ETF_UNIVERSE.keys())
+        etf_data = fetch_yfinance_bulk_stock_history(etf_tickers, period="5d")
+        etf_stored = 0
+        for ticker, rows in etf_data.items():
+            for row in rows:
+                if _upsert_price_row(db, ticker, row):
+                    etf_stored += 1
+
+        # 3. Fetch recent portfolio stock prices via yfinance
+        stock_tickers = _get_portfolio_tickers(db)
+        stk_stored = 0
+        if stock_tickers:
+            stock_data = fetch_yfinance_bulk_stock_history(stock_tickers, period="5d")
+            for ticker, rows in stock_data.items():
+                for row in rows:
+                    if _upsert_price_row(db, ticker, row):
+                        stk_stored += 1
+
+        # 4. Also fetch alerted stocks (existing behavior)
+        alert_tickers = [
             r[0] for r in db.query(TradingViewAlert.ticker)
             .filter(TradingViewAlert.status == AlertStatus.APPROVED)
             .distinct().all()
             if r[0] and r[0] != "UNKNOWN"
         ]
-        stk_stored = 0
-        for ticker in tickers:
-            rows = fetch_stock_history(ticker, "5d")
-            for row in rows:
-                if not row.get("close"):
-                    continue
-                existing = db.query(IndexPrice).filter_by(
-                    date=row["date"], index_name=ticker
-                ).first()
-                if not existing:
-                    db.add(IndexPrice(
-                        date=row["date"], index_name=ticker,
-                        close_price=row["close"], open_price=row.get("open"),
-                        high_price=row.get("high"), low_price=row.get("low"),
-                        volume=row.get("volume"),
-                    ))
-                    stk_stored += 1
+        # Only fetch tickers not already covered by portfolio stocks
+        covered = set(t.upper() for t in stock_tickers)
+        new_alert_tickers = [t for t in alert_tickers if t.upper() not in covered]
+        alert_stored = 0
+        if new_alert_tickers:
+            alert_data = fetch_yfinance_bulk_stock_history(new_alert_tickers, period="5d")
+            for ticker, rows in alert_data.items():
+                for row in rows:
+                    if _upsert_price_row(db, ticker, row):
+                        alert_stored += 1
 
         db.commit()
-        logger.info("Scheduled EOD: %d index records, %d stock records", idx_stored, stk_stored)
+        logger.info(
+            "Scheduled EOD: %d index, %d ETF, %d stock, %d alert records",
+            idx_stored, etf_stored, stk_stored, alert_stored,
+        )
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)
         db.rollback()

@@ -81,6 +81,31 @@ NSE_INDEX_KEYS = [
     "USDINR",
 ]
 
+# ─── ETF Universe for EOD Tracking ──────────────────────
+NSE_ETF_UNIVERSE = {
+    # Broad Market
+    "NIFTYBEES": "NIFTYBEES.NS",
+    "JUNIORBEES": "JUNIORBEES.NS",
+    "BANKBEES": "BANKBEES.NS",
+    # Sector
+    "ITBEES": "ITBEES.NS",
+    "PHARMABEES": "PHARMABEES.NS",
+    "PSUBNKBEES": "PSUBNKBEES.NS",
+    # Commodity
+    "GOLDBEES": "GOLDBEES.NS",
+    "SILVERBEES": "SILVERBEES.NS",
+    # Portfolio-held ETFs
+    "CPSEETF": "CPSEETF.NS",
+    "LIQUIDCASE": "LIQUIDCASE.NS",
+    "SENSEXETF": "SENSEXETF.NS",
+    "MASPTOP50": "MASPTOP50.NS",
+    "NETFMID150": "NETFMID150.NS",
+    "FMCGIETF": "FMCGIETF.NS",
+    "OILIETF": "OILIETF.NS",
+    "NETFAUTO": "NETFAUTO.NS",
+    "METALIETF": "METALIETF.NS",
+}
+
 # ─── NSE Display Name Map (nsetools returns these names) ────
 # Maps our internal key -> NSE display name as returned by nsetools
 NSE_DISPLAY_MAP = {
@@ -593,6 +618,205 @@ def fetch_stock_history(ticker: str, period: str = "1y") -> list:
     except Exception as e:
         logger.debug("Stock history error for %s: %s", ticker, e)
         return []
+
+
+def fetch_yfinance_index_history(index_key: str, period: str = "2y") -> list:
+    """
+    Fetch historical daily data for a single index via yfinance.
+    Uses NSE_TICKER_MAP to resolve the yfinance symbol.
+    Returns [{date, open, high, low, close, volume}, ...]
+    """
+    try:
+        import yfinance as yf
+        yf_sym = NSE_TICKER_MAP.get(index_key.upper())
+        if not yf_sym:
+            logger.debug("No yfinance symbol for index key: %s", index_key)
+            return []
+
+        hist = yf.Ticker(yf_sym).history(period=period)
+        if hist is None or hist.empty:
+            return []
+
+        rows = []
+        for dt, row in hist.iterrows():
+            c = row.get("Close")
+            if c is None or (isinstance(c, float) and c != c):
+                continue
+            rows.append({
+                "date":   dt.strftime("%Y-%m-%d"),
+                "open":   float(row["Open"])   if row.get("Open")   else None,
+                "high":   float(row["High"])   if row.get("High")   else None,
+                "low":    float(row["Low"])    if row.get("Low")    else None,
+                "close":  float(c),
+                "volume": float(row["Volume"]) if row.get("Volume") else None,
+            })
+        logger.info("yfinance index history: %s (%s) — %d days", index_key, yf_sym, len(rows))
+        return rows
+    except Exception as e:
+        logger.debug("yfinance index history error for %s: %s", index_key, e)
+        return []
+
+
+def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y") -> dict:
+    """
+    Batch-fetch historical data for multiple indices via yf.download().
+    Chunks into groups of 30 to avoid rate limits.
+    Returns {index_key: [{date, open, high, low, close, volume}, ...]}
+    """
+    import yfinance as yf
+    import pandas as pd
+
+    results = {}
+    if not index_keys:
+        return results
+
+    # Build symbol -> key mapping (only keys with known yfinance symbols)
+    sym_to_key = {}
+    for key in index_keys:
+        yf_sym = NSE_TICKER_MAP.get(key.upper())
+        if yf_sym:
+            sym_to_key[yf_sym] = key
+
+    if not sym_to_key:
+        return results
+
+    all_symbols = list(sym_to_key.keys())
+    chunk_size = 30
+
+    for i in range(0, len(all_symbols), chunk_size):
+        chunk = all_symbols[i:i + chunk_size]
+        try:
+            raw = yf.download(
+                tickers=" ".join(chunk),
+                period=period, auto_adjust=True, progress=False, threads=True,
+            )
+            if raw is None or raw.empty:
+                continue
+
+            multi = len(chunk) > 1
+            for yf_sym in chunk:
+                key = sym_to_key[yf_sym]
+                try:
+                    if multi:
+                        closes = raw["Close"][yf_sym].dropna()
+                        opens  = raw["Open"][yf_sym].dropna()
+                        highs  = raw["High"][yf_sym].dropna()
+                        lows   = raw["Low"][yf_sym].dropna()
+                        vols   = raw["Volume"][yf_sym].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series()
+                    else:
+                        closes = raw["Close"].dropna()
+                        opens  = raw["Open"].dropna()
+                        highs  = raw["High"].dropna()
+                        lows   = raw["Low"].dropna()
+                        vols   = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series()
+
+                    if closes.empty:
+                        continue
+
+                    rows = []
+                    for dt in closes.index:
+                        rows.append({
+                            "date":   dt.strftime("%Y-%m-%d"),
+                            "open":   float(opens.get(dt, 0)) if dt in opens.index else None,
+                            "high":   float(highs.get(dt, 0)) if dt in highs.index else None,
+                            "low":    float(lows.get(dt, 0))  if dt in lows.index  else None,
+                            "close":  float(closes[dt]),
+                            "volume": float(vols.get(dt, 0))  if not vols.empty and dt in vols.index else None,
+                        })
+                    results[key] = rows
+                except Exception as e:
+                    logger.debug("yfinance bulk parse error for %s (%s): %s", key, yf_sym, e)
+
+            # Small delay between chunks to avoid rate limiting
+            if i + chunk_size < len(all_symbols):
+                time.sleep(1)
+
+        except Exception as e:
+            logger.warning("yfinance bulk download error (chunk %d): %s", i // chunk_size, e)
+
+    logger.info("yfinance bulk history: %d/%d indices fetched", len(results), len(index_keys))
+    return results
+
+
+def fetch_yfinance_bulk_stock_history(tickers: list, period: str = "2y") -> dict:
+    """
+    Batch-fetch historical data for stocks/ETFs via yf.download().
+    Uses normalize_ticker() to convert to Yahoo symbols (appends .NS).
+    Chunks into groups of 30 to avoid rate limits.
+    Returns {ticker: [{date, open, high, low, close, volume}, ...]}
+    """
+    import yfinance as yf
+    import pandas as pd
+
+    results = {}
+    if not tickers:
+        return results
+
+    # Build symbol -> ticker mapping
+    sym_to_ticker = {}
+    for ticker in tickers:
+        yf_sym = normalize_ticker(ticker)
+        if yf_sym:
+            sym_to_ticker[yf_sym] = ticker
+
+    if not sym_to_ticker:
+        return results
+
+    all_symbols = list(sym_to_ticker.keys())
+    chunk_size = 30
+
+    for i in range(0, len(all_symbols), chunk_size):
+        chunk = all_symbols[i:i + chunk_size]
+        try:
+            raw = yf.download(
+                tickers=" ".join(chunk),
+                period=period, auto_adjust=True, progress=False, threads=True,
+            )
+            if raw is None or raw.empty:
+                continue
+
+            multi = len(chunk) > 1
+            for yf_sym in chunk:
+                ticker = sym_to_ticker[yf_sym]
+                try:
+                    if multi:
+                        closes = raw["Close"][yf_sym].dropna()
+                        opens  = raw["Open"][yf_sym].dropna()
+                        highs  = raw["High"][yf_sym].dropna()
+                        lows   = raw["Low"][yf_sym].dropna()
+                        vols   = raw["Volume"][yf_sym].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series()
+                    else:
+                        closes = raw["Close"].dropna()
+                        opens  = raw["Open"].dropna()
+                        highs  = raw["High"].dropna()
+                        lows   = raw["Low"].dropna()
+                        vols   = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series()
+
+                    if closes.empty:
+                        continue
+
+                    rows = []
+                    for dt in closes.index:
+                        rows.append({
+                            "date":   dt.strftime("%Y-%m-%d"),
+                            "open":   float(opens.get(dt, 0)) if dt in opens.index else None,
+                            "high":   float(highs.get(dt, 0)) if dt in highs.index else None,
+                            "low":    float(lows.get(dt, 0))  if dt in lows.index  else None,
+                            "close":  float(closes[dt]),
+                            "volume": float(vols.get(dt, 0))  if not vols.empty and dt in vols.index else None,
+                        })
+                    results[ticker] = rows
+                except Exception as e:
+                    logger.debug("yfinance bulk stock parse error for %s (%s): %s", ticker, yf_sym, e)
+
+            if i + chunk_size < len(all_symbols):
+                time.sleep(1)
+
+        except Exception as e:
+            logger.warning("yfinance bulk stock download error (chunk %d): %s", i // chunk_size, e)
+
+    logger.info("yfinance bulk stock history: %d/%d tickers fetched", len(results), len(tickers))
+    return results
 
 
 def fetch_all_index_eod(period: str = "5d") -> dict:
