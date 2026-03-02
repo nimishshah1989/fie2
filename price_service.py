@@ -104,8 +104,8 @@ NSE_INDEX_KEYS = [
     "USDINR",
 ]
 
-# Non-nsetools instruments — served from DB prices on pulse page
-NON_NSETOOLS_KEYS = ["SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR", "INDIAVIX"]
+# Non-nsetools instruments — served from DB prices on pulse page (BSE & Global tab)
+NON_NSETOOLS_KEYS = ["SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR"]
 
 # ─── ETF Universe for EOD Tracking ──────────────────────
 NSE_ETF_UNIVERSE = {

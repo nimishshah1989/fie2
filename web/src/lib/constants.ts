@@ -3,7 +3,7 @@
 // Ported from dashboard.py (lines 629–738)
 // ============================================================================
 
-// Tracked NSE indices — those with full yfinance historical data (matches backend NSE_INDEX_KEYS)
+// Tracked NSE indices — only those with reliable yfinance historical data for all periods
 // Names are exact nse_name values returned by nsetools or NSE_DISPLAY_MAP
 export const TOP_25_INDICES: string[] = [
   "NIFTY 50",
@@ -20,27 +20,21 @@ export const TOP_25_INDICES: string[] = [
   "NIFTY METAL",
   "NIFTY REALTY",
   "NIFTY ENERGY",
-  "NIFTY MIDCAP 150",
-  "NIFTY SMALLCAP 250",
   "NIFTY PSU BANK",
   "NIFTY PRIVATE BANK",
-  "NIFTY HEALTHCARE INDEX",
-  "NIFTY CONSUMER DURABLES",
   "NIFTY MEDIA",
   "NIFTY INFRASTRUCTURE",
-  "NIFTY COMMODITIES",
   "NIFTY MIDCAP 50",
   "NIFTY MNC",
   "NIFTY PSE",
   "NIFTY SERVICES SECTOR",
   "NIFTY INDIA CONSUMPTION",
-  "NIFTY DIVIDEND OPPORTUNITIES 50",
 ];
 
-// Non-NSE instruments served from DB (BSE, commodities, currencies, VIX)
+// Non-NSE instruments served from DB (BSE, commodities, currencies)
 // These use the internal key (index_name) not display name
 export const NON_NSE_KEYS = new Set([
-  "SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR", "INDIAVIX",
+  "SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR",
 ]);
 
 export const INDEX_SECTOR_MAP: Record<string, string> = {
@@ -175,7 +169,6 @@ export const INDEX_SECTOR_MAP: Record<string, string> = {
   "NIFTY BHARAT BOND INDEX - APRIL 2033": "Fixed Income",
   // Volatility
   "INDIA VIX": "Volatility",
-  "INDIAVIX": "Volatility",
   // BSE Indices
   "SENSEX": "BSE",
   "BSE 500": "BSE",
