@@ -39,6 +39,7 @@ class ModelPortfolio(Base):
     description = Column(Text, nullable=True)
     benchmark   = Column(String(50), default="NIFTY")
     status      = Column(SQLEnum(PortfolioStatus), default=PortfolioStatus.ACTIVE)
+    inception_date = Column(String(10), nullable=True)
     tenant_id   = Column(String(50), default="jhaveri")
     created_at  = Column(DateTime, default=func.now())
     updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())

@@ -170,6 +170,7 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN entry_price_high FLOAT",
         "ALTER TABLE alert_actions ADD COLUMN stop_loss FLOAT",
         "ALTER TABLE alert_actions ADD COLUMN target_price FLOAT",
+        "ALTER TABLE model_portfolios ADD COLUMN inception_date VARCHAR(10)",
     ]
     for sql in migrations:
         try:
@@ -178,6 +179,20 @@ def _run_migrations():
             db.commit()
         except Exception:
             db.rollback()
+
+    # Seed inception dates for existing portfolios (idempotent — only sets if NULL)
+    seed_dates = [
+        ("UPDATE model_portfolios SET inception_date = '2021-08-02' WHERE id = 1 AND inception_date IS NULL"),
+        ("UPDATE model_portfolios SET inception_date = '2020-09-28' WHERE id = 2 AND inception_date IS NULL"),
+    ]
+    for sql in seed_dates:
+        try:
+            from sqlalchemy import text
+            db.execute(text(sql))
+            db.commit()
+        except Exception:
+            db.rollback()
+
     db.close()
 
 
@@ -211,6 +226,7 @@ class ModelPortfolio(Base):
     description = Column(Text, nullable=True)
     benchmark   = Column(String(50), default="NIFTY")
     status      = Column(SQLEnum(PortfolioStatus), default=PortfolioStatus.ACTIVE)
+    inception_date = Column(String(10), nullable=True)
     tenant_id   = Column(String(50), default="jhaveri")
     created_at  = Column(DateTime, default=func.now())
     updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())

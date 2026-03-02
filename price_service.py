@@ -531,60 +531,6 @@ def fetch_historical_indices_nse_sync(period: str = "1y") -> dict:
     return results
 
 
-def fetch_historical_indices(period: str = "1y") -> dict:
-    """
-    Fast startup backfill — uses nsetools reference values for all NSE indices.
-    Provides today + 1d/1w/1m/12m synthetic reference points.
-    The NSE historical API fetch runs in background AFTER startup (see server.py).
-    Returns {index_name: [{date, open, high, low, close, volume}, ...]}
-    """
-    results = {}
-
-    # nsetools live data gives us reference values for ALL 135+ NSE indices
-    try:
-        live = fetch_live_indices()
-        today = date_type.today()
-        ref_fields = [
-            ("previousClose",  1),
-            ("oneWeekAgoVal",  7),
-            ("oneMonthAgoVal", 30),
-            ("oneYearAgoVal",  365),
-        ]
-        for item in live:
-            idx_name = item["index_name"]
-            results[idx_name] = []
-            existing_dates = set()
-
-            # Add today's data
-            if item.get("last"):
-                today_str = today.strftime("%Y-%m-%d")
-                results[idx_name].append({
-                    "date": today_str,
-                    "open": item.get("open"), "high": item.get("high"),
-                    "low": item.get("low"), "close": item.get("last"),
-                    "volume": None,
-                })
-                existing_dates.add(today_str)
-
-            # Add synthetic reference points (1d, 1w, 1m, 12m from nsetools)
-            for field, days_ago in ref_fields:
-                val = item.get(field)
-                if val and val > 0:
-                    ref_date = (today - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-                    if ref_date not in existing_dates:
-                        results[idx_name].append({
-                            "date": ref_date, "close": val,
-                            "open": None, "high": None, "low": None, "volume": None,
-                        })
-                        existing_dates.add(ref_date)
-
-        logger.info("Startup: nsetools reference points for %d indices", len(results))
-    except Exception as e:
-        logger.warning("Startup historical fetch failed: %s", e)
-
-    return results
-
-
 def fetch_stock_history(ticker: str, period: str = "1y") -> list:
     """
     Fetch historical daily data for a single stock.
@@ -657,10 +603,32 @@ def fetch_yfinance_index_history(index_key: str, period: str = "2y") -> list:
         return []
 
 
-def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y") -> dict:
+def _yf_download_with_retry(tickers: str, max_retries: int = 3, **kwargs) -> "pd.DataFrame":
+    """Wrapper around yf.download() with retry logic for rate limits."""
+    import yfinance as yf
+    import pandas as pd
+
+    for attempt in range(max_retries):
+        try:
+            raw = yf.download(tickers=tickers, **kwargs)
+            return raw
+        except Exception as e:
+            err_str = str(e).lower()
+            if "429" in err_str or "rate" in err_str or "too many" in err_str:
+                delay = 5 * (attempt + 1)
+                logger.warning("yfinance rate limited (attempt %d/%d), retrying in %ds...", attempt + 1, max_retries, delay)
+                time.sleep(delay)
+            else:
+                raise
+    # Final attempt without catching
+    return yf.download(tickers=tickers, **kwargs)
+
+
+def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y", start: str = None, end: str = None) -> dict:
     """
     Batch-fetch historical data for multiple indices via yf.download().
     Chunks into groups of 30 to avoid rate limits.
+    When start is provided, uses start/end instead of period.
     Returns {index_key: [{date, open, high, low, close, volume}, ...]}
     """
     import yfinance as yf
@@ -683,13 +651,19 @@ def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y") -> dict:
     all_symbols = list(sym_to_key.keys())
     chunk_size = 30
 
+    # Build download kwargs (start/end or period)
+    dl_kwargs = {"auto_adjust": True, "progress": False, "threads": True}
+    if start:
+        dl_kwargs["start"] = start
+        if end:
+            dl_kwargs["end"] = end
+    else:
+        dl_kwargs["period"] = period
+
     for i in range(0, len(all_symbols), chunk_size):
         chunk = all_symbols[i:i + chunk_size]
         try:
-            raw = yf.download(
-                tickers=" ".join(chunk),
-                period=period, auto_adjust=True, progress=False, threads=True,
-            )
+            raw = _yf_download_with_retry(" ".join(chunk), **dl_kwargs)
             if raw is None or raw.empty:
                 continue
 
@@ -727,9 +701,9 @@ def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y") -> dict:
                 except Exception as e:
                     logger.debug("yfinance bulk parse error for %s (%s): %s", key, yf_sym, e)
 
-            # Small delay between chunks to avoid rate limiting
+            # Delay between chunks to avoid rate limiting
             if i + chunk_size < len(all_symbols):
-                time.sleep(1)
+                time.sleep(2)
 
         except Exception as e:
             logger.warning("yfinance bulk download error (chunk %d): %s", i // chunk_size, e)
@@ -738,11 +712,12 @@ def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y") -> dict:
     return results
 
 
-def fetch_yfinance_bulk_stock_history(tickers: list, period: str = "2y") -> dict:
+def fetch_yfinance_bulk_stock_history(tickers: list, period: str = "2y", start: str = None, end: str = None) -> dict:
     """
     Batch-fetch historical data for stocks/ETFs via yf.download().
     Uses normalize_ticker() to convert to Yahoo symbols (appends .NS).
     Chunks into groups of 30 to avoid rate limits.
+    When start is provided, uses start/end instead of period.
     Returns {ticker: [{date, open, high, low, close, volume}, ...]}
     """
     import yfinance as yf
@@ -765,13 +740,19 @@ def fetch_yfinance_bulk_stock_history(tickers: list, period: str = "2y") -> dict
     all_symbols = list(sym_to_ticker.keys())
     chunk_size = 30
 
+    # Build download kwargs (start/end or period)
+    dl_kwargs = {"auto_adjust": True, "progress": False, "threads": True}
+    if start:
+        dl_kwargs["start"] = start
+        if end:
+            dl_kwargs["end"] = end
+    else:
+        dl_kwargs["period"] = period
+
     for i in range(0, len(all_symbols), chunk_size):
         chunk = all_symbols[i:i + chunk_size]
         try:
-            raw = yf.download(
-                tickers=" ".join(chunk),
-                period=period, auto_adjust=True, progress=False, threads=True,
-            )
+            raw = _yf_download_with_retry(" ".join(chunk), **dl_kwargs)
             if raw is None or raw.empty:
                 continue
 
@@ -810,7 +791,7 @@ def fetch_yfinance_bulk_stock_history(tickers: list, period: str = "2y") -> dict
                     logger.debug("yfinance bulk stock parse error for %s (%s): %s", ticker, yf_sym, e)
 
             if i + chunk_size < len(all_symbols):
-                time.sleep(1)
+                time.sleep(2)
 
         except Exception as e:
             logger.warning("yfinance bulk stock download error (chunk %d): %s", i // chunk_size, e)
