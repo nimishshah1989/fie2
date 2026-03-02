@@ -877,9 +877,10 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
 # ─── Live NSE Indices (via nsetools) ─────────────────
 
 @app.get("/api/indices/live")
-async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
-    """Return real-time live index data from NSE with ratio-based period returns."""
-    from price_service import fetch_live_indices
+async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Session = Depends(get_db)):
+    """Return real-time live index data from NSE with ratio-based period returns.
+    tracked_only=True (default) filters to only indices with yfinance historical data."""
+    from price_service import fetch_live_indices, NSE_INDEX_KEYS
     from datetime import timedelta
     from sqlalchemy import func as sqlfunc
 
@@ -887,6 +888,11 @@ async def indices_live(base: str = "NIFTY", db: Session = Depends(get_db)):
         data = fetch_live_indices()
         if not data:
             return {"success": False, "indices": [], "error": "No data from NSE"}
+
+        # Filter to only tracked indices (those with yfinance historical data)
+        if tracked_only:
+            tracked_set = set(k.upper() for k in NSE_INDEX_KEYS)
+            data = [item for item in data if item["index_name"].upper() in tracked_set]
 
         # Find base index
         base_close = None

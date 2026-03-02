@@ -3,14 +3,14 @@
 // Ported from dashboard.py (lines 629–738)
 // ============================================================================
 
+// Tracked indices — only those with full yfinance historical data (matches backend NSE_INDEX_KEYS)
+// Names are exact nse_name values returned by nsetools
 export const TOP_25_INDICES: string[] = [
   "NIFTY 50",
   "NIFTY BANK",
   "NIFTY IT",
   "NIFTY NEXT 50",
   "NIFTY FINANCIAL SERVICES",
-  "NIFTY MIDCAP SELECT",
-  "NIFTY 100",
   "NIFTY 500",
   "NIFTY PHARMA",
   "NIFTY AUTO",
@@ -18,17 +18,16 @@ export const TOP_25_INDICES: string[] = [
   "NIFTY METAL",
   "NIFTY REALTY",
   "NIFTY ENERGY",
-  "NIFTY MIDCAP 100",
+  "NIFTY MIDCAP 150",
   "NIFTY SMALLCAP 250",
   "NIFTY PSU BANK",
   "NIFTY PRIVATE BANK",
   "NIFTY HEALTHCARE INDEX",
   "NIFTY CONSUMER DURABLES",
-  "NIFTY OIL & GAS",
   "NIFTY MEDIA",
   "NIFTY INFRASTRUCTURE",
   "NIFTY COMMODITIES",
-  "NIFTY INDIA DEFENCE",
+  "NIFTY MIDCAP 50",
 ];
 
 export const INDEX_SECTOR_MAP: Record<string, string> = {
@@ -90,6 +89,7 @@ export const INDEX_SECTOR_MAP: Record<string, string> = {
   "NIFTY MIDCAP 50": "Mid & Small Cap",
   "NIFTY MIDCAP 100": "Mid & Small Cap",
   "NIFTY MIDCAP 150": "Mid & Small Cap",
+  "NIFTY SMALLCAP 250": "Mid & Small Cap",
   "NIFTY SMALLCAP 50": "Mid & Small Cap",
   "NIFTY SMALLCAP 100": "Mid & Small Cap",
   "NIFTY SMALLCAP 250": "Mid & Small Cap",
