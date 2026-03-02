@@ -177,10 +177,6 @@ export function IndexTable({ indices, period, timestamp }: IndexTableProps) {
                 Ratio ({period})
                 <InfoTip text={"Relative performance vs base index over the selected period.\n= (Index today / Index old) \u00F7 (Base today / Base old)\n> 1 = outperformed base\n< 1 = underperformed base"} />
               </TableHead>
-              <TableHead className="text-center">
-                Signal
-                <InfoTip text={"Relative signal based on Ratio value:\n\u2022 Strong OW: Ratio > 1.05 (index strongly outperforming base)\n\u2022 Overweight: Ratio > 1.00 (index mildly outperforming)\n\u2022 Neutral: Ratio = 1.00\n\u2022 Underweight: Ratio < 1.00 (index mildly underperforming)\n\u2022 Strong UW: Ratio < 0.95 (index strongly underperforming)\n\u2022 BASE: this is the base index itself"} />
-              </TableHead>
               <TableHead
                 className="text-right cursor-pointer select-none hover:bg-muted/50 transition-colors"
                 onClick={() => handleSort("ratioReturn")}
@@ -188,6 +184,10 @@ export function IndexTable({ indices, period, timestamp }: IndexTableProps) {
                 Ratio Ret ({period})
                 <SortIcon field="ratioReturn" sortField={sortField} sortDir={sortDir} />
                 <InfoTip text={"Excess return over the base index.\n= (Ratio \u2212 1) \u00D7 100\nPositive = outperformed base index.\nNegative = underperformed base index."} />
+              </TableHead>
+              <TableHead className="text-center">
+                Signal
+                <InfoTip text={"Relative signal based on Ratio value:\n\u2022 Strong OW: Ratio > 1.05 (index strongly outperforming base)\n\u2022 Overweight: Ratio > 1.00 (index mildly outperforming)\n\u2022 Neutral: Ratio = 1.00\n\u2022 Underweight: Ratio < 1.00 (index mildly underperforming)\n\u2022 Strong UW: Ratio < 0.95 (index strongly underperforming)\n\u2022 BASE: this is the base index itself"} />
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -245,7 +245,7 @@ function SectorSection({
   );
 }
 
-/** Single index row — columns: Name, Last, Change%, IndexRet, Ratio, Signal, RatioRet */
+/** Single index row — columns: Name, Last, Change%, IndexRet, Ratio, RatioRet, Signal */
 function IndexRow({ idx, pk }: { idx: LiveIndex; pk: string }) {
   const name = idx.nse_name || idx.index_name;
   const isTop25 = TOP_25_SET.has(name);
@@ -308,9 +308,6 @@ function IndexRow({ idx, pk }: { idx: LiveIndex; pk: string }) {
       >
         {formatRatio(relRatio)}
       </TableCell>
-      <TableCell className="text-center">
-        <SignalChip signal={signal} />
-      </TableCell>
       <TableCell
         className={cn(
           "text-right font-mono text-sm",
@@ -322,6 +319,9 @@ function IndexRow({ idx, pk }: { idx: LiveIndex; pk: string }) {
         )}
       >
         {ratioReturn != null ? formatPct(ratioReturn) : "---"}
+      </TableCell>
+      <TableCell className="text-center">
+        <SignalChip signal={signal} />
       </TableCell>
     </TableRow>
   );

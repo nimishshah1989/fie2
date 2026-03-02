@@ -18,9 +18,7 @@ export const TOP_25_INDICES: string[] = [
   "NIFTY METAL",
   "NIFTY REALTY",
   "NIFTY ENERGY",
-  "NIFTY MIDCAP 50",
   "NIFTY MIDCAP 100",
-  "NIFTY SMALLCAP 100",
   "NIFTY SMALLCAP 250",
   "NIFTY PSU BANK",
   "NIFTY PRIVATE BANK",
@@ -28,7 +26,9 @@ export const TOP_25_INDICES: string[] = [
   "NIFTY CONSUMER DURABLES",
   "NIFTY OIL & GAS",
   "NIFTY MEDIA",
-  "INDIA VIX",
+  "NIFTY INFRASTRUCTURE",
+  "NIFTY COMMODITIES",
+  "NIFTY INDIA DEFENCE",
 ];
 
 export const INDEX_SECTOR_MAP: Record<string, string> = {
