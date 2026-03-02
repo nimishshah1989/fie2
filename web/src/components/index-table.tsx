@@ -96,7 +96,11 @@ export function IndexTable({ indices, period, timestamp }: IndexTableProps) {
     const sectorMap = new Map<string, LiveIndex[]>();
     for (const idx of indices) {
       const name = idx.nse_name || idx.index_name;
-      const sector = getSector(name);
+      // Try both display name and internal key for sector lookup
+      let sector = getSector(name);
+      if (sector === "Other" && idx.index_name) {
+        sector = getSector(idx.index_name);
+      }
       if (!sectorMap.has(sector)) {
         sectorMap.set(sector, []);
       }

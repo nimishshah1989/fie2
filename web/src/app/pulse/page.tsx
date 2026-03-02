@@ -12,37 +12,73 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BASE_INDEX_OPTIONS, PERIOD_OPTIONS, getSector, SECTOR_ORDER } from "@/lib/constants";
+import { BASE_INDEX_OPTIONS, PERIOD_OPTIONS, getSector, SECTOR_ORDER, NON_NSE_KEYS } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/utils";
 import { Activity } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { LiveIndex } from "@/lib/types";
+
+type PulseTab = "nse" | "global";
+
+/** Check if an index item belongs to the BSE & Global category */
+function isGlobalItem(idx: LiveIndex): boolean {
+  const key = idx.index_name?.toUpperCase() ?? "";
+  if (NON_NSE_KEYS.has(key)) return true;
+  // Also check by display name / sector
+  const name = idx.nse_name || idx.index_name;
+  const sector = getSector(name);
+  return sector === "BSE" || sector === "Commodities" || sector === "Currency";
+}
 
 export default function PulsePage() {
   const [base, setBase] = useState("NIFTY");
   const [period, setPeriod] = useState("1M");
   const [sectorFilter, setSectorFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState<PulseTab>("nse");
 
   const { data, error, isLoading } = useIndices(base);
 
-  // Compute unique sectors from the data
-  const sectors = useMemo(() => {
-    if (!data.indices.length) return [];
-    const sectorSet = new Set<string>();
+  // Split indices into NSE and Global
+  const { nseIndices, globalIndices } = useMemo(() => {
+    const nse: LiveIndex[] = [];
+    const global: LiveIndex[] = [];
     for (const idx of data.indices) {
+      if (isGlobalItem(idx)) {
+        global.push(idx);
+      } else {
+        nse.push(idx);
+      }
+    }
+    return { nseIndices: nse, globalIndices: global };
+  }, [data.indices]);
+
+  const activeIndices = activeTab === "nse" ? nseIndices : globalIndices;
+
+  // Compute unique sectors from active tab's data
+  const sectors = useMemo(() => {
+    if (!activeIndices.length) return [];
+    const sectorSet = new Set<string>();
+    for (const idx of activeIndices) {
       const name = idx.nse_name || idx.index_name;
       sectorSet.add(getSector(name));
     }
-    // Sort by SECTOR_ORDER
     return SECTOR_ORDER.filter((s) => sectorSet.has(s));
-  }, [data.indices]);
+  }, [activeIndices]);
+
+  // Reset sector filter when switching tabs
+  const handleTabChange = (tab: PulseTab) => {
+    setActiveTab(tab);
+    setSectorFilter("all");
+  };
 
   // Filter indices by selected sector
   const filteredIndices = useMemo(() => {
-    if (sectorFilter === "all") return data.indices;
-    return data.indices.filter((idx) => {
+    if (sectorFilter === "all") return activeIndices;
+    return activeIndices.filter((idx) => {
       const name = idx.nse_name || idx.index_name;
       return getSector(name) === sectorFilter;
     });
-  }, [data.indices, sectorFilter]);
+  }, [activeIndices, sectorFilter]);
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -53,8 +89,42 @@ export default function PulsePage() {
           <h1 className="text-xl sm:text-2xl font-bold text-foreground">Market Pulse</h1>
         </div>
         <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-          Live NSE index signals and sector analysis
+          Live index signals, sector analysis, and global benchmarks
         </p>
+      </div>
+
+      {/* Tab Bar */}
+      <div className="flex items-center gap-1 border-b border-border">
+        <button
+          type="button"
+          onClick={() => handleTabChange("nse")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+            activeTab === "nse"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+          )}
+        >
+          NSE Indices
+          {nseIndices.length > 0 && (
+            <span className="ml-1.5 text-xs text-muted-foreground">({nseIndices.length})</span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleTabChange("global")}
+          className={cn(
+            "px-4 py-2 text-sm font-medium border-b-2 transition-colors",
+            activeTab === "global"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
+          )}
+        >
+          BSE & Global
+          {globalIndices.length > 0 && (
+            <span className="ml-1.5 text-xs text-muted-foreground">({globalIndices.length})</span>
+          )}
+        </button>
       </div>
 
       {/* Filters Row */}
@@ -88,25 +158,27 @@ export default function PulsePage() {
         </Select>
 
         {/* Sector */}
-        <Select value={sectorFilter} onValueChange={setSectorFilter}>
-          <SelectTrigger className="w-full col-span-2 sm:w-[200px]">
-            <SelectValue placeholder="Sector" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Sectors</SelectItem>
-            {sectors.map((sector) => (
-              <SelectItem key={sector} value={sector}>
-                {sector}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {sectors.length > 1 && (
+          <Select value={sectorFilter} onValueChange={setSectorFilter}>
+            <SelectTrigger className="w-full col-span-2 sm:w-[200px]">
+              <SelectValue placeholder="Sector" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sectors</SelectItem>
+              {sectors.map((sector) => (
+                <SelectItem key={sector} value={sector}>
+                  {sector}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Info Caption */}
-      {!isLoading && data.indices.length > 0 && (
+      {!isLoading && activeIndices.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          {filteredIndices.length} indices
+          {filteredIndices.length} {activeTab === "nse" ? "indices" : "instruments"}
           {sectorFilter !== "all" ? ` in ${sectorFilter}` : ""}
           {" "}&bull;{" "}
           Last refreshed {formatTimestamp(data.timestamp)}
@@ -130,12 +202,14 @@ export default function PulsePage() {
       )}
 
       {/* Content */}
-      {!isLoading && !error && data.indices.length > 0 && (
+      {!isLoading && !error && activeIndices.length > 0 && (
         <>
-          {/* Signal Heatmap */}
-          <div className="rounded-lg border bg-card p-4">
-            <SignalHeatmap indices={data.indices} period={period} />
-          </div>
+          {/* Signal Heatmap — only for NSE tab */}
+          {activeTab === "nse" && (
+            <div className="rounded-lg border bg-card p-4">
+              <SignalHeatmap indices={nseIndices} period={period} />
+            </div>
+          )}
 
           <hr className="border-border" />
 
@@ -144,13 +218,19 @@ export default function PulsePage() {
         </>
       )}
 
-      {/* Empty state when no error but no data */}
-      {!isLoading && !error && data.indices.length === 0 && (
+      {/* Empty state */}
+      {!isLoading && !error && activeIndices.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Activity className="h-12 w-12 text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-semibold text-foreground">No index data available</h3>
+          <h3 className="text-lg font-semibold text-foreground">
+            {activeTab === "global"
+              ? "No BSE & Global data yet"
+              : "No index data available"}
+          </h3>
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-            Index data will appear here once the backend is connected.
+            {activeTab === "global"
+              ? "BSE indices, commodities, and currency data will appear after the next data backfill."
+              : "Index data will appear here once the backend is connected."}
           </p>
         </div>
       )}

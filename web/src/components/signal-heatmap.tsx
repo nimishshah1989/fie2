@@ -68,7 +68,7 @@ export function SignalHeatmap({ indices, period }: SignalHeatmapProps) {
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold text-foreground">
-        Top 25 Signal Overview
+        Key Indices Signal Overview
       </h3>
 
       {/* Heatmap grid */}

@@ -15,51 +15,61 @@ logger = logging.getLogger(__name__)
 
 # ─── Yahoo Finance Ticker Map ──────────────────────────
 NSE_TICKER_MAP = {
-    # NSE Broad
-    "NIFTY":          "^NSEI",
-    "NIFTY50":        "^NSEI",
-    "NIFTY500":       "^CRSLDX",
-    "NIFTYNEXT50":    "^NSMIDCP",
-    "NIFTYMIDCAP":    "^NSEMDCP50",
-    "NIFTYSMALLCAP":  "^CNXSC",
-    # NSE Sectoral
-    "BANKNIFTY":      "^NSEBANK",
-    "NIFTYBANK":      "^NSEBANK",
-    "NIFTYIT":        "^CNXIT",
-    "NIFTYPHARMA":    "^CNXPHARMA",
-    "NIFTYFMCG":      "^CNXFMCG",
-    "NIFTYAUTO":      "^CNXAUTO",
-    "NIFTYMETAL":     "^CNXMETAL",
-    "NIFTYREALTY":    "^CNXREALTY",
-    "NIFTYENERGY":    "^CNXENERGY",
-    "NIFTYPSUBANK":   "^CNXPSUBANK",
-    "NIFTYPVTBANK":   "NIFTYPVTBANK.NS",
-    "NIFTYMIDCAP50":  "^NSEMDCP50",
-    "NIFTYINFRA":     "^CNXINFRA",
-    "NIFTYMEDIA":     "^CNXMEDIA",
-    "NIFTYCPSE":      "NIFTYCPSE.NS",
-    "NIFTYFINSERVICE":"NIFTY_FIN_SERVICE.NS",
-    "FINNIFTY":       "NIFTY_FIN_SERVICE.NS",
-    "NIFTYHEALTHCARE":"NIFTYHEALTHCARE.NS",
-    "NIFTYCONSUMER":  "NIFTYCONSUMER.NS",
-    "NIFTYCOMMODITIES":"NIFTYCOMMODITIES.NS",
-    "MIDCPNIFTY":     "^NSEMDCP50",
-    # BSE
-    "SENSEX":         "^BSESN",
-    "BSE500":         "BSE-500.BO",
-    "BSEIT":          "BSE-IT.BO",
-    "BSEBANK":        "BSE-BANKEX.BO",
-    # Commodities
-    "GOLD":           "GC=F",
-    "SILVER":         "SI=F",
-    "CRUDEOIL":       "CL=F",
-    "CRUDE":          "CL=F",
-    "NATURALGAS":     "NG=F",
-    "COPPER":         "HG=F",
-    # Currency
-    "USDINR":         "USDINR=X",
-    "EURINR":         "EURINR=X",
-    "GBPINR":         "GBPINR=X",
+    # ─── NSE Broad Market ───
+    "NIFTY":            "^NSEI",
+    "NIFTY50":          "^NSEI",
+    "NIFTY100":         "^CNX100",
+    "NIFTY200":         "^CNX200",
+    "NIFTY500":         "^CRSLDX",
+    "NIFTYNEXT50":      "^NSMIDCP",
+    "NIFTYMIDCAP":      "^NSEMDCP50",
+    "NIFTYMIDCAP50":    "^NSEMDCP50",
+    "MIDCPNIFTY":       "^NSEMDCP50",
+    "NIFTYSMALLCAP":    "^CNXSC",
+    # ─── NSE Sectoral ───
+    "BANKNIFTY":        "^NSEBANK",
+    "NIFTYBANK":        "^NSEBANK",
+    "NIFTYIT":          "^CNXIT",
+    "NIFTYPHARMA":      "^CNXPHARMA",
+    "NIFTYFMCG":        "^CNXFMCG",
+    "NIFTYAUTO":        "^CNXAUTO",
+    "NIFTYMETAL":       "^CNXMETAL",
+    "NIFTYREALTY":      "^CNXREALTY",
+    "NIFTYENERGY":      "^CNXENERGY",
+    "NIFTYPSUBANK":     "^CNXPSUBANK",
+    "NIFTYPVTBANK":     "NIFTY_PVT_BANK.NS",
+    "NIFTYINFRA":       "^CNXINFRA",
+    "NIFTYMEDIA":       "^CNXMEDIA",
+    "NIFTYFINSERVICE":  "NIFTY_FIN_SERVICE.NS",
+    "FINNIFTY":         "NIFTY_FIN_SERVICE.NS",
+    "NIFTYMNC":         "^CNXMNC",
+    "NIFTYPSE":         "^CNXPSE",
+    "NIFTYSERVICE":     "^CNXSERVICE",
+    "NIFTYCONSUMPTION": "^CNXCONSUM",
+    "NIFTYCOMMODITIES": "^CNXCMDT",
+    "NIFTYDIVOPPS50":   "^CNXDIVOP",
+    # ─── NSE Thematic (live price, limited history) ───
+    "NIFTYCPSE":        "NIFTY_CPSE.NS",
+    "NIFTYHEALTHCARE":  "NIFTY_HEALTHCARE.NS",
+    "NIFTYCONSUMER":    "NIFTY_CONSR_DURBL.NS",
+    # ─── India VIX ───
+    "INDIAVIX":         "^INDIAVIX",
+    # ─── BSE ───
+    "SENSEX":           "^BSESN",
+    "BSE500":           "BSE-500.BO",
+    "BSEIT":            "BSE-IT.BO",
+    "BSEBANK":          "BSE-BANKEX.BO",
+    # ─── Commodities ───
+    "GOLD":             "GC=F",
+    "SILVER":           "SI=F",
+    "CRUDEOIL":         "CL=F",
+    "CRUDE":            "CL=F",
+    "NATURALGAS":       "NG=F",
+    "COPPER":           "HG=F",
+    # ─── Currency ───
+    "USDINR":           "USDINR=X",
+    "EURINR":           "EURINR=X",
+    "GBPINR":           "GBPINR=X",
 }
 
 FALLBACK_MAP = {
@@ -70,17 +80,32 @@ FALLBACK_MAP = {
 }
 
 # ─── NSE Index Keys for EOD Fetch ────────────────────────
+# All tracked instruments for yfinance backfill + pulse page display
 NSE_INDEX_KEYS = [
-    "NIFTY", "NIFTY500", "NIFTYNEXT50", "NIFTYMIDCAP", "NIFTYSMALLCAP",
+    # NSE Broad
+    "NIFTY", "NIFTY100", "NIFTY200", "NIFTY500",
+    "NIFTYNEXT50", "NIFTYMIDCAP", "NIFTYSMALLCAP",
+    "NIFTYMIDCAP50", "MIDCPNIFTY",
+    # NSE Sectoral
     "BANKNIFTY", "NIFTYIT", "NIFTYPHARMA", "NIFTYFMCG", "NIFTYAUTO",
     "NIFTYMETAL", "NIFTYREALTY", "NIFTYENERGY", "NIFTYPSUBANK", "NIFTYPVTBANK",
-    "NIFTYMIDCAP50", "MIDCPNIFTY", "NIFTYINFRA", "NIFTYMEDIA",
-    "FINNIFTY", "NIFTYFINSERVICE",
-    "NIFTYHEALTHCARE", "NIFTYCONSUMER", "NIFTYCOMMODITIES",
+    "NIFTYINFRA", "NIFTYMEDIA", "FINNIFTY", "NIFTYFINSERVICE",
+    "NIFTYMNC", "NIFTYPSE", "NIFTYSERVICE",
+    "NIFTYCONSUMPTION", "NIFTYCOMMODITIES", "NIFTYDIVOPPS50",
+    # NSE Thematic
+    "NIFTYHEALTHCARE", "NIFTYCONSUMER",
+    # VIX
+    "INDIAVIX",
+    # BSE
     "SENSEX", "BSE500",
-    "GOLD", "SILVER", "CRUDEOIL",
+    # Commodities
+    "GOLD", "SILVER", "CRUDEOIL", "COPPER",
+    # Currency
     "USDINR",
 ]
+
+# Non-nsetools instruments — served from DB prices on pulse page
+NON_NSETOOLS_KEYS = ["SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR", "INDIAVIX"]
 
 # ─── ETF Universe for EOD Tracking ──────────────────────
 NSE_ETF_UNIVERSE = {
@@ -111,6 +136,8 @@ NSE_ETF_UNIVERSE = {
 # Maps our internal key -> NSE display name as returned by nsetools
 NSE_DISPLAY_MAP = {
     "NIFTY":            "NIFTY 50",
+    "NIFTY100":         "NIFTY 100",
+    "NIFTY200":         "NIFTY 200",
     "NIFTY500":         "NIFTY 500",
     "NIFTYNEXT50":      "NIFTY NEXT 50",
     "NIFTYMIDCAP":      "NIFTY MIDCAP 150",
@@ -126,14 +153,28 @@ NSE_DISPLAY_MAP = {
     "NIFTYPSUBANK":     "NIFTY PSU BANK",
     "NIFTYPVTBANK":     "NIFTY PRIVATE BANK",
     "NIFTYMIDCAP50":    "NIFTY MIDCAP 50",
+    "MIDCPNIFTY":       "NIFTY MIDCAP 50",
     "NIFTYINFRA":       "NIFTY INFRASTRUCTURE",
     "NIFTYMEDIA":       "NIFTY MEDIA",
     "FINNIFTY":         "NIFTY FINANCIAL SERVICES",
     "NIFTYFINSERVICE":  "NIFTY FINANCIAL SERVICES",
+    "NIFTYMNC":         "NIFTY MNC",
+    "NIFTYPSE":         "NIFTY PSE",
+    "NIFTYSERVICE":     "NIFTY SERVICES SECTOR",
+    "NIFTYCONSUMPTION": "NIFTY INDIA CONSUMPTION",
+    "NIFTYCOMMODITIES": "NIFTY COMMODITIES",
+    "NIFTYDIVOPPS50":   "NIFTY DIVIDEND OPPORTUNITIES 50",
     "NIFTYHEALTHCARE":  "NIFTY HEALTHCARE INDEX",
     "NIFTYCONSUMER":    "NIFTY CONSUMER DURABLES",
-    "NIFTYCOMMODITIES": "NIFTY COMMODITIES",
-    "MIDCPNIFTY":       "NIFTY MIDCAP 50",
+    "INDIAVIX":         "INDIA VIX",
+    # Non-nsetools display names (used for DB-sourced items on pulse page)
+    "SENSEX":           "SENSEX",
+    "BSE500":           "BSE 500",
+    "GOLD":             "Gold (USD)",
+    "SILVER":           "Silver (USD)",
+    "CRUDEOIL":         "Crude Oil (USD)",
+    "COPPER":           "Copper (USD)",
+    "USDINR":           "USD/INR",
 }
 
 # Reverse map: NSE display name -> our internal key

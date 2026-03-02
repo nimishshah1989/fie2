@@ -3,14 +3,16 @@
 // Ported from dashboard.py (lines 629–738)
 // ============================================================================
 
-// Tracked indices — only those with full yfinance historical data (matches backend NSE_INDEX_KEYS)
-// Names are exact nse_name values returned by nsetools
+// Tracked NSE indices — those with full yfinance historical data (matches backend NSE_INDEX_KEYS)
+// Names are exact nse_name values returned by nsetools or NSE_DISPLAY_MAP
 export const TOP_25_INDICES: string[] = [
   "NIFTY 50",
   "NIFTY BANK",
   "NIFTY IT",
   "NIFTY NEXT 50",
   "NIFTY FINANCIAL SERVICES",
+  "NIFTY 100",
+  "NIFTY 200",
   "NIFTY 500",
   "NIFTY PHARMA",
   "NIFTY AUTO",
@@ -28,7 +30,18 @@ export const TOP_25_INDICES: string[] = [
   "NIFTY INFRASTRUCTURE",
   "NIFTY COMMODITIES",
   "NIFTY MIDCAP 50",
+  "NIFTY MNC",
+  "NIFTY PSE",
+  "NIFTY SERVICES SECTOR",
+  "NIFTY INDIA CONSUMPTION",
+  "NIFTY DIVIDEND OPPORTUNITIES 50",
 ];
+
+// Non-NSE instruments served from DB (BSE, commodities, currencies, VIX)
+// These use the internal key (index_name) not display name
+export const NON_NSE_KEYS = new Set([
+  "SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR", "INDIAVIX",
+]);
 
 export const INDEX_SECTOR_MAP: Record<string, string> = {
   // Broad Market
@@ -92,7 +105,6 @@ export const INDEX_SECTOR_MAP: Record<string, string> = {
   "NIFTY SMALLCAP 250": "Mid & Small Cap",
   "NIFTY SMALLCAP 50": "Mid & Small Cap",
   "NIFTY SMALLCAP 100": "Mid & Small Cap",
-  "NIFTY SMALLCAP 250": "Mid & Small Cap",
   "NIFTY MIDSMALLCAP 400": "Mid & Small Cap",
   "NIFTY MICROCAP 250": "Mid & Small Cap",
   // Thematic
@@ -163,6 +175,23 @@ export const INDEX_SECTOR_MAP: Record<string, string> = {
   "NIFTY BHARAT BOND INDEX - APRIL 2033": "Fixed Income",
   // Volatility
   "INDIA VIX": "Volatility",
+  "INDIAVIX": "Volatility",
+  // BSE Indices
+  "SENSEX": "BSE",
+  "BSE 500": "BSE",
+  "BSE500": "BSE",
+  // Commodities (Global)
+  "Gold (USD)": "Commodities",
+  "GOLD": "Commodities",
+  "Silver (USD)": "Commodities",
+  "SILVER": "Commodities",
+  "Crude Oil (USD)": "Commodities",
+  "CRUDEOIL": "Commodities",
+  "Copper (USD)": "Commodities",
+  "COPPER": "Commodities",
+  // Currency
+  "USD/INR": "Currency",
+  "USDINR": "Currency",
   // ESG & Shariah
   "NIFTY100 ESG SECTOR LEADERS": "ESG & Shariah",
   "NIFTY100 ESG": "ESG & Shariah",
@@ -195,6 +224,9 @@ export const SECTOR_ORDER: string[] = [
   "Volatility",
   "ESG & Shariah",
   "Leveraged",
+  "BSE",
+  "Commodities",
+  "Currency",
   "Other",
 ];
 

@@ -80,6 +80,7 @@ export interface LiveIndex {
   signal: string;
   ratio_returns?: Record<string, number | null>;
   index_returns?: Record<string, number | null>;
+  source?: string;
 }
 
 export interface ActionRequest {

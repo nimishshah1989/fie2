@@ -879,20 +879,58 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
 @app.get("/api/indices/live")
 async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Session = Depends(get_db)):
     """Return real-time live index data from NSE with ratio-based period returns.
-    tracked_only=True (default) filters to only indices with yfinance historical data."""
-    from price_service import fetch_live_indices, NSE_INDEX_KEYS
+    tracked_only=True (default) filters to only indices with yfinance historical data.
+    Also includes non-nsetools instruments (BSE, commodities, currencies) from DB."""
+    from price_service import fetch_live_indices, NSE_INDEX_KEYS, NON_NSETOOLS_KEYS, NSE_DISPLAY_MAP
     from datetime import timedelta
     from sqlalchemy import func as sqlfunc
 
     try:
         data = fetch_live_indices()
         if not data:
-            return {"success": False, "indices": [], "error": "No data from NSE"}
+            data = []
 
         # Filter to only tracked indices (those with yfinance historical data)
         if tracked_only:
             tracked_set = set(k.upper() for k in NSE_INDEX_KEYS)
             data = [item for item in data if item["index_name"].upper() in tracked_set]
+
+        # Append non-nsetools instruments (BSE, commodities, currencies) from latest DB prices
+        nsetools_keys = set(item["index_name"].upper() for item in data)
+        for key in NON_NSETOOLS_KEYS:
+            if key.upper() in nsetools_keys:
+                continue  # Already in nsetools data (e.g., INDIA VIX sometimes appears)
+            latest_row = (
+                db.query(IndexPrice)
+                .filter(IndexPrice.index_name == key)
+                .order_by(desc(IndexPrice.date))
+                .first()
+            )
+            if latest_row and latest_row.close_price:
+                # Get previous day for change %
+                prev_row = (
+                    db.query(IndexPrice)
+                    .filter(IndexPrice.index_name == key, IndexPrice.date < latest_row.date)
+                    .order_by(desc(IndexPrice.date))
+                    .first()
+                )
+                pct_change = None
+                if prev_row and prev_row.close_price:
+                    pct_change = round(((latest_row.close_price - prev_row.close_price) / prev_row.close_price) * 100, 2)
+
+                display_name = NSE_DISPLAY_MAP.get(key, key)
+                data.append({
+                    "index_name": key,
+                    "nse_name": display_name,
+                    "last": latest_row.close_price,
+                    "open": latest_row.open_price,
+                    "high": latest_row.high_price,
+                    "low": latest_row.low_price,
+                    "previousClose": prev_row.close_price if prev_row else None,
+                    "variation": None,
+                    "percentChange": pct_change,
+                    "source": "db",  # Tag so frontend knows this is DB-sourced
+                })
 
         # Find base index
         base_close = None
