@@ -61,7 +61,7 @@ def _background_basket_build(basket_id: int):
 
     try:
         db = SessionLocal()
-        basket = db.query(Microbasket).get(basket_id)
+        basket = db.get(Microbasket, basket_id)
         if not basket:
             db.close()
             return
@@ -332,7 +332,7 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
 @router.get("/api/baskets/{basket_id}")
 async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
     """Get basket detail with constituents and live prices."""
-    basket = db.query(Microbasket).get(basket_id)
+    basket = db.get(Microbasket, basket_id)
     if not basket:
         raise HTTPException(status_code=404, detail="Basket not found")
 
@@ -372,7 +372,7 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
 @router.put("/api/baskets/{basket_id}")
 async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = Depends(get_db)):
     """Update basket name, description, benchmark, or constituents."""
-    basket = db.query(Microbasket).get(basket_id)
+    basket = db.get(Microbasket, basket_id)
     if not basket:
         raise HTTPException(status_code=404, detail="Basket not found")
 
@@ -384,8 +384,14 @@ async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = 
         ).first()
         if existing:
             raise HTTPException(status_code=400, detail=f"Basket name '{req.name}' already taken")
+        old_slug = basket.slug
         basket.name = req.name
         basket.slug = new_slug
+        # Migrate historical NAV records to new slug
+        if old_slug != new_slug:
+            db.query(IndexPrice).filter(IndexPrice.index_name == old_slug).update(
+                {IndexPrice.index_name: new_slug}
+            )
 
     if req.description is not None:
         basket.description = req.description
@@ -426,7 +432,7 @@ async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = 
 @router.delete("/api/baskets/{basket_id}")
 async def archive_basket(basket_id: int, db: Session = Depends(get_db)):
     """Soft-delete (archive) a basket."""
-    basket = db.query(Microbasket).get(basket_id)
+    basket = db.get(Microbasket, basket_id)
     if not basket:
         raise HTTPException(status_code=404, detail="Basket not found")
 
@@ -480,7 +486,7 @@ async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends
     results = []
     for name, constituents in baskets_map.items():
         total_weight = sum(c["weight_pct"] for c in constituents)
-        if abs(total_weight - 100.0) > 2.0:
+        if abs(total_weight - 100.0) > 1.0:
             results.append({
                 "basket_name": name,
                 "success": False,

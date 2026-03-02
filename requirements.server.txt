@@ -8,6 +8,7 @@ yfinance
 nsetools
 pytz
 httpx
+python-multipart
 python-dateutil
 apscheduler
 psycopg2-binary

@@ -310,7 +310,7 @@ def _scheduled_eod_fetch():
             )
             # Fetch basket constituent prices that aren't already covered
             basket_tickers = get_all_basket_constituent_tickers(db)
-            covered.update(t.upper() for t in stock_tickers)
+            covered.update(t.upper() for t in new_alert_tickers)
             new_basket_tickers = [t for t in basket_tickers if t.upper() not in covered]
             if new_basket_tickers:
                 bkt_data = fetch_yfinance_bulk_stock_history(new_basket_tickers, period="5d")

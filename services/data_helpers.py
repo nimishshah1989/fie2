@@ -60,6 +60,8 @@ def get_portfolio_tickers(db: Session) -> list:
             if not ticker:
                 continue
             clean = ticker.upper().strip()
+            if clean.startswith("MB_"):
+                continue
             if clean not in etf_keys and clean not in index_keys:
                 tickers.append(clean)
         return tickers
@@ -86,6 +88,8 @@ def get_all_portfolio_tickers_with_inception(db: Session) -> dict:
             if not ticker:
                 continue
             clean = ticker.upper().strip()
+            if clean.startswith("MB_"):
+                continue
             if inception_date:
                 if clean not in ticker_dates or inception_date < ticker_dates[clean]:
                     ticker_dates[clean] = inception_date
