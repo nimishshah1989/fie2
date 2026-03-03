@@ -3,19 +3,20 @@
 NSE Historical Data Backfill Script
 ====================================
 Run this LOCALLY from an India IP to fetch 1Y historical index data
-from NSE and upload to your Railway server.
+from NSE and upload to your FIE server.
 
 Usage:
-    python3 backfill_nse.py
+    FIE_SERVER_URL=https://your-server.com python3 backfill_nse.py
 
 This will:
 1. Fetch all 135+ NSE index names from nsetools
 2. For each index, fetch 1Y daily history from NSE historical API
-3. Upload all data to Railway via POST /api/indices/bulk-upload
+3. Upload all data to server via POST /api/indices/bulk-upload
 
 Requirements: pip install requests nsetools
 """
 
+import os
 import requests
 import time
 import json
@@ -24,8 +25,8 @@ from datetime import datetime, timedelta, date
 from urllib.parse import quote
 
 # ─── Configuration ──────────────────────────────────────
-RAILWAY_URL = "https://fie2-production.up.railway.app"
-UPLOAD_ENDPOINT = f"{RAILWAY_URL}/api/indices/bulk-upload"
+FIE_SERVER_URL = os.getenv("FIE_SERVER_URL", "http://localhost:8000")
+UPLOAD_ENDPOINT = f"{FIE_SERVER_URL}/api/indices/bulk-upload"
 DAYS_OF_HISTORY = 365  # 1 year
 
 # ─── NSE Session Handling ───────────────────────────────
@@ -191,10 +192,10 @@ def fetch_index_history(session, nse_name, days=365):
         return None, str(e)
 
 
-def upload_to_railway(all_data):
-    """Upload all historical data to Railway server."""
+def upload_to_server(all_data):
+    """Upload all historical data to FIE server."""
     print(f"\nUploading {sum(len(v) for v in all_data.values())} records "
-          f"for {len(all_data)} indices to Railway...")
+          f"for {len(all_data)} indices to {FIE_SERVER_URL}...")
 
     try:
         resp = requests.post(
@@ -219,7 +220,7 @@ def upload_to_railway(all_data):
 def main():
     print("=" * 60)
     print("NSE Historical Data Backfill")
-    print(f"Target: {RAILWAY_URL}")
+    print(f"Target: {FIE_SERVER_URL}")
     print(f"Period: {DAYS_OF_HISTORY} days")
     print("=" * 60)
 
@@ -263,9 +264,9 @@ def main():
         print("\nNo data fetched! Check your internet connection and IP (must be India).")
         sys.exit(1)
 
-    # Step 3: Upload to Railway
-    print(f"\n[3/3] Uploading to Railway...")
-    ok = upload_to_railway(all_data)
+    # Step 3: Upload to server
+    print(f"\n[3/3] Uploading to {FIE_SERVER_URL}...")
+    ok = upload_to_server(all_data)
 
     if ok:
         print("\n" + "=" * 60)

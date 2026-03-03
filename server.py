@@ -47,7 +47,6 @@ ALLOWED_ORIGINS = [
 ] or [
     "http://localhost:3000",
     "http://localhost:8000",
-    "https://fie2-production.up.railway.app",
 ]
 
 app.add_middleware(
