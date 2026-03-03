@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   Briefcase,
   Layers,
+  Compass,
   BookOpen,
   Menu,
   X,
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/performance", label: "Alert Performance", icon: TrendingUp },
   { href: "/pulse", label: "Market Pulse", icon: Activity },
   { href: "/microbaskets", label: "Microbaskets", icon: Layers },
+  { href: "/recommendations", label: "Recommendations", icon: Compass },
   { href: "/portfolios", label: "Model Portfolios", icon: Briefcase },
   { href: "/docs", label: "Documentation", icon: BookOpen },
 ];

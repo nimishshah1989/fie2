@@ -9,6 +9,8 @@ export interface BasketConstituent {
   weight_pct: number;
   current_price?: number | null;
   weighted_value?: number | null;
+  computed_units?: number | null;
+  allocated_amount?: number | null;
 }
 
 export interface BasketSummary {
@@ -17,6 +19,7 @@ export interface BasketSummary {
   slug: string;
   description: string | null;
   benchmark: string;
+  portfolio_size?: number | null;
   num_constituents: number;
   current_value: number | null;
   value_date: string | null;
@@ -29,6 +32,7 @@ export interface BasketLiveItem {
   slug: string;
   description: string | null;
   benchmark: string;
+  portfolio_size?: number | null;
   num_constituents: number;
   current_value: number | null;
   value_date: string | null;
@@ -52,6 +56,7 @@ export interface BasketDetail {
   slug: string;
   description: string | null;
   benchmark: string;
+  portfolio_size?: number | null;
   status: "ACTIVE" | "ARCHIVED";
   current_value: number | null;
   num_constituents: number;
@@ -70,6 +75,7 @@ export interface CreateBasketPayload {
   name: string;
   description?: string;
   benchmark?: string;
+  portfolio_size?: number;
   constituents: ConstituentInput[];
 }
 
@@ -77,6 +83,7 @@ export interface UpdateBasketPayload {
   name?: string;
   description?: string;
   benchmark?: string;
+  portfolio_size?: number;
   constituents?: ConstituentInput[];
 }
 

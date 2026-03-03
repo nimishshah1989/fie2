@@ -38,6 +38,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [benchmark, setBenchmark] = useState("NIFTY");
+  const [portfolioSize, setPortfolioSize] = useState("");
   const [rows, setRows] = useState<ConstituentInput[]>([emptyRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -50,6 +51,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
       setName(editBasket.name);
       setDescription(editBasket.description || "");
       setBenchmark(editBasket.benchmark);
+      setPortfolioSize(editBasket.portfolio_size ? String(editBasket.portfolio_size) : "");
       setRows(
         editBasket.constituents.map((c) => ({
           ticker: c.ticker,
@@ -61,6 +63,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
       setName("");
       setDescription("");
       setBenchmark("NIFTY");
+      setPortfolioSize("");
       setRows([emptyRow()]);
     }
     setError("");
@@ -109,12 +112,16 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
         weight_pct: r.weight_pct,
       }));
 
+      const parsedSize = parseFloat(portfolioSize);
+      const sizeValue = parsedSize > 0 ? parsedSize : undefined;
+
       let result;
       if (isEdit && editBasket) {
         result = await updateBasket(editBasket.id, {
           name: name.trim(),
           description: description.trim() || undefined,
           benchmark,
+          portfolio_size: sizeValue,
           constituents,
         });
       } else {
@@ -122,6 +129,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
           name: name.trim(),
           description: description.trim() || undefined,
           benchmark,
+          portfolio_size: sizeValue,
           constituents,
         });
       }
@@ -185,6 +193,24 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
               className="mt-1"
               rows={2}
             />
+          </div>
+
+          {/* Portfolio Size */}
+          <div>
+            <Label htmlFor="basket-size">Portfolio Size in ₹ (optional)</Label>
+            <Input
+              id="basket-size"
+              type="number"
+              placeholder="e.g. 500000"
+              value={portfolioSize}
+              onChange={(e) => setPortfolioSize(e.target.value)}
+              className="mt-1 font-mono"
+              min={0}
+              step={1000}
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              If set, units per stock will be auto-calculated based on weights and current prices
+            </p>
           </div>
 
           {/* Constituents */}

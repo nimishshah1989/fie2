@@ -46,6 +46,7 @@ function ReturnCell({ value }: { value: number | null | undefined }) {
 
 export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketDetailPanelProps) {
   const [archiving, setArchiving] = useState(false);
+  const hasPortfolioSize = basket.portfolio_size != null && basket.portfolio_size > 0;
 
   async function handleArchive() {
     if (!confirm(`Archive basket "${basket.name}"? It will be hidden from the dashboard.`)) return;
@@ -76,6 +77,11 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
               <span className="text-xs text-muted-foreground">
                 vs {basket.benchmark}
               </span>
+              {basket.portfolio_size != null && basket.portfolio_size > 0 && (
+                <Badge variant="secondary" className="text-[10px] font-mono">
+                  ₹{basket.portfolio_size.toLocaleString("en-IN")}
+                </Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -158,6 +164,13 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
                   <TableHead className="text-xs">Ticker</TableHead>
                   <TableHead className="text-xs">Company</TableHead>
                   <TableHead className="text-xs text-right">Weight</TableHead>
+                  {hasPortfolioSize && (
+                    <>
+                      <TableHead className="text-xs text-right">Price</TableHead>
+                      <TableHead className="text-xs text-right">Units</TableHead>
+                      <TableHead className="text-xs text-right">Allocated</TableHead>
+                    </>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -172,6 +185,23 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
                     <TableCell className="text-xs text-right font-mono">
                       {c.weight_pct.toFixed(1)}%
                     </TableCell>
+                    {hasPortfolioSize && (
+                      <>
+                        <TableCell className="text-xs text-right font-mono">
+                          {c.current_price != null
+                            ? formatPrice(c.current_price)
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono font-semibold">
+                          {c.computed_units != null ? c.computed_units.toFixed(0) : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-right font-mono">
+                          {c.allocated_amount != null
+                            ? `₹${c.allocated_amount.toLocaleString("en-IN")}`
+                            : "—"}
+                        </TableCell>
+                      </>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

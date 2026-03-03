@@ -23,6 +23,7 @@ from models import (
 from services.basket_service import (
     basket_slug, compute_basket_live_value, backfill_basket_nav,
     get_all_basket_constituent_tickers, is_basket_ticker,
+    compute_constituent_units,
 )
 from services.data_helpers import upsert_price_row
 
@@ -42,6 +43,7 @@ class CreateBasketRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: Optional[str] = None
     benchmark: Optional[str] = "NIFTY"
+    portfolio_size: Optional[float] = None
     constituents: List[ConstituentPayload] = Field(min_length=1)
 
 
@@ -49,6 +51,7 @@ class UpdateBasketRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     benchmark: Optional[str] = None
+    portfolio_size: Optional[float] = None
     constituents: Optional[List[ConstituentPayload]] = None
 
 
@@ -114,6 +117,7 @@ async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db))
         slug=slug,
         description=req.description,
         benchmark=req.benchmark or "NIFTY",
+        portfolio_size=req.portfolio_size,
     )
     db.add(basket)
     db.flush()
@@ -169,6 +173,7 @@ async def list_baskets(db: Session = Depends(get_db)):
             "slug": b.slug,
             "description": b.description,
             "benchmark": b.benchmark,
+            "portfolio_size": b.portfolio_size,
             "num_constituents": len(b.constituents),
             "current_value": latest_nav.close_price if latest_nav else None,
             "value_date": latest_nav.date if latest_nav else None,
@@ -311,6 +316,7 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
             "slug": slug,
             "description": b.description,
             "benchmark": b.benchmark,
+            "portfolio_size": b.portfolio_size,
             "num_constituents": len(b.constituents),
             "current_value": close,
             "value_date": latest_nav.date if latest_nav else None,
@@ -339,8 +345,10 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
     # Compute live value with per-constituent prices
     live_data = compute_basket_live_value(basket.constituents)
 
-    constituents = []
-    if live_data and live_data.get("constituents"):
+    # If portfolio_size is set, compute units per constituent from DB prices
+    if basket.portfolio_size and basket.portfolio_size > 0:
+        constituents = compute_constituent_units(basket.constituents, basket.portfolio_size, db)
+    elif live_data and live_data.get("constituents"):
         constituents = live_data["constituents"]
     else:
         constituents = [
@@ -360,6 +368,7 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
         "slug": basket.slug,
         "description": basket.description,
         "benchmark": basket.benchmark,
+        "portfolio_size": basket.portfolio_size,
         "status": basket.status.value,
         "current_value": live_data["current_price"] if live_data else None,
         "num_constituents": len(basket.constituents),
@@ -397,6 +406,8 @@ async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = 
         basket.description = req.description
     if req.benchmark is not None:
         basket.benchmark = req.benchmark
+    if req.portfolio_size is not None:
+        basket.portfolio_size = req.portfolio_size if req.portfolio_size > 0 else None
 
     if req.constituents is not None:
         total_weight = sum(c.weight_pct for c in req.constituents)

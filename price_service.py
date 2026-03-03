@@ -183,6 +183,37 @@ for _k, _v in NSE_DISPLAY_MAP.items():
     _NSE_REVERSE_MAP[_v.upper()] = _k
 
 
+# ─── Sector Indices for Recommendation Engine ────
+# (internal_key, NSE display name for API calls)
+SECTOR_INDICES_FOR_RECO = [
+    ("BANKNIFTY", "NIFTY BANK"),
+    ("NIFTYIT", "NIFTY IT"),
+    ("NIFTYPHARMA", "NIFTY PHARMA"),
+    ("NIFTYFMCG", "NIFTY FMCG"),
+    ("NIFTYAUTO", "NIFTY AUTO"),
+    ("NIFTYMETAL", "NIFTY METAL"),
+    ("NIFTYREALTY", "NIFTY REALTY"),
+    ("NIFTYENERGY", "NIFTY ENERGY"),
+    ("NIFTYPSUBANK", "NIFTY PSU BANK"),
+    ("NIFTYPVTBANK", "NIFTY PRIVATE BANK"),
+    ("NIFTYINFRA", "NIFTY INFRASTRUCTURE"),
+    ("NIFTYMEDIA", "NIFTY MEDIA"),
+    ("FINNIFTY", "NIFTY FINANCIAL SERVICES"),
+    ("NIFTYHEALTHCARE", "NIFTY HEALTHCARE INDEX"),
+    ("NIFTYCONSUMER", "NIFTY CONSUMER DURABLES"),
+]
+
+SECTOR_ETF_MAP = {
+    "BANKNIFTY": ["BANKBEES"],
+    "NIFTYIT": ["ITBEES"],
+    "NIFTYPHARMA": ["PHARMABEES"],
+    "NIFTYPSUBANK": ["PSUBNKBEES"],
+    "NIFTYFMCG": ["FMCGIETF"],
+    "NIFTYMETAL": ["METALIETF"],
+    "NIFTYAUTO": ["NETFAUTO"],
+}
+
+
 # ─── NSE Historical API (direct HTTP, no nselib dependency) ────
 
 def _nse_session():
@@ -926,3 +957,55 @@ def fetch_all_index_eod(period: str = "5d") -> dict:
             logger.error("yfinance fallback error: %s", e)
 
     return results
+
+
+# ─── NSE Index Constituent Fetcher ────────────────────
+
+def fetch_nse_index_constituents(index_display_name: str) -> list:
+    """Fetch current constituents of an NSE index from NSE website API.
+    index_display_name: e.g. "NIFTY BANK", "NIFTY IT"
+    Returns list of {symbol, company_name, last_price, weight, ...}
+    """
+    try:
+        session, headers = _nse_session()
+        api_headers = {
+            **headers,
+            "referer": "https://www.nseindia.com/",
+            "Accept": "application/json, text/html, */*",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+        }
+
+        encoded_name = quote(index_display_name)
+        url = f"https://www.nseindia.com/api/equity-stockIndices?index={encoded_name}"
+
+        resp = session.get(url, headers=api_headers, timeout=15)
+        if resp.status_code != 200:
+            logger.warning("NSE constituents API returned %d for %s", resp.status_code, index_display_name)
+            return []
+
+        data = resp.json()
+        items = data.get("data", [])
+        results = []
+
+        for item in items:
+            symbol = item.get("symbol", "").strip()
+            if not symbol or symbol == index_display_name:
+                continue
+            results.append({
+                "symbol": symbol,
+                "company_name": item.get("meta", {}).get("companyName") or item.get("companyName", ""),
+                "last_price": _safe_float(item.get("lastPrice")),
+                "weight": _safe_float(item.get("ffmc")) or _safe_float(item.get("weightage")),
+                "change_pct": _safe_float(item.get("pChange")),
+                "open": _safe_float(item.get("open")),
+                "high": _safe_float(item.get("dayHigh")),
+                "low": _safe_float(item.get("dayLow")),
+            })
+
+        logger.info("NSE constituents: %s — %d stocks fetched", index_display_name, len(results))
+        return results
+
+    except Exception as e:
+        logger.warning("NSE constituent fetch failed for %s: %s", index_display_name, e)
+        return []

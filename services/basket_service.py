@@ -141,6 +141,51 @@ def get_all_basket_constituent_tickers(db: Session) -> List[str]:
     return [r[0] for r in rows if r[0]]
 
 
+def compute_constituent_units(
+    constituents: List[MicrobasketConstituent],
+    portfolio_size: float,
+    db: Session,
+) -> List[Dict]:
+    """Compute units per constituent based on portfolio size and latest prices.
+    units = (weight_pct / 100) * portfolio_size / last_price
+    Uses a single batch query for all constituent prices.
+    """
+    from sqlalchemy import func as sqlfunc
+
+    # Batch-fetch latest prices for all tickers (1 query instead of N)
+    tickers = [c.ticker for c in constituents]
+    subq = (
+        db.query(IndexPrice.index_name, sqlfunc.max(IndexPrice.date).label("max_date"))
+        .filter(IndexPrice.index_name.in_(tickers))
+        .group_by(IndexPrice.index_name)
+        .subquery()
+    )
+    price_rows = (
+        db.query(IndexPrice.index_name, IndexPrice.close_price)
+        .join(subq, (IndexPrice.index_name == subq.c.index_name) & (IndexPrice.date == subq.c.max_date))
+        .all()
+    )
+    price_map = {r[0]: r[1] for r in price_rows if r[1]}
+
+    results = []
+    for c in constituents:
+        current_price = price_map.get(c.ticker)
+        allocated_amount = (c.weight_pct / 100.0) * portfolio_size
+        computed_units = None
+        if current_price and current_price > 0:
+            computed_units = round(allocated_amount / current_price, 2)
+
+        results.append({
+            "ticker": c.ticker,
+            "company_name": c.company_name,
+            "weight_pct": c.weight_pct,
+            "current_price": current_price,
+            "computed_units": computed_units,
+            "allocated_amount": round(allocated_amount, 2),
+        })
+    return results
+
+
 def compute_today_basket_navs(db: Session) -> int:
     """Compute today's NAV for all active baskets from constituent DB prices.
     Called by scheduled EOD job after constituent prices are fetched."""

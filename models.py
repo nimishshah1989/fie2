@@ -171,6 +171,7 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN stop_loss FLOAT",
         "ALTER TABLE alert_actions ADD COLUMN target_price FLOAT",
         "ALTER TABLE model_portfolios ADD COLUMN inception_date VARCHAR(10)",
+        "ALTER TABLE microbaskets ADD COLUMN portfolio_size FLOAT",
     ]
     for sql in migrations:
         try:
@@ -324,18 +325,36 @@ class BasketStatus(str, enum.Enum):
 class Microbasket(Base):
     __tablename__ = "microbaskets"
 
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    name        = Column(String(100), nullable=False, unique=True)
-    slug        = Column(String(100), nullable=False, unique=True)   # "MB_HEALTHCARE"
-    description = Column(Text, nullable=True)
-    benchmark   = Column(String(50), default="NIFTY")
-    status      = Column(SQLEnum(BasketStatus), default=BasketStatus.ACTIVE)
-    created_at  = Column(DateTime, default=func.now())
-    updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    name           = Column(String(100), nullable=False, unique=True)
+    slug           = Column(String(100), nullable=False, unique=True)   # "MB_HEALTHCARE"
+    description    = Column(Text, nullable=True)
+    benchmark      = Column(String(50), default="NIFTY")
+    portfolio_size = Column(Float, nullable=True)   # Total investment in INR (e.g. 500000)
+    status         = Column(SQLEnum(BasketStatus), default=BasketStatus.ACTIVE)
+    created_at     = Column(DateTime, default=func.now())
+    updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())
 
     constituents = relationship(
         "MicrobasketConstituent", back_populates="basket",
         cascade="all, delete-orphan",
+    )
+
+
+class IndexConstituent(Base):
+    """Stores constituents of NSE sector indices for the recommendation engine."""
+    __tablename__ = "index_constituents"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    index_name   = Column(String(100), nullable=False)   # e.g. "NIFTY BANK"
+    ticker       = Column(String(50), nullable=False)
+    company_name = Column(String(200), nullable=True)
+    weight_pct   = Column(Float, nullable=True)
+    last_price   = Column(Float, nullable=True)
+    fetched_at   = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index('idx_constituent_index_ticker', 'index_name', 'ticker', unique=True),
     )
 
 

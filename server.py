@@ -21,12 +21,12 @@ from sqlalchemy import desc
 
 from models import (
     init_db, SessionLocal,
-    TradingViewAlert, AlertStatus, IndexPrice,
+    TradingViewAlert, AlertStatus, IndexPrice, IndexConstituent,
 )
 from services.data_helpers import upsert_price_row, get_all_portfolio_tickers_with_inception
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import health, alerts, indices, portfolios, baskets
+from routers import health, alerts, indices, portfolios, baskets, recommendations
 
 logger = logging.getLogger("fie_v3")
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +90,7 @@ app.include_router(alerts.router)
 app.include_router(indices.router)
 app.include_router(portfolios.router)
 app.include_router(baskets.router)
+app.include_router(recommendations.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -99,6 +100,7 @@ app.include_router(baskets.router)
 def _background_yfinance_backfill():
     """Background thread: fetch actual daily history via yfinance for indices, ETFs, and portfolio instruments."""
     logger.info("Background yfinance backfill starting (thread: %s)...", threading.current_thread().name)
+    db = None
     try:
         from price_service import (
             fetch_yfinance_bulk_history, fetch_yfinance_bulk_stock_history,
@@ -151,9 +153,10 @@ def _background_yfinance_backfill():
             logger.info("Backfill: no portfolio instruments to fetch")
 
         # 4. Alert tickers — 1Y history (deduplicated against portfolio instruments)
+        # Include both APPROVED and PENDING so FM can review pending alerts with price context
         alert_tickers = [
             r[0] for r in db.query(TradingViewAlert.ticker)
-            .filter(TradingViewAlert.status == AlertStatus.APPROVED)
+            .filter(TradingViewAlert.status.in_([AlertStatus.APPROVED, AlertStatus.PENDING]))
             .distinct().all()
             if r[0] and r[0] != "UNKNOWN"
         ]
@@ -204,10 +207,43 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Basket backfill step failed (non-fatal): %s", e)
 
-        db.close()
+        # 6. Sector index constituents — refresh from NSE + fetch 1Y price history
+        # This populates IndexConstituent AND backfills stock prices so the
+        # recommendation engine can compute stock-vs-sector ratio returns.
+        try:
+            from routers.recommendations import refresh_sector_constituents
+            constituent_count = refresh_sector_constituents(db)
+            logger.info("Backfill: refreshed %d sector constituent records from NSE", constituent_count)
+
+            # Fetch 1Y history for all constituent tickers (deduplicated)
+            all_constituent_tickers = [
+                r[0] for r in db.query(IndexConstituent.ticker).distinct().all() if r[0]
+            ]
+            already_fetched = set(t.upper() for t in (ticker_inception or {}).keys())
+            already_fetched.update(t.upper() for t in etf_tickers)
+            already_fetched.update(t.upper() for t in new_alert_tickers)
+            new_constituent_tickers = [t for t in all_constituent_tickers if t.upper() not in already_fetched]
+
+            if new_constituent_tickers:
+                logger.info("Backfill: fetching 1Y history for %d sector constituent stocks...", len(new_constituent_tickers))
+                constituent_data = fetch_yfinance_bulk_stock_history(new_constituent_tickers, period="1y")
+                cst_stored = 0
+                for ticker, rows in constituent_data.items():
+                    for row in rows:
+                        if upsert_price_row(db, ticker, row):
+                            cst_stored += 1
+                db.commit()
+                logger.info("Backfill: stored %d sector constituent price records across %d tickers",
+                            cst_stored, len(constituent_data))
+        except Exception as e:
+            logger.warning("Sector constituent backfill step failed (non-fatal): %s", e)
+
         logger.info("Background yfinance backfill complete")
     except Exception as e:
         logger.warning("Background yfinance backfill failed (non-fatal): %s", e)
+    finally:
+        if db:
+            db.close()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -284,9 +320,10 @@ def _scheduled_eod_fetch():
                         stk_stored += 1
 
         # 4. Also fetch alerted stocks (deduplicated against portfolio + ETFs)
+        # Include both APPROVED and PENDING so FM can review pending alerts with price context
         alert_tickers = [
             r[0] for r in db.query(TradingViewAlert.ticker)
-            .filter(TradingViewAlert.status == AlertStatus.APPROVED)
+            .filter(TradingViewAlert.status.in_([AlertStatus.APPROVED, AlertStatus.PENDING]))
             .distinct().all()
             if r[0] and r[0] != "UNKNOWN"
         ]
@@ -321,10 +358,31 @@ def _scheduled_eod_fetch():
         except Exception as e:
             logger.warning("Basket EOD step failed (non-fatal): %s", e)
 
+        # 6. Refresh sector index constituents for recommendation engine
+        constituent_count = 0
+        constituent_price_count = 0
+        try:
+            from routers.recommendations import refresh_sector_constituents
+            constituent_count = refresh_sector_constituents(db)
+
+            # Fetch recent prices for all constituent tickers so stock-vs-sector ratios work
+            all_constituent_tickers = [
+                r[0] for r in db.query(IndexConstituent.ticker).distinct().all() if r[0]
+            ]
+            new_constituent_tickers = [t for t in all_constituent_tickers if t.upper() not in covered]
+            if new_constituent_tickers:
+                cst_data = fetch_yfinance_bulk_stock_history(new_constituent_tickers, period="5d")
+                for ticker, rows in cst_data.items():
+                    for row in rows:
+                        if upsert_price_row(db, ticker, row):
+                            constituent_price_count += 1
+        except Exception as e:
+            logger.warning("Constituent refresh step failed (non-fatal): %s", e)
+
         db.commit()
         logger.info(
-            "Scheduled EOD: %d nsetools + %d yf-fallback index, %d ETF, %d stock, %d alert, %d basket NAV records",
-            idx_stored, yf_idx_stored, etf_stored, stk_stored, alert_stored, basket_nav_count,
+            "Scheduled EOD: %d nsetools + %d yf-fallback index, %d ETF, %d stock, %d alert, %d basket NAV, %d constituent records",
+            idx_stored, yf_idx_stored, etf_stored, stk_stored, alert_stored, basket_nav_count, constituent_count,
         )
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)
@@ -372,7 +430,7 @@ async def start_scheduler():
 
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):
