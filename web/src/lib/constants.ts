@@ -253,24 +253,63 @@ export const PRIORITY_OPTIONS = [
   { label: "Within a Month", value: "WITHIN_A_MONTH" },
 ];
 
-// ─── Sector Colors for Recommendations ──────────────────
-export const SECTOR_COLORS: Record<string, { bg: string; border: string; text: string; light: string }> = {
-  BANKNIFTY:       { bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-700",    light: "bg-blue-100" },
-  NIFTYIT:         { bg: "bg-violet-50",  border: "border-violet-300",  text: "text-violet-700",  light: "bg-violet-100" },
-  NIFTYPHARMA:     { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", light: "bg-emerald-100" },
-  NIFTYFMCG:       { bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-700",   light: "bg-amber-100" },
-  NIFTYAUTO:       { bg: "bg-red-50",     border: "border-red-300",     text: "text-red-700",     light: "bg-red-100" },
-  NIFTYMETAL:      { bg: "bg-slate-50",   border: "border-slate-400",   text: "text-slate-700",   light: "bg-slate-200" },
-  NIFTYREALTY:     { bg: "bg-orange-50",  border: "border-orange-300",  text: "text-orange-700",  light: "bg-orange-100" },
-  NIFTYENERGY:     { bg: "bg-yellow-50",  border: "border-yellow-400",  text: "text-yellow-700",  light: "bg-yellow-100" },
-  NIFTYPSUBANK:    { bg: "bg-cyan-50",    border: "border-cyan-300",    text: "text-cyan-700",    light: "bg-cyan-100" },
-  NIFTYPVTBANK:    { bg: "bg-sky-50",     border: "border-sky-300",     text: "text-sky-700",     light: "bg-sky-100" },
-  NIFTYINFRA:      { bg: "bg-stone-50",   border: "border-stone-300",   text: "text-stone-700",   light: "bg-stone-100" },
-  NIFTYMEDIA:      { bg: "bg-pink-50",    border: "border-pink-300",    text: "text-pink-700",    light: "bg-pink-100" },
-  FINNIFTY:        { bg: "bg-indigo-50",  border: "border-indigo-300",  text: "text-indigo-700",  light: "bg-indigo-100" },
-  NIFTYHEALTHCARE: { bg: "bg-teal-50",    border: "border-teal-300",    text: "text-teal-700",    light: "bg-teal-100" },
-  NIFTYCONSUMER:   { bg: "bg-rose-50",    border: "border-rose-300",    text: "text-rose-700",    light: "bg-rose-100" },
+// ─── Unified Sector Display Colors ──────────────────────
+// Single source of truth for sector colors across the platform:
+// holdings table badges, allocation pie, recommendation cards
+
+interface SectorDisplayColor {
+  bg: string;
+  border: string;
+  text: string;
+  light: string;
+  bar: string;
+  hex: string;
+}
+
+const DEFAULT_SECTOR_COLOR: SectorDisplayColor = {
+  bg: "bg-gray-50", border: "border-gray-300", text: "text-gray-600",
+  light: "bg-gray-100", bar: "bg-gray-400", hex: "#9ca3af",
 };
+
+export const SECTOR_DISPLAY_COLORS: Record<string, SectorDisplayColor> = {
+  "Banking":            { bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-700",    light: "bg-blue-100",    bar: "bg-blue-400",    hex: "#2563eb" },
+  "IT":                 { bg: "bg-violet-50",  border: "border-violet-300",  text: "text-violet-700",  light: "bg-violet-100",  bar: "bg-violet-400",  hex: "#7c3aed" },
+  "Pharma":             { bg: "bg-pink-50",    border: "border-pink-300",    text: "text-pink-700",    light: "bg-pink-100",    bar: "bg-pink-400",    hex: "#db2777" },
+  "Energy":             { bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-700",   light: "bg-amber-100",   bar: "bg-amber-400",   hex: "#d97706" },
+  "Auto":               { bg: "bg-cyan-50",    border: "border-cyan-300",    text: "text-cyan-700",    light: "bg-cyan-100",    bar: "bg-cyan-400",    hex: "#0891b2" },
+  "FMCG":               { bg: "bg-green-50",   border: "border-green-300",   text: "text-green-700",   light: "bg-green-100",   bar: "bg-green-400",   hex: "#16a34a" },
+  "Metal":              { bg: "bg-slate-100",  border: "border-slate-400",   text: "text-slate-700",   light: "bg-slate-200",   bar: "bg-slate-400",   hex: "#64748b" },
+  "Realty":             { bg: "bg-orange-50",  border: "border-orange-300",  text: "text-orange-700",  light: "bg-orange-100",  bar: "bg-orange-400",  hex: "#ea580c" },
+  "Infra":              { bg: "bg-stone-50",   border: "border-stone-300",   text: "text-stone-700",   light: "bg-stone-100",   bar: "bg-stone-400",   hex: "#78716c" },
+  "Telecom":            { bg: "bg-indigo-50",  border: "border-indigo-300",  text: "text-indigo-700",  light: "bg-indigo-100",  bar: "bg-indigo-400",  hex: "#4f46e5" },
+  "Media":              { bg: "bg-fuchsia-50", border: "border-fuchsia-300", text: "text-fuchsia-700", light: "bg-fuchsia-100", bar: "bg-fuchsia-400", hex: "#c026d3" },
+  "Financial Services": { bg: "bg-teal-50",    border: "border-teal-300",    text: "text-teal-700",    light: "bg-teal-100",    bar: "bg-teal-400",    hex: "#0d9488" },
+  "Healthcare":         { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", light: "bg-emerald-100", bar: "bg-emerald-400", hex: "#059669" },
+  "Consumer":           { bg: "bg-rose-50",    border: "border-rose-300",    text: "text-rose-700",    light: "bg-rose-100",    bar: "bg-rose-400",    hex: "#e11d48" },
+  "Cash":               { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", light: "bg-emerald-100", bar: "bg-emerald-400", hex: "#059669" },
+  "ETF":                { bg: "bg-sky-50",     border: "border-sky-300",     text: "text-sky-700",     light: "bg-sky-100",     bar: "bg-sky-400",     hex: "#0284c7" },
+  "Other":              { bg: "bg-gray-50",    border: "border-gray-300",    text: "text-gray-600",    light: "bg-gray-100",    bar: "bg-gray-400",    hex: "#9ca3af" },
+};
+
+// Aliases for common variations
+const SECTOR_ALIASES: Record<string, string> = {
+  "Technology": "IT",
+  "Metals": "Metal",
+  "Infrastructure": "Infra",
+};
+
+/** Get Tailwind classes for a sector name (holdings badges, allocation bars) */
+export function getSectorDisplayColor(name: string | null): SectorDisplayColor {
+  if (!name) return DEFAULT_SECTOR_COLOR;
+  return SECTOR_DISPLAY_COLORS[name]
+    || SECTOR_DISPLAY_COLORS[SECTOR_ALIASES[name] ?? ""]
+    || DEFAULT_SECTOR_COLOR;
+}
+
+/** Get hex color for Recharts pie slices */
+export function getSectorHex(label: string): string {
+  return getSectorDisplayColor(label).hex;
+}
 
 // Broad sector category for each sector key (used in recommendations table)
 export const SECTOR_CATEGORY: Record<string, string> = {
@@ -290,6 +329,16 @@ export const SECTOR_CATEGORY: Record<string, string> = {
   NIFTYREALTY:     "Realty",
   NIFTYMEDIA:      "Media",
 };
+
+// Derive SECTOR_COLORS (NIFTY-keyed) from unified map via SECTOR_CATEGORY — recommendation components use this
+export const SECTOR_COLORS: Record<string, { bg: string; border: string; text: string; light: string }> = (() => {
+  const result: Record<string, { bg: string; border: string; text: string; light: string }> = {};
+  for (const [key, category] of Object.entries(SECTOR_CATEGORY)) {
+    const color = getSectorDisplayColor(category);
+    result[key] = { bg: color.bg, border: color.border, text: color.text, light: color.light };
+  }
+  return result;
+})();
 
 // Derived helpers
 export const TOP_25_SET = new Set(TOP_25_INDICES);

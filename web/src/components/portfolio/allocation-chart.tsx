@@ -9,6 +9,7 @@ import {
 } from "recharts";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatPrice } from "@/lib/utils";
+import { getSectorHex } from "@/lib/constants";
 import type { AllocationItem } from "@/lib/portfolio-types";
 
 const COLORS = [
@@ -44,7 +45,7 @@ function CustomTooltip({ active, payload }: {
   );
 }
 
-function AllocationPie({ title, data }: { title: string; data: AllocationItem[] }) {
+function AllocationPie({ title, data, useSectorColors }: { title: string; data: AllocationItem[]; useSectorColors?: boolean }) {
   if (data.length === 0) {
     return (
       <div className="flex-1">
@@ -77,8 +78,11 @@ function AllocationPie({ title, data }: { title: string; data: AllocationItem[] 
                 outerRadius={65}
                 paddingAngle={2}
               >
-                {data.map((_, i) => (
-                  <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />
+                {data.map((item, i) => (
+                  <Cell
+                    key={`cell-${i}`}
+                    fill={useSectorColors ? getSectorHex(item.label) : COLORS[i % COLORS.length]}
+                  />
                 ))}
               </Pie>
               <Tooltip content={<CustomTooltip />} />
@@ -90,7 +94,7 @@ function AllocationPie({ title, data }: { title: string; data: AllocationItem[] 
             <div key={item.label} className="flex items-center gap-2 text-xs">
               <div
                 className="w-2.5 h-2.5 rounded-sm shrink-0"
-                style={{ backgroundColor: COLORS[i % COLORS.length] }}
+                style={{ backgroundColor: useSectorColors ? getSectorHex(item.label) : COLORS[i % COLORS.length] }}
               />
               <span className="truncate text-foreground">{item.label}</span>
               <span className="ml-auto font-mono text-muted-foreground shrink-0">
@@ -116,7 +120,7 @@ export function AllocationChart({ byStock, bySector }: AllocationChartProps) {
         <h3 className="text-sm font-semibold text-foreground mb-3 sm:mb-4">Portfolio Allocation</h3>
         <div className="flex gap-6 sm:gap-8 flex-col md:flex-row">
           <AllocationPie title="By Stock" data={byStock} />
-          <AllocationPie title="By Sector" data={bySector} />
+          <AllocationPie title="By Sector" data={bySector} useSectorColors />
         </div>
       </CardContent>
     </Card>

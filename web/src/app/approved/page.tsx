@@ -238,6 +238,10 @@ export default function ApprovedPage() {
               alert={alert}
               onClick={() => handleCardClick(alert)}
               isSelected={selectedAlert?.id === alert.id}
+              onDelete={() => {
+                setDeleteTarget(alert);
+                setDeleteDialogOpen(true);
+              }}
             />
           ))}
         </div>

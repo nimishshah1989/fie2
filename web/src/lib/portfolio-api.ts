@@ -136,6 +136,24 @@ export async function fetchAllocation(
   return { by_stock: data.by_stock || [], by_sector: data.by_sector || [] };
 }
 
+// ─── Symbol Override ──────────────────────────────────
+
+export async function updateHoldingSymbol(
+  portfolioId: number,
+  holdingId: number,
+  yfSymbol: string | null
+): Promise<{ success: boolean; yf_symbol_override?: string | null }> {
+  const res = await fetch(
+    `${PORTFOLIO_API}/api/portfolios/${portfolioId}/holdings/${holdingId}/symbol`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ yf_symbol: yfSymbol }),
+    }
+  );
+  return res.json();
+}
+
 // ─── NAV Computation ──────────────────────────────────
 
 export async function computeNAV(

@@ -5,11 +5,13 @@ import { cn, formatTimestamp } from "@/lib/utils";
 import { SignalChip } from "@/components/signal-chip";
 import { PriorityChip } from "@/components/priority-chip";
 import { Badge } from "@/components/ui/badge";
+import { Trash2 } from "lucide-react";
 
 interface ApprovedCardProps {
   alert: Alert;
   onClick: () => void;
   isSelected?: boolean;
+  onDelete?: () => void;
 }
 
 const priorityBorderMap: Record<string, string> = {
@@ -37,7 +39,7 @@ function ActionCallBadge({ actionCall }: { actionCall: string }) {
   );
 }
 
-export function ApprovedCard({ alert, onClick, isSelected }: ApprovedCardProps) {
+export function ApprovedCard({ alert, onClick, isSelected, onDelete }: ApprovedCardProps) {
   const action = alert.action!;
   const priority = action.priority;
   const borderClass = priority ? priorityBorderMap[priority] ?? "" : "";
@@ -51,19 +53,30 @@ export function ApprovedCard({ alert, onClick, isSelected }: ApprovedCardProps) 
     <div
       onClick={onClick}
       className={cn(
-        "rounded-xl border bg-card shadow-sm hover:shadow-md transition-all cursor-pointer p-4 border-t-4",
+        "rounded-xl border bg-card shadow-sm hover:shadow-md transition-all cursor-pointer p-4 border-t-4 group",
         borderClass,
         !borderClass && "border-t-transparent",
         isSelected && "ring-2 ring-blue-500 shadow-md"
       )}
     >
-      {/* Header: Ticker + Signal + Interval */}
+      {/* Header: Ticker + Signal + Interval + Delete */}
       <div className="flex items-center gap-2 mb-1">
         <span className="font-bold text-base">{alert.ticker}</span>
         <SignalChip signal={alert.signal_direction} />
-        <span className="text-xs text-muted-foreground ml-auto">
-          {alert.interval}
-        </span>
+        <div className="flex items-center gap-1.5 ml-auto">
+          {onDelete && (
+            <button
+              className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 text-muted-foreground hover:text-red-600"
+              title="Delete alert"
+              onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {alert.interval}
+          </span>
+        </div>
       </div>
 
       {/* Alert name + timestamp */}

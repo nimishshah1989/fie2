@@ -17,6 +17,13 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { formatPrice, formatPct } from "@/lib/utils";
 import {
   Briefcase,
@@ -25,7 +32,8 @@ import {
   Plus,
   Clock,
 } from "lucide-react";
-import { getHoldingsExportURL } from "@/lib/portfolio-api";
+import { getHoldingsExportURL, updateHoldingSymbol, archivePortfolio } from "@/lib/portfolio-api";
+import type { Portfolio } from "@/lib/portfolio-types";
 
 export default function PortfoliosPage() {
   return (
@@ -58,6 +66,40 @@ function PortfoliosContent() {
 function PortfolioListView() {
   const router = useRouter();
   const { portfolios, isLoading, mutate } = usePortfolios();
+
+  // Edit state
+  const [editTarget, setEditTarget] = useState<Portfolio | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  // Archive state
+  const [archiveTarget, setArchiveTarget] = useState<Portfolio | null>(null);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
+  const handleEdit = useCallback((portfolio: Portfolio) => {
+    setEditTarget(portfolio);
+    setEditDialogOpen(true);
+  }, []);
+
+  const handleArchive = useCallback((portfolio: Portfolio) => {
+    setArchiveTarget(portfolio);
+    setArchiveDialogOpen(true);
+  }, []);
+
+  const handleArchiveConfirm = useCallback(async () => {
+    if (!archiveTarget) return;
+    setArchiving(true);
+    try {
+      await archivePortfolio(archiveTarget.id);
+      setArchiveDialogOpen(false);
+      setArchiveTarget(null);
+      mutate();
+    } catch {
+      // ignore
+    } finally {
+      setArchiving(false);
+    }
+  }, [archiveTarget, mutate]);
 
   const totalInvested = portfolios.reduce((s, p) => s + p.total_invested, 0);
   const totalCurrent = portfolios.reduce((s, p) => s + p.current_value, 0);
@@ -122,10 +164,52 @@ function PortfolioListView() {
               key={p.id}
               portfolio={p}
               onClick={() => router.push(`/portfolios?id=${p.id}`)}
+              onEdit={() => handleEdit(p)}
+              onArchive={() => handleArchive(p)}
             />
           ))}
         </div>
       )}
+
+      {/* Edit Portfolio Dialog */}
+      <CreatePortfolioDialog
+        onCreated={() => { setEditDialogOpen(false); setEditTarget(null); mutate(); }}
+        open={editDialogOpen}
+        onOpenChange={(v) => { setEditDialogOpen(v); if (!v) setEditTarget(null); }}
+        editPortfolio={editTarget}
+      />
+
+      {/* Archive Confirmation Dialog */}
+      <Dialog open={archiveDialogOpen} onOpenChange={setArchiveDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Archive Portfolio</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to archive{" "}
+              <span className="font-semibold text-foreground">
+                {archiveTarget?.name}
+              </span>
+              ? This will hide it from the active list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setArchiveDialogOpen(false)}
+              disabled={archiving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleArchiveConfirm}
+              disabled={archiving}
+            >
+              {archiving ? "Archiving..." : "Archive"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -190,6 +274,11 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
     setPrefillTxnType("SELL");
     setTxnDialogOpen(true);
   }, []);
+
+  const handleSymbolOverride = useCallback(async (holdingId: number, yfSymbol: string | null) => {
+    await updateHoldingSymbol(id, holdingId, yfSymbol);
+    refresh();
+  }, [id, refresh]);
 
   if (!detail) {
     return (
@@ -298,8 +387,10 @@ function PortfolioDetailView({ id, onBack }: { id: number; onBack: () => void })
             <HoldingsTable
               holdings={holdings}
               totals={totals}
+              portfolioId={id}
               onBuyMore={handleBuyMore}
               onSell={handleSell}
+              onSymbolOverride={handleSymbolOverride}
             />
           )}
         </>

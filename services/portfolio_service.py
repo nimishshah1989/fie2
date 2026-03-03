@@ -28,7 +28,7 @@ YAHOO_SYMBOL_MAP: Dict[str, Optional[str]] = {
     "METALETF": "METALIETF.NS",
     "SENSEXETF": "SENSEXIETF.NS",
     "MASPTOP50": "MASPTOP50.NS",
-    "NETFMID150": "NETFMID150.NS",
+    "NETFMID150": "MID150BEES.NS",
     "GROWWDEFNC": "GROWWDEFNC.NS",
     "FMCGIETF": "FMCGIETF.NS",
     "OIL ETF": "OILIETF.NS",
@@ -114,19 +114,25 @@ def fetch_live_price(yf_symbol: str) -> Optional[Dict]:
         return None
 
 
-def get_live_prices(tickers: List[str]) -> Dict[str, Dict]:
+def get_live_prices(tickers: List[str], overrides: Optional[Dict[str, str]] = None) -> Dict[str, Dict]:
     """Fetch live prices for multiple tickers in parallel (max 8 concurrent).
+    overrides: {ticker: yf_symbol} — per-holding overrides from FM, checked first.
     Handles MB_ (microbasket) tickers by computing live basket values."""
     ticker_to_yf: Dict[str, str] = {}
     basket_tickers: List[str] = []
+    override_map = overrides or {}
 
     for ticker in tickers:
         if ticker.upper().startswith("MB_"):
             basket_tickers.append(ticker.upper())
         else:
-            yf_sym = get_yahoo_symbol(ticker)
-            if yf_sym:
-                ticker_to_yf[ticker] = yf_sym
+            # Priority: per-holding override → YAHOO_SYMBOL_MAP → default .NS
+            if ticker in override_map and override_map[ticker]:
+                ticker_to_yf[ticker] = override_map[ticker]
+            else:
+                yf_sym = get_yahoo_symbol(ticker)
+                if yf_sym:
+                    ticker_to_yf[ticker] = yf_sym
 
     prices: Dict[str, Dict] = {}
 

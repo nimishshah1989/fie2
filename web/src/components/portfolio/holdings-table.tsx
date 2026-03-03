@@ -11,45 +11,27 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { formatPrice, formatPct } from "@/lib/utils";
+import { getSectorDisplayColor } from "@/lib/constants";
 import type { PortfolioHoldingRow, HoldingsTotals } from "@/lib/portfolio-types";
-import { ArrowUpDown, TrendingUp, TrendingDown } from "lucide-react";
-
-// Sector color mapping — consistent colors for each sector
-const SECTOR_COLORS: Record<string, { bg: string; text: string; bar: string }> = {
-  "Banking":            { bg: "bg-blue-50",    text: "text-blue-700",     bar: "bg-blue-400" },
-  "IT":                 { bg: "bg-violet-50",  text: "text-violet-700",   bar: "bg-violet-400" },
-  "Pharma":             { bg: "bg-pink-50",    text: "text-pink-700",     bar: "bg-pink-400" },
-  "Energy":             { bg: "bg-amber-50",   text: "text-amber-700",    bar: "bg-amber-400" },
-  "Auto":               { bg: "bg-cyan-50",    text: "text-cyan-700",     bar: "bg-cyan-400" },
-  "FMCG":               { bg: "bg-green-50",   text: "text-green-700",    bar: "bg-green-400" },
-  "Metal":              { bg: "bg-slate-100",  text: "text-slate-700",    bar: "bg-slate-400" },
-  "Realty":             { bg: "bg-orange-50",  text: "text-orange-700",   bar: "bg-orange-400" },
-  "Infra":              { bg: "bg-stone-50",   text: "text-stone-700",    bar: "bg-stone-400" },
-  "Telecom":            { bg: "bg-indigo-50",  text: "text-indigo-700",   bar: "bg-indigo-400" },
-  "Media":              { bg: "bg-fuchsia-50", text: "text-fuchsia-700",  bar: "bg-fuchsia-400" },
-  "Financial Services": { bg: "bg-teal-50",    text: "text-teal-700",     bar: "bg-teal-400" },
-  "Cash":               { bg: "bg-emerald-50", text: "text-emerald-700",  bar: "bg-emerald-400" },
-  "ETF":                { bg: "bg-sky-50",     text: "text-sky-700",      bar: "bg-sky-400" },
-  "Other":              { bg: "bg-gray-50",    text: "text-gray-600",     bar: "bg-gray-400" },
-};
-
-function getSectorColor(sector: string | null) {
-  if (!sector) return SECTOR_COLORS["Other"];
-  return SECTOR_COLORS[sector] || SECTOR_COLORS["Other"];
-}
+import { Input } from "@/components/ui/input";
+import { ArrowUpDown, TrendingUp, TrendingDown, Pencil, Check, X } from "lucide-react";
 
 interface HoldingsTableProps {
   holdings: PortfolioHoldingRow[];
   totals: HoldingsTotals | null;
+  portfolioId?: number;
   onBuyMore?: (ticker: string, sector: string | null) => void;
   onSell?: (ticker: string) => void;
+  onSymbolOverride?: (holdingId: number, yfSymbol: string | null) => void;
 }
 
 type SortKey = "ticker" | "quantity" | "avg_cost" | "current_price" | "current_value" | "unrealized_pnl_pct" | "weight_pct";
 
-export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsTableProps) {
+export function HoldingsTable({ holdings, totals, portfolioId, onBuyMore, onSell, onSymbolOverride }: HoldingsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("weight_pct");
   const [sortDesc, setSortDesc] = useState(true);
+  const [editingHoldingId, setEditingHoldingId] = useState<number | null>(null);
+  const [editSymbolValue, setEditSymbolValue] = useState("");
 
   function handleSort(key: SortKey) {
     if (sortKey === key) {
@@ -104,22 +86,78 @@ export function HoldingsTable({ holdings, totals, onBuyMore, onSell }: HoldingsT
         <TableBody>
           {sorted.map((h) => {
             const pnlColor = (h.unrealized_pnl_pct ?? 0) >= 0 ? "text-emerald-600" : "text-red-600";
-            const sectorColor = getSectorColor(h.sector);
+            const sectorColor = getSectorDisplayColor(h.sector);
             const weightPct = h.weight_pct ?? 0;
             const barWidth = maxWeight > 0 ? (weightPct / maxWeight) * 100 : 0;
 
             return (
               <TableRow key={h.id} className="hover:bg-muted/30 group">
-                {/* Ticker + Sector Badge */}
+                {/* Ticker + Sector Badge + Symbol Override */}
                 <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold">{h.ticker}</span>
-                    {h.sector && (
-                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${sectorColor.bg} ${sectorColor.text}`}>
-                        {h.sector}
-                      </span>
-                    )}
-                  </div>
+                  {editingHoldingId === h.id ? (
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={editSymbolValue}
+                        onChange={(e) => setEditSymbolValue(e.target.value)}
+                        placeholder="e.g. MID150BEES.NS"
+                        className="h-7 w-[150px] text-xs"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            onSymbolOverride?.(h.id, editSymbolValue.trim() || null);
+                            setEditingHoldingId(null);
+                          } else if (e.key === "Escape") {
+                            setEditingHoldingId(null);
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="ghost" size="sm"
+                        className="h-6 w-6 p-0 text-emerald-600 hover:bg-emerald-50"
+                        onClick={() => {
+                          onSymbolOverride?.(h.id, editSymbolValue.trim() || null);
+                          setEditingHoldingId(null);
+                        }}
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost" size="sm"
+                        className="h-6 w-6 p-0 text-muted-foreground hover:bg-muted"
+                        onClick={() => setEditingHoldingId(null)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold">{h.ticker}</span>
+                        {h.sector && (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${sectorColor.bg} ${sectorColor.text}`}>
+                            {h.sector}
+                          </span>
+                        )}
+                        {onSymbolOverride && (h.current_price === null || h.yf_symbol_override) && (
+                          <button
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                            title="Set Yahoo Finance symbol"
+                            onClick={() => {
+                              setEditSymbolValue(h.yf_symbol_override || "");
+                              setEditingHoldingId(h.id);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                      {h.yf_symbol_override && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {"→ "}{h.yf_symbol_override}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </TableCell>
 
                 {/* Quantity */}

@@ -316,6 +316,16 @@ async def update_action(alert_id: int, req: UpdateActionRequest, db: Session = D
     return {"success": True, "alert_id": alert_id}
 
 
+@router.delete("/api/alerts/all")
+async def delete_all_alerts(db: Session = Depends(get_db)):
+    """Batch delete ALL alerts and their actions. Use with caution."""
+    actions_deleted = db.query(AlertAction).delete()
+    alerts_deleted = db.query(TradingViewAlert).delete()
+    db.commit()
+    logger.info("Batch delete: %d actions, %d alerts", actions_deleted, alerts_deleted)
+    return {"success": True, "deleted_count": alerts_deleted}
+
+
 @router.delete("/api/alerts/{alert_id}")
 async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()

@@ -4,19 +4,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatPrice, formatPct } from "@/lib/utils";
 import type { Portfolio } from "@/lib/portfolio-types";
-import { Briefcase, TrendingUp, TrendingDown } from "lucide-react";
+import { Briefcase, TrendingUp, TrendingDown, Pencil, Archive } from "lucide-react";
 
 interface PortfolioSummaryCardProps {
   portfolio: Portfolio;
   onClick: () => void;
+  onEdit?: () => void;
+  onArchive?: () => void;
 }
 
-export function PortfolioSummaryCard({ portfolio, onClick }: PortfolioSummaryCardProps) {
+export function PortfolioSummaryCard({ portfolio, onClick, onEdit, onArchive }: PortfolioSummaryCardProps) {
   const isPositive = portfolio.total_return_pct >= 0;
 
   return (
     <Card
-      className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all"
+      className="cursor-pointer hover:shadow-md hover:border-primary/30 transition-all group"
       onClick={onClick}
     >
       <CardContent className="p-4 space-y-3">
@@ -35,9 +37,34 @@ export function PortfolioSummaryCard({ portfolio, onClick }: PortfolioSummaryCar
               </p>
             </div>
           </div>
-          <Badge variant="outline" className="text-[10px]">
-            {portfolio.num_holdings} holdings
-          </Badge>
+          <div className="flex items-center gap-1">
+            {/* Edit/Archive icons — visible on hover */}
+            {(onEdit || onArchive) && (
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity mr-1">
+                {onEdit && (
+                  <button
+                    className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                    title="Edit portfolio"
+                    onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {onArchive && (
+                  <button
+                    className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                    title="Archive portfolio"
+                    onClick={(e) => { e.stopPropagation(); onArchive(); }}
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+            <Badge variant="outline" className="text-[10px]">
+              {portfolio.num_holdings} holdings
+            </Badge>
+          </div>
         </div>
 
         {/* Description */}

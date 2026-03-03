@@ -172,6 +172,7 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN target_price FLOAT",
         "ALTER TABLE model_portfolios ADD COLUMN inception_date VARCHAR(10)",
         "ALTER TABLE microbaskets ADD COLUMN portfolio_size FLOAT",
+        "ALTER TABLE portfolio_holdings ADD COLUMN yf_symbol_override VARCHAR(50)",
     ]
     for sql in migrations:
         try:
@@ -253,6 +254,7 @@ class PortfolioHolding(Base):
     avg_cost      = Column(Float, nullable=False, default=0.0)
     total_cost    = Column(Float, nullable=False, default=0.0)
     sector        = Column(String(100), nullable=True)
+    yf_symbol_override = Column(String(50), nullable=True)
     added_at      = Column(DateTime, default=func.now())
     updated_at    = Column(DateTime, default=func.now(), onupdate=func.now())
 

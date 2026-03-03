@@ -316,7 +316,8 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
         return {"success": True, "holdings": [], "totals": empty_totals()}
 
     tickers = [h.ticker for h in holdings]
-    prices = get_live_prices(tickers)
+    overrides = {h.ticker: h.yf_symbol_override for h in holdings if h.yf_symbol_override}
+    prices = get_live_prices(tickers, overrides=overrides)
 
     total_invested = 0.0
     total_current = 0.0
@@ -345,6 +346,7 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
             "day_change_pct": round(day_change_pct, 2) if day_change_pct is not None else None,
             "weight_pct": None,
             "price_source": yf_symbol,
+            "yf_symbol_override": h.yf_symbol_override,
         })
     for row in rows:
         cv = row["current_value"] or row["total_cost"]
@@ -365,6 +367,35 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
         "realized_pnl": round(realized_total, 2), "num_holdings": len(rows),
     }
     return {"success": True, "holdings": rows, "totals": totals, "prices_as_of": prices_as_of}
+
+
+# ─── Symbol Override ────────────────────────────────────
+
+class UpdateSymbolRequest(BaseModel):
+    yf_symbol: Optional[str] = None
+
+
+@router.put("/api/portfolios/{portfolio_id}/holdings/{holding_id}/symbol")
+async def update_holding_symbol(
+    portfolio_id: int, holding_id: int, req: UpdateSymbolRequest, db: Session = Depends(get_db)
+):
+    """Set or clear the Yahoo Finance symbol override for a holding."""
+    holding = (
+        db.query(PortfolioHolding)
+        .filter(PortfolioHolding.id == holding_id, PortfolioHolding.portfolio_id == portfolio_id)
+        .first()
+    )
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+
+    holding.yf_symbol_override = req.yf_symbol.strip() if req.yf_symbol else None
+    db.commit()
+    return {
+        "success": True,
+        "holding_id": holding.id,
+        "ticker": holding.ticker,
+        "yf_symbol_override": holding.yf_symbol_override,
+    }
 
 
 # ─── NAV Computation ────────────────────────────────────

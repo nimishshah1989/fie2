@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createPortfolio, createTransaction } from "@/lib/portfolio-api";
+import { createPortfolio, createTransaction, updatePortfolio } from "@/lib/portfolio-api";
+import type { Portfolio } from "@/lib/portfolio-types";
 import { Plus, Trash2, ArrowRight, Check } from "lucide-react";
 
 const BENCHMARK_OPTIONS = [
@@ -52,10 +53,19 @@ interface InstrumentRow {
 
 interface CreatePortfolioDialogProps {
   onCreated: () => void;
+  /** Externally controlled open state (edit mode) */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** When set, dialog becomes "Edit Portfolio" mode */
+  editPortfolio?: Portfolio | null;
 }
 
-export function CreatePortfolioDialog({ onCreated }: CreatePortfolioDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CreatePortfolioDialog({ onCreated, open: externalOpen, onOpenChange: externalOnOpenChange, editPortfolio }: CreatePortfolioDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isEditMode = !!editPortfolio;
+  // Use external open state when provided (edit mode), internal otherwise
+  const open = externalOpen ?? internalOpen;
+  const setOpen = externalOnOpenChange ?? setInternalOpen;
   const [step, setStep] = useState<1 | 2>(1);
 
   // Step 1: Strategy setup
@@ -70,6 +80,16 @@ export function CreatePortfolioDialog({ onCreated }: CreatePortfolioDialogProps)
     { id: 1, ticker: "", type: "EQUITY", sector: "", quantity: 0, price: 0, date: new Date().toISOString().split("T")[0] },
   ]);
   const [nextId, setNextId] = useState(2);
+
+  // Pre-fill fields when editing
+  useEffect(() => {
+    if (editPortfolio) {
+      setName(editPortfolio.name);
+      setDescription(editPortfolio.description || "");
+      setBenchmark(editPortfolio.benchmark || "NIFTY");
+      setStep(1);
+    }
+  }, [editPortfolio]);
 
   // Creation state
   const [loading, setLoading] = useState(false);
@@ -119,6 +139,30 @@ export function CreatePortfolioDialog({ onCreated }: CreatePortfolioDialogProps)
   const totalInvestment = validInstruments.reduce(
     (sum, r) => sum + r.quantity * r.price, 0
   );
+
+  async function handleEdit() {
+    if (!editPortfolio) return;
+    setError("");
+    setLoading(true);
+    try {
+      const result = await updatePortfolio(editPortfolio.id, {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        benchmark,
+      });
+      if (!result.success) {
+        setError("Failed to update portfolio");
+        return;
+      }
+      setOpen(false);
+      reset();
+      onCreated();
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleCreate() {
     setError("");
@@ -181,25 +225,30 @@ export function CreatePortfolioDialog({ onCreated }: CreatePortfolioDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
-      <DialogTrigger asChild>
-        <Button size="sm" className="gap-1.5">
-          <Plus className="h-4 w-4" />
-          Create Portfolio
-        </Button>
-      </DialogTrigger>
+      {/* Only show trigger button in create mode (internal open state) */}
+      {!externalOnOpenChange && (
+        <DialogTrigger asChild>
+          <Button size="sm" className="gap-1.5">
+            <Plus className="h-4 w-4" />
+            Create Portfolio
+          </Button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            Create Model Portfolio
-            <div className="flex items-center gap-1 ml-auto">
-              <Badge variant={step === 1 ? "default" : "outline"} className="text-[10px]">
-                1. Strategy
-              </Badge>
-              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              <Badge variant={step === 2 ? "default" : "outline"} className="text-[10px]">
-                2. Instruments
-              </Badge>
-            </div>
+            {isEditMode ? "Edit Portfolio" : "Create Model Portfolio"}
+            {!isEditMode && (
+              <div className="flex items-center gap-1 ml-auto">
+                <Badge variant={step === 1 ? "default" : "outline"} className="text-[10px]">
+                  1. Strategy
+                </Badge>
+                <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                <Badge variant={step === 2 ? "default" : "outline"} className="text-[10px]">
+                  2. Instruments
+                </Badge>
+              </div>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -263,14 +312,36 @@ export function CreatePortfolioDialog({ onCreated }: CreatePortfolioDialogProps)
               </div>
             </div>
 
-            <Button
-              className="w-full"
-              onClick={() => setStep(2)}
-              disabled={!name.trim()}
-            >
-              Next: Add Instruments
-              <ArrowRight className="h-4 w-4 ml-1" />
-            </Button>
+            {/* Error in edit mode */}
+            {isEditMode && error && (
+              <div className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            {isEditMode ? (
+              <Button
+                className="w-full"
+                onClick={handleEdit}
+                disabled={loading || !name.trim()}
+              >
+                {loading ? "Saving..." : (
+                  <>
+                    <Check className="h-4 w-4 mr-1" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                className="w-full"
+                onClick={() => setStep(2)}
+                disabled={!name.trim()}
+              >
+                Next: Add Instruments
+                <ArrowRight className="h-4 w-4 ml-1" />
+              </Button>
+            )}
           </div>
         )}
 
