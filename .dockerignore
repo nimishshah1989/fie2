@@ -1,0 +1,15 @@
+web/node_modules
+web/.next
+web/out
+__pycache__
+*.pyc
+.env
+.env.*
+.git
+.github
+.claude
+*.log
+*.db
+create-rds.sh
+check-rds.sh
+docker-push.sh

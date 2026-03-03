@@ -1,4 +1,4 @@
-name: Deploy to AWS App Runner
+name: Deploy to AWS EC2 Mumbai
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: fie2
+  EC2_HOST: 13.206.50.251
 
 jobs:
   deploy:
@@ -36,13 +37,17 @@ jobs:
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Trigger App Runner deployment
-        run: |
-          SERVICE_ARN=$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='fie2'].ServiceArn" --output text)
-          if [ -n "$SERVICE_ARN" ]; then
-            aws apprunner start-deployment --service-arn "$SERVICE_ARN"
-            echo "Deployment triggered for $SERVICE_ARN"
-          else
-            echo "WARNING: App Runner service 'fie2' not found. Create it first via AWS Console."
-            exit 1
-          fi
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            PASSWORD=$(cat /tmp/ecr-pass.txt 2>/dev/null || aws ecr get-login-password --region ap-south-1)
+            sudo docker login --username AWS --password $PASSWORD 765425735663.dkr.ecr.ap-south-1.amazonaws.com
+            sudo docker pull 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
+            sudo docker stop fie2 || true
+            sudo docker rm fie2 || true
+            sudo docker run -d --name fie2 --restart always -p 8000:8000 --env-file /home/ec2-user/fie2.env 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
+            sudo docker image prune -f
