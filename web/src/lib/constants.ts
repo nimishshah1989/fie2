@@ -253,6 +253,38 @@ export const PRIORITY_OPTIONS = [
   { label: "Within a Month", value: "WITHIN_A_MONTH" },
 ];
 
+// ─── Sector Colors for Recommendations ──────────────────
+export const SECTOR_COLORS: Record<string, { bg: string; border: string; text: string; light: string }> = {
+  BANKNIFTY:       { bg: "bg-blue-50",    border: "border-blue-300",    text: "text-blue-700",    light: "bg-blue-100" },
+  NIFTYIT:         { bg: "bg-violet-50",  border: "border-violet-300",  text: "text-violet-700",  light: "bg-violet-100" },
+  NIFTYPHARMA:     { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", light: "bg-emerald-100" },
+  NIFTYFMCG:       { bg: "bg-amber-50",   border: "border-amber-300",   text: "text-amber-700",   light: "bg-amber-100" },
+  NIFTYAUTO:       { bg: "bg-red-50",     border: "border-red-300",     text: "text-red-700",     light: "bg-red-100" },
+  NIFTYMETAL:      { bg: "bg-slate-50",   border: "border-slate-400",   text: "text-slate-700",   light: "bg-slate-200" },
+  NIFTYREALTY:     { bg: "bg-orange-50",  border: "border-orange-300",  text: "text-orange-700",  light: "bg-orange-100" },
+  NIFTYENERGY:     { bg: "bg-yellow-50",  border: "border-yellow-400",  text: "text-yellow-700",  light: "bg-yellow-100" },
+  NIFTYPSUBANK:    { bg: "bg-cyan-50",    border: "border-cyan-300",    text: "text-cyan-700",    light: "bg-cyan-100" },
+  NIFTYPVTBANK:    { bg: "bg-sky-50",     border: "border-sky-300",     text: "text-sky-700",     light: "bg-sky-100" },
+  NIFTYINFRA:      { bg: "bg-stone-50",   border: "border-stone-300",   text: "text-stone-700",   light: "bg-stone-100" },
+  NIFTYMEDIA:      { bg: "bg-pink-50",    border: "border-pink-300",    text: "text-pink-700",    light: "bg-pink-100" },
+  FINNIFTY:        { bg: "bg-indigo-50",  border: "border-indigo-300",  text: "text-indigo-700",  light: "bg-indigo-100" },
+  NIFTYHEALTHCARE: { bg: "bg-teal-50",    border: "border-teal-300",    text: "text-teal-700",    light: "bg-teal-100" },
+  NIFTYCONSUMER:   { bg: "bg-rose-50",    border: "border-rose-300",    text: "text-rose-700",    light: "bg-rose-100" },
+};
+
+// Sector groupings for the selection panel
+export const SECTOR_GROUPS: { label: string; sectors: string[] }[] = [
+  { label: "Banking", sectors: ["BANKNIFTY", "NIFTYPVTBANK", "NIFTYPSUBANK"] },
+  { label: "Financial", sectors: ["FINNIFTY"] },
+  { label: "Technology", sectors: ["NIFTYIT"] },
+  { label: "Pharma & Healthcare", sectors: ["NIFTYPHARMA", "NIFTYHEALTHCARE"] },
+  { label: "Consumer", sectors: ["NIFTYFMCG", "NIFTYCONSUMER"] },
+  { label: "Auto", sectors: ["NIFTYAUTO"] },
+  { label: "Commodities & Energy", sectors: ["NIFTYMETAL", "NIFTYENERGY"] },
+  { label: "Infrastructure", sectors: ["NIFTYINFRA", "NIFTYREALTY"] },
+  { label: "Media", sectors: ["NIFTYMEDIA"] },
+];
+
 // Derived helpers
 export const TOP_25_SET = new Set(TOP_25_INDICES);
 
