@@ -49,5 +49,5 @@ jobs:
             sudo docker pull 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
             sudo docker stop fie2 || true
             sudo docker rm fie2 || true
-            sudo docker run -d --name fie2 --restart always -p 8000:8000 --env-file /home/ec2-user/fie2.env 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
+            sudo docker run -d --name fie2 --restart always -p 80:8000 -p 8000:8000 --env-file /home/ec2-user/fie2.env 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
             sudo docker image prune -f
