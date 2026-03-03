@@ -43,6 +43,7 @@ export default function RecommendationsPage() {
   const [base, setBase] = useState("NIFTY");
   const [period, setPeriod] = useState("1m");
   const [threshold, setThreshold] = useState(5);
+  const [topN, setTopN] = useState(5);
 
   // Load sector list on mount
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function RecommendationsPage() {
           period,
           selected_sectors: selectedSectors,
           threshold,
+          top_n: topN,
         }),
       });
       if (!res.ok) {
@@ -139,6 +141,8 @@ export default function RecommendationsPage() {
           onPeriodChange={setPeriod}
           threshold={threshold}
           onThresholdChange={setThreshold}
+          topN={topN}
+          onTopNChange={setTopN}
           onGenerate={handleGenerate}
           loading={generating}
         />

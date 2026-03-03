@@ -37,6 +37,7 @@ class GenerateRequest(BaseModel):
     period: str = "1m"                    # Single period (e.g. 1w, 1m, 3m, 6m, 12m)
     selected_sectors: List[str]           # Only checked sectors
     threshold: float = 5.0               # Single threshold for all sectors
+    top_n: int = 5                       # Top N stocks per qualifying sector (max 10)
 
 
 # ─── Constants ────────────────────────────────────────────
@@ -212,6 +213,7 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
         base = req.base.upper()
         period = req.period.lower()
         threshold = req.threshold
+        top_n = max(1, min(req.top_n, 10))  # Clamp to 1-10
         sector_lookup = {key: name for key, name in SECTOR_INDICES_FOR_RECO}
 
         # Validate period
@@ -313,11 +315,12 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
                     })
                     all_stock_tickers.append(c.ticker)
 
-                # Sort by ratio return descending, return ALL stocks
+                # Sort by ratio return descending, take top N
                 top_stocks.sort(
                     key=lambda s: s["ratio_return_vs_sector"] if s["ratio_return_vs_sector"] is not None else -9999,
                     reverse=True,
                 )
+                top_stocks = top_stocks[:top_n]
 
                 qualifying_sectors.append({
                     "sector_key": sector_key,
@@ -365,6 +368,7 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
             "base": base,
             "period": period,
             "threshold": threshold,
+            "top_n": top_n,
             "qualifying_sectors": qualifying_sectors,
             "non_qualifying_sectors": non_qualifying_sectors,
             "generated_at": datetime.now().isoformat(),

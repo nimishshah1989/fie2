@@ -272,18 +272,24 @@ export const SECTOR_COLORS: Record<string, { bg: string; border: string; text: s
   NIFTYCONSUMER:   { bg: "bg-rose-50",    border: "border-rose-300",    text: "text-rose-700",    light: "bg-rose-100" },
 };
 
-// Sector groupings for the selection panel
-export const SECTOR_GROUPS: { label: string; sectors: string[] }[] = [
-  { label: "Banking", sectors: ["BANKNIFTY", "NIFTYPVTBANK", "NIFTYPSUBANK"] },
-  { label: "Financial", sectors: ["FINNIFTY"] },
-  { label: "Technology", sectors: ["NIFTYIT"] },
-  { label: "Pharma & Healthcare", sectors: ["NIFTYPHARMA", "NIFTYHEALTHCARE"] },
-  { label: "Consumer", sectors: ["NIFTYFMCG", "NIFTYCONSUMER"] },
-  { label: "Auto", sectors: ["NIFTYAUTO"] },
-  { label: "Commodities & Energy", sectors: ["NIFTYMETAL", "NIFTYENERGY"] },
-  { label: "Infrastructure", sectors: ["NIFTYINFRA", "NIFTYREALTY"] },
-  { label: "Media", sectors: ["NIFTYMEDIA"] },
-];
+// Broad sector category for each sector key (used in recommendations table)
+export const SECTOR_CATEGORY: Record<string, string> = {
+  BANKNIFTY:       "Banking",
+  NIFTYPVTBANK:    "Banking",
+  NIFTYPSUBANK:    "Banking",
+  FINNIFTY:        "Financial Services",
+  NIFTYIT:         "Technology",
+  NIFTYPHARMA:     "Pharma",
+  NIFTYHEALTHCARE: "Healthcare",
+  NIFTYFMCG:       "FMCG",
+  NIFTYCONSUMER:   "Consumer",
+  NIFTYAUTO:       "Auto",
+  NIFTYMETAL:      "Metals",
+  NIFTYENERGY:     "Energy",
+  NIFTYINFRA:      "Infrastructure",
+  NIFTYREALTY:     "Realty",
+  NIFTYMEDIA:      "Media",
+};
 
 // Derived helpers
 export const TOP_25_SET = new Set(TOP_25_INDICES);

@@ -6,6 +6,7 @@ reusing all existing ratio return infrastructure with zero changes.
 """
 
 import logging
+import math
 import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -173,7 +174,7 @@ def compute_constituent_units(
         allocated_amount = (c.weight_pct / 100.0) * portfolio_size
         computed_units = None
         if current_price and current_price > 0:
-            computed_units = round(allocated_amount / current_price, 2)
+            computed_units = math.floor(allocated_amount / current_price)
 
         results.append({
             "ticker": c.ticker,
