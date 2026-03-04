@@ -3,8 +3,11 @@ FIE v3 — Alert Routes
 TradingView webhook ingestion, alert CRUD, FM actions, performance tracking, actionables.
 """
 
+import asyncio
 import json
 import logging
+import threading
+import types
 from datetime import datetime
 from typing import Optional
 
@@ -14,7 +17,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from models import (
-    get_db, IndexPrice,
+    get_db, IndexPrice, SessionLocal,
     TradingViewAlert, AlertAction, AlertStatus, ActionPriority,
 )
 from services.claude_service import (
@@ -233,6 +236,44 @@ async def get_alert(alert_id: int, db: Session = Depends(get_db)):
     return _serialize(a)
 
 
+# ─── Background Claude Analysis ──────────────────────────────────
+
+def _background_claude_analysis(
+    action_id: int, chart_b64: Optional[str], alert_snapshot: dict
+):
+    """Run Claude analysis + stock history fetch in a background thread."""
+    try:
+        db = SessionLocal()
+        alert_ns = types.SimpleNamespace(**alert_snapshot)
+
+        # Claude analysis
+        if chart_b64:
+            analysis = asyncio.run(analyze_chart_vision(chart_b64, alert_ns))
+        else:
+            analysis = asyncio.run(analyze_text_only(alert_ns))
+
+        action = db.query(AlertAction).filter_by(id=action_id).first()
+        if action:
+            action.chart_analysis = json.dumps(analysis)
+            db.commit()
+            logger.info("Background Claude analysis stored for action %d", action_id)
+
+        # Fetch 12M stock history
+        ticker = alert_snapshot.get("ticker")
+        if ticker and ticker != "UNKNOWN":
+            from price_service import fetch_stock_history
+            from services.data_helpers import upsert_price_row
+            rows = fetch_stock_history(ticker, "1y")
+            for row in rows:
+                upsert_price_row(db, ticker, row)
+            db.commit()
+            logger.info("Background stock history: %s — %d rows", ticker, len(rows))
+
+        db.close()
+    except Exception as e:
+        logger.warning("Background Claude analysis failed for action %d: %s", action_id, e)
+
+
 @router.post("/api/alerts/{alert_id}/action")
 async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
@@ -272,29 +313,25 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     action.stop_loss        = req.stop_loss
     action.target_price     = req.target_price
 
-    # Claude analysis on APPROVED
-    if decision == AlertStatus.APPROVED and ANTHROPIC_API_KEY:
-        if req.chart_image_b64:
-            analysis = await analyze_chart_vision(req.chart_image_b64, alert)
-        else:
-            analysis = await analyze_text_only(alert)
-        action.chart_analysis = json.dumps(analysis)
-
     alert.status = decision
     db.commit()
+    db.refresh(action)
 
-    # On approval, fetch 12M history for this stock
-    if decision == AlertStatus.APPROVED and alert.ticker and alert.ticker != "UNKNOWN":
-        try:
-            from price_service import fetch_stock_history
-            from services.data_helpers import upsert_price_row
-            rows = fetch_stock_history(alert.ticker, "1y")
-            for row in rows:
-                upsert_price_row(db, alert.ticker, row)
-            db.commit()
-            logger.info("Stored 12M history for %s (%d rows)", alert.ticker, len(rows))
-        except Exception as e:
-            logger.warning("Stock history fetch for %s failed: %s", alert.ticker, e)
+    # Spawn background thread for Claude analysis + stock history on APPROVED
+    if decision == AlertStatus.APPROVED and ANTHROPIC_API_KEY:
+        alert_snapshot = {
+            "ticker": alert.ticker, "interval": alert.interval,
+            "price_at_alert": alert.price_at_alert, "price_close": alert.price_close,
+            "signal_direction": alert.signal_direction, "alert_name": alert.alert_name,
+            "alert_data": alert.alert_data, "price_open": alert.price_open,
+            "price_high": alert.price_high, "price_low": alert.price_low,
+            "volume": alert.volume,
+        }
+        threading.Thread(
+            target=_background_claude_analysis,
+            args=(action.id, req.chart_image_b64, alert_snapshot),
+            daemon=True, name=f"claude-analysis-{alert_id}",
+        ).start()
 
     return {"success": True, "alert_id": alert_id}
 
