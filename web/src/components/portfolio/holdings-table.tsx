@@ -14,7 +14,13 @@ import { formatPrice, formatPct } from "@/lib/utils";
 import { getSectorDisplayColor } from "@/lib/constants";
 import type { PortfolioHoldingRow, HoldingsTotals } from "@/lib/portfolio-types";
 import { Input } from "@/components/ui/input";
-import { ArrowUpDown, TrendingUp, TrendingDown, Pencil, Check, X } from "lucide-react";
+import { ArrowUpDown, TrendingUp, TrendingDown, Pencil, Check, X, AlertTriangle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface HoldingsTableProps {
   holdings: PortfolioHoldingRow[];
@@ -68,6 +74,7 @@ export function HoldingsTable({ holdings, totals, portfolioId, onBuyMore, onSell
   }
 
   return (
+    <TooltipProvider>
     <div className="rounded-lg border border-border overflow-hidden">
       <div className="overflow-x-auto">
       <Table className="min-w-[800px]">
@@ -133,6 +140,16 @@ export function HoldingsTable({ holdings, totals, portfolioId, onBuyMore, onSell
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold">{h.ticker}</span>
+                        {h.price_available === false && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs">Price not available — check ticker or set symbol override</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                         {h.sector && (
                           <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${sectorColor.bg} ${sectorColor.text}`}>
                             {h.sector}
@@ -263,5 +280,6 @@ export function HoldingsTable({ holdings, totals, portfolioId, onBuyMore, onSell
       </Table>
       </div>
     </div>
+    </TooltipProvider>
   );
 }

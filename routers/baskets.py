@@ -378,7 +378,15 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
             for c in basket.constituents
         ]
 
-    return {
+    # Add price_available flag and warnings per constituent
+    warnings = []
+    for c in constituents:
+        has_price = c.get("current_price") is not None
+        c["price_available"] = has_price
+        if not has_price:
+            warnings.append(f"{c['ticker']}: no market price found — check ticker")
+
+    result = {
         "id": basket.id,
         "name": basket.name,
         "slug": basket.slug,
@@ -392,6 +400,9 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
         "created_at": (basket.created_at.isoformat() + "Z") if basket.created_at else None,
         "updated_at": (basket.updated_at.isoformat() + "Z") if basket.updated_at else None,
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 @router.put("/api/baskets/{basket_id}")

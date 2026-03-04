@@ -18,6 +18,9 @@ from services.data_helpers import upsert_price_row
 logger = logging.getLogger("fie_v3.indices")
 router = APIRouter()
 
+# Currency pairs where rising price = weaker INR = negative for Indian investor
+INVERTED_RETURN_KEYS = {"USDINR"}
+
 
 @router.post("/api/indices/fetch-eod")
 async def fetch_eod(db: Session = Depends(get_db)):
@@ -169,9 +172,17 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
         if prev_row and prev_row.close_price and close:
             chg_pct = round(((close - prev_row.close_price) / prev_row.close_price) * 100, 2)
 
+        # Invert change_pct for currency pairs (rising USDINR = weaker rupee = negative)
+        if chg_pct is not None and row.index_name in INVERTED_RETURN_KEYS:
+            chg_pct = round(-chg_pct, 2)
+
         periods = {}
         for label, days in [("1d", 1), ("1w", 7), ("1m", 30), ("3m", 90), ("6m", 180), ("12m", 365)]:
-            periods[label] = _get_period_return(row.index_name, days)
+            ret = _get_period_return(row.index_name, days)
+            # Invert returns for currency pairs
+            if ret is not None and row.index_name in INVERTED_RETURN_KEYS:
+                ret = round(-ret, 2)
+            periods[label] = ret
 
         results.append({
             "index_name": row.index_name,
@@ -222,6 +233,9 @@ async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Sessi
                 pct_change = None
                 if prev_row and prev_row.close_price:
                     pct_change = round(((latest_row.close_price - prev_row.close_price) / prev_row.close_price) * 100, 2)
+                # Invert for currency pairs (rising USDINR = weaker rupee = negative)
+                if pct_change is not None and key in INVERTED_RETURN_KEYS:
+                    pct_change = round(-pct_change, 2)
 
                 display_name = NSE_DISPLAY_MAP.get(key, key)
                 data.append({
@@ -352,6 +366,12 @@ async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Sessi
                     old_idx = old_prices.get(idx_name)
                     if old_idx and old_idx > 0:
                         index_returns[pk] = round(((close / old_idx) - 1) * 100, 2)
+
+            # Invert returns for currency pairs (rising USDINR = weaker rupee = negative)
+            if idx_name in INVERTED_RETURN_KEYS:
+                index_returns = {k: round(-v, 2) for k, v in index_returns.items()}
+                ratio_returns = {k: round(-v, 2) for k, v in ratio_returns.items()}
+                item["ratio_returns"] = ratio_returns
 
             item["index_returns"] = index_returns
 

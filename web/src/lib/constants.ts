@@ -283,9 +283,9 @@ export const SECTOR_DISPLAY_COLORS: Record<string, SectorDisplayColor> = {
   "Telecom":            { bg: "bg-indigo-50",  border: "border-indigo-300",  text: "text-indigo-700",  light: "bg-indigo-100",  bar: "bg-indigo-400",  hex: "#4f46e5" },
   "Media":              { bg: "bg-fuchsia-50", border: "border-fuchsia-300", text: "text-fuchsia-700", light: "bg-fuchsia-100", bar: "bg-fuchsia-400", hex: "#c026d3" },
   "Financial Services": { bg: "bg-teal-50",    border: "border-teal-300",    text: "text-teal-700",    light: "bg-teal-100",    bar: "bg-teal-400",    hex: "#0d9488" },
-  "Healthcare":         { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", light: "bg-emerald-100", bar: "bg-emerald-400", hex: "#059669" },
+  "Healthcare":         { bg: "bg-lime-50",    border: "border-lime-300",    text: "text-lime-700",    light: "bg-lime-100",    bar: "bg-lime-400",    hex: "#65a30d" },
   "Consumer":           { bg: "bg-rose-50",    border: "border-rose-300",    text: "text-rose-700",    light: "bg-rose-100",    bar: "bg-rose-400",    hex: "#e11d48" },
-  "Cash":               { bg: "bg-emerald-50", border: "border-emerald-300", text: "text-emerald-700", light: "bg-emerald-100", bar: "bg-emerald-400", hex: "#059669" },
+  "Cash":               { bg: "bg-neutral-50", border: "border-neutral-300", text: "text-neutral-600", light: "bg-neutral-100", bar: "bg-neutral-400", hex: "#737373" },
   "ETF":                { bg: "bg-sky-50",     border: "border-sky-300",     text: "text-sky-700",     light: "bg-sky-100",     bar: "bg-sky-400",     hex: "#0284c7" },
   "Other":              { bg: "bg-gray-50",    border: "border-gray-300",    text: "text-gray-600",    light: "bg-gray-100",    bar: "bg-gray-400",    hex: "#9ca3af" },
 };

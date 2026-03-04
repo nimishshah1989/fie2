@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import {
   BookOpen,
   Calculator,
+  Compass,
   Database,
+  Layers,
+  LayoutDashboard,
   LineChart,
   TrendingUp,
   Briefcase,
@@ -426,6 +429,154 @@ export default function DocsPage() {
         </CardContent>
       </Card>
 
+      {/* ─── Microbaskets ─── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Layers className="h-4 w-4 text-primary" />
+            Microbaskets
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3">
+          <p className="text-muted-foreground text-xs">
+            Microbaskets are curated stock baskets with weighted constituents. They can be managed standalone
+            or added as portfolio instruments for NAV tracking.
+          </p>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">CSV Upload Format</h4>
+            <p className="text-muted-foreground text-xs mb-2">
+              Baskets are created via CSV upload with the following columns:
+            </p>
+            <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs">
+              basket_name, ticker, company_name, weight(%), price, quantity
+            </div>
+            <p className="text-muted-foreground text-xs mt-2">
+              Portfolio size is auto-computed from <code className="bg-muted px-1 rounded">price &times; quantity</code> for
+              each constituent. Buy price is tracked per constituent for cost basis calculations.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Basket as Portfolio Instrument</h4>
+            <p className="text-muted-foreground text-xs">
+              Baskets can be added to portfolios using the <code className="bg-muted px-1 rounded">MB_</code> prefix
+              (e.g., <code className="bg-muted px-1 rounded">MB_MOMENTUM</code>) with instrument
+              type <Badge variant="outline" className="text-[10px]">BASKET</Badge> during portfolio creation.
+              The basket&apos;s NAV is computed from its constituent prices and used as the instrument price in the portfolio.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Unit Computation</h4>
+            <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs">
+              When portfolio_size is set:<br/>
+              &nbsp;&nbsp;units = weight% &times; portfolio_size / price<br/>
+              <br/>
+              NAV is computed in background from constituent EOD prices.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ─── Recommendation Engine ─── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Compass className="h-4 w-4 text-primary" />
+            Recommendation Engine
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3">
+          <p className="text-muted-foreground text-xs">
+            The recommendation engine analyses 15 NSE sector indices against a benchmark (NIFTY 50 by default)
+            to identify sectors with relative outperformance or underperformance.
+          </p>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Sector Indices &amp; Periods</h4>
+            <p className="text-muted-foreground text-xs mb-2">
+              Each sector index is evaluated across 5 time periods with a configurable outperformance threshold:
+            </p>
+            <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs">
+              Periods: 1W, 1M, 3M, 6M, 12M<br/>
+              Method: ratio = sector_return / benchmark_return<br/>
+              Threshold: configurable (e.g., ratio &gt; 1.05 = outperforming)
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Top Stocks &amp; ETF Mapping</h4>
+            <ul className="text-muted-foreground text-xs space-y-1 list-disc list-inside">
+              <li><strong>Top stocks</strong> per sector shown with market cap, P/E ratio, and 52-week range</li>
+              <li><strong>ETF mapping</strong> for 7 sectors — BANKBEES, ITBEES, CPSE, JUNIORBEES, GOLDBEES, NIFTYBEES, METALIETF</li>
+              <li><strong>Batch-optimized</strong> — approximately 15 DB queries per generate request</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ─── Navigation ─── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <LayoutDashboard className="h-4 w-4 text-primary" />
+            Navigation
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3">
+          <p className="text-muted-foreground text-xs">
+            The sidebar navigation includes live badge counts that update automatically,
+            providing at-a-glance awareness of pending items.
+          </p>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Badge Counts</h4>
+            <ul className="text-muted-foreground text-xs space-y-1 list-disc list-inside">
+              <li><strong>Trade Center</strong> — red badge showing the count of pending (unreviewed) alerts</li>
+              <li><strong>Actionables</strong> — red badge showing the count of triggered stop-loss or target-price alerts</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Auto-Refresh</h4>
+            <p className="text-muted-foreground text-xs">
+              Badge counts are fetched via SWR hooks and automatically refresh every 30 seconds,
+              so the FM always sees up-to-date pending item counts without manual page reloads.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ─── USDINR Returns ─── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            USDINR Returns
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-3">
+          <p className="text-muted-foreground text-xs">
+            Currency pair returns are inverted to reflect the Indian investor&apos;s perspective on
+            rupee strength or weakness.
+          </p>
+
+          <div>
+            <h4 className="font-semibold text-foreground mb-1">Inversion Logic</h4>
+            <div className="bg-muted/50 rounded-lg p-3 font-mono text-xs">
+              USDINR rising (82 &rarr; 87): displayed as NEGATIVE (INR weakening)<br/>
+              USDINR falling (87 &rarr; 82): displayed as POSITIVE (INR strengthening)
+            </div>
+            <p className="text-muted-foreground text-xs mt-2">
+              This inversion is applied to both absolute and ratio returns across all time periods.
+              A rising USDINR rate means each dollar costs more rupees, which is unfavourable for
+              Indian investors — hence shown in red.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ─── Architecture ─── */}
       <Card>
         <CardHeader className="pb-3">
@@ -446,7 +597,7 @@ export default function DocsPage() {
               <tbody className="text-muted-foreground">
                 <tr className="border-t border-border">
                   <td className="px-4 py-2">Frontend</td>
-                  <td className="px-4 py-2">Next.js 14 + TypeScript + Tailwind CSS + shadcn/ui</td>
+                  <td className="px-4 py-2">Next.js 16 + TypeScript + Tailwind CSS + shadcn/ui</td>
                 </tr>
                 <tr className="border-t border-border">
                   <td className="px-4 py-2">Backend API</td>
@@ -454,7 +605,7 @@ export default function DocsPage() {
                 </tr>
                 <tr className="border-t border-border">
                   <td className="px-4 py-2">Database</td>
-                  <td className="px-4 py-2">PostgreSQL (Railway) / SQLite (local dev)</td>
+                  <td className="px-4 py-2">PostgreSQL (RDS Mumbai) / SQLite (local dev)</td>
                 </tr>
                 <tr className="border-t border-border">
                   <td className="px-4 py-2">ORM</td>
@@ -470,11 +621,11 @@ export default function DocsPage() {
                 </tr>
                 <tr className="border-t border-border">
                   <td className="px-4 py-2">Deployment</td>
-                  <td className="px-4 py-2">Railway (auto-deploy from git push)</td>
+                  <td className="px-4 py-2">AWS EC2 Mumbai (Docker via GitHub Actions CI/CD)</td>
                 </tr>
                 <tr className="border-t border-border">
                   <td className="px-4 py-2">Market Data</td>
-                  <td className="px-4 py-2">Yahoo Finance (yfinance + curl fallback)</td>
+                  <td className="px-4 py-2">nsetools (live 135+ indices) + yfinance (historical + stocks) + NSE API (sector constituents)</td>
                 </tr>
               </tbody>
             </table>

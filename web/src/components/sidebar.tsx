@@ -21,6 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAlerts } from "@/hooks/use-alerts";
+import { useActionables } from "@/hooks/use-actionables";
 
 const navItems = [
   { href: "/", label: "Command Center", icon: LayoutDashboard },
@@ -39,7 +40,14 @@ const navItems = [
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const pathname = usePathname();
   const { alerts, pending, approved, isLoading } = useAlerts();
+  const { actionables } = useActionables();
   const [istString, setIstString] = useState("");
+
+  // Badge counts per route
+  const badgeCounts: Record<string, number> = {
+    "/trade": pending.length,
+    "/actionables": actionables.length,
+  };
 
   useEffect(() => {
     const fmt = () =>
@@ -113,6 +121,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
+          const badgeCount = badgeCounts[item.href] ?? 0;
           return (
             <Link
               key={item.href}
@@ -126,6 +135,11 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
             >
               <Icon className="h-4 w-4 shrink-0" />
               {item.label}
+              {badgeCount > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-[9px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {badgeCount}
+                </span>
+              )}
             </Link>
           );
         })}

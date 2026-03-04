@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import useSWR from "swr";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createPortfolio, createTransaction, updatePortfolio } from "@/lib/portfolio-api";
+import { fetchBaskets } from "@/lib/basket-api";
+import type { BasketSummary } from "@/lib/basket-types";
 import type { Portfolio } from "@/lib/portfolio-types";
 import { Plus, Trash2, ArrowRight, Check } from "lucide-react";
 
@@ -33,6 +36,7 @@ const INSTRUMENT_TYPES = [
   { value: "EQUITY", label: "Equity (NSE)" },
   { value: "ETF", label: "ETF" },
   { value: "MF", label: "Mutual Fund" },
+  { value: "BASKET", label: "Microbasket" },
 ];
 
 const SECTOR_OPTIONS = [
@@ -44,7 +48,7 @@ const SECTOR_OPTIONS = [
 interface InstrumentRow {
   id: number;
   ticker: string;
-  type: "EQUITY" | "ETF" | "MF";
+  type: "EQUITY" | "ETF" | "MF" | "BASKET";
   sector: string;
   quantity: number;
   price: number;
@@ -61,6 +65,10 @@ interface CreatePortfolioDialogProps {
 }
 
 export function CreatePortfolioDialog({ onCreated, open: externalOpen, onOpenChange: externalOnOpenChange, editPortfolio }: CreatePortfolioDialogProps) {
+  // Fetch available microbaskets for the BASKET instrument type
+  const { data: basketsData } = useSWR<BasketSummary[]>("baskets-list", fetchBaskets);
+  const availableBaskets = basketsData ?? [];
+
   const [internalOpen, setInternalOpen] = useState(false);
   const isEditMode = !!editPortfolio;
   // Use external open state when provided (edit mode), internal otherwise
@@ -373,15 +381,53 @@ export function CreatePortfolioDialog({ onCreated, open: externalOpen, onOpenCha
                   key={inst.id}
                   className="grid grid-cols-[1fr_80px_90px_70px_80px_80px_32px] gap-2 items-center"
                 >
-                  <Input
-                    placeholder="RELIANCE"
-                    value={inst.ticker}
-                    onChange={(e) => updateInstrument(inst.id, "ticker", e.target.value.toUpperCase())}
-                    className="h-8 text-xs"
-                  />
+                  {inst.type === "BASKET" ? (
+                    <Select
+                      value={inst.ticker || "none"}
+                      onValueChange={(v) => {
+                        if (v === "none") return;
+                        const basket = availableBaskets.find((b) => b.slug === v);
+                        updateInstrument(inst.id, "ticker", v);
+                        if (basket) {
+                          updateInstrument(inst.id, "sector", "ETF");
+                          updateInstrument(inst.id, "quantity", 1);
+                          if (basket.current_value) {
+                            updateInstrument(inst.id, "price", basket.current_value);
+                          }
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue placeholder="Select basket" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none" className="text-xs">Select basket...</SelectItem>
+                        {availableBaskets.map((b) => (
+                          <SelectItem key={b.slug} value={b.slug} className="text-xs">
+                            {b.name} {b.current_value ? `(₹${b.current_value.toLocaleString("en-IN")})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      placeholder="RELIANCE"
+                      value={inst.ticker}
+                      onChange={(e) => updateInstrument(inst.id, "ticker", e.target.value.toUpperCase())}
+                      className="h-8 text-xs"
+                    />
+                  )}
                   <Select
                     value={inst.type}
-                    onValueChange={(v) => updateInstrument(inst.id, "type", v)}
+                    onValueChange={(v) => {
+                      updateInstrument(inst.id, "type", v);
+                      // Reset ticker when switching to/from BASKET
+                      if (v === "BASKET" || inst.type === "BASKET") {
+                        updateInstrument(inst.id, "ticker", "");
+                        updateInstrument(inst.id, "price", 0);
+                        updateInstrument(inst.id, "quantity", 0);
+                      }
+                    }}
                   >
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue />

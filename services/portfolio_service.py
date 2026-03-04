@@ -117,7 +117,8 @@ def fetch_live_price(yf_symbol: str) -> Optional[Dict]:
 def get_live_prices(tickers: List[str], overrides: Optional[Dict[str, str]] = None) -> Dict[str, Dict]:
     """Fetch live prices for multiple tickers in parallel (max 8 concurrent).
     overrides: {ticker: yf_symbol} — per-holding overrides from FM, checked first.
-    Handles MB_ (microbasket) tickers by computing live basket values."""
+    Handles MB_ (microbasket) tickers by computing live basket values.
+    Returns dict keyed by ticker -> price data dict. Tickers not found are absent."""
     ticker_to_yf: Dict[str, str] = {}
     basket_tickers: List[str] = []
     override_map = overrides or {}

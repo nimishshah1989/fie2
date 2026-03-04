@@ -323,12 +323,16 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
     total_current = 0.0
     rows = []
     market_times = []
+    warnings = []
     for h in holdings:
         price_data = prices.get(h.ticker, {})
         current_price = price_data.get("current_price")
         day_change_pct = price_data.get("change_pct")
         yf_symbol = price_data.get("yf_symbol")
         market_time = price_data.get("market_time")
+        price_available = current_price is not None
+        if not price_available:
+            warnings.append(f"{h.ticker}: no market price found — check ticker or set symbol override")
         if market_time:
             market_times.append(market_time)
         current_value = (h.quantity * current_price) if current_price else None
@@ -347,6 +351,7 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
             "weight_pct": None,
             "price_source": yf_symbol,
             "yf_symbol_override": h.yf_symbol_override,
+            "price_available": price_available,
         })
     for row in rows:
         cv = row["current_value"] or row["total_cost"]
@@ -366,7 +371,10 @@ async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
         "unrealized_pnl_pct": round(((total_current - total_invested) / total_invested) * 100, 2) if total_invested > 0 else 0.0,
         "realized_pnl": round(realized_total, 2), "num_holdings": len(rows),
     }
-    return {"success": True, "holdings": rows, "totals": totals, "prices_as_of": prices_as_of}
+    result = {"success": True, "holdings": rows, "totals": totals, "prices_as_of": prices_as_of}
+    if warnings:
+        result["warnings"] = warnings
+    return result
 
 
 # ─── Symbol Override ────────────────────────────────────
@@ -468,7 +476,7 @@ async def get_nav_history(portfolio_id: int, period: str = "all", db: Session = 
         bv = benchmark_data.get(n.date)
         if bv and first_bench is None:
             first_bench = bv
-        break
+            break
 
     result = []
     for n in nav_rows:

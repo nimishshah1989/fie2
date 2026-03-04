@@ -45,6 +45,7 @@ export interface PortfolioHoldingRow {
   weight_pct: number | null;
   price_source: string | null;  // Yahoo Finance symbol used (e.g. LIQUIDBEES.NS)
   yf_symbol_override: string | null;  // FM-set Yahoo Finance symbol override
+  price_available?: boolean;  // Whether live price was found for this ticker
 }
 
 export interface HoldingsTotals {
