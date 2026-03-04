@@ -2,7 +2,6 @@
 
 import type { Alert } from "@/lib/types";
 import { cn, formatPrice, formatTimestamp } from "@/lib/utils";
-import { SignalChip } from "@/components/signal-chip";
 import { OhlcvStrip } from "@/components/ohlcv-strip";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Eye } from "lucide-react";
@@ -14,47 +13,34 @@ interface AlertCardCompactProps {
   onWatch: (id: number) => void;
 }
 
-const borderColorMap: Record<string, string> = {
-  BULLISH: "border-l-emerald-500",
-  BEARISH: "border-l-red-500",
-  NEUTRAL: "border-l-slate-400",
-};
-
 export function AlertCardCompact({
   alert,
   onApprove,
   onDeny,
   onWatch,
 }: AlertCardCompactProps) {
-  const borderColor = borderColorMap[alert.signal_direction] ?? "border-l-slate-400";
-
   return (
     <div
-      className={cn(
-        "rounded-xl border border-l-4 bg-card shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden",
-        borderColor
-      )}
+      className="rounded-xl border bg-card shadow-sm hover:shadow-md transition-shadow p-4 flex flex-col gap-3 overflow-hidden"
     >
-      {/* Header: Ticker + Signal + Interval */}
+      {/* Header: Ticker + Exchange + Interval */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="font-bold text-base text-foreground">
             {alert.ticker}
           </span>
-          <SignalChip signal={alert.signal_direction} />
+          <span className="text-[10px] font-medium text-muted-foreground bg-muted rounded px-1.5 py-0.5 uppercase">
+            {alert.exchange}
+          </span>
         </div>
         <span className="text-xs font-medium text-muted-foreground bg-muted rounded-md px-2 py-0.5">
           {alert.interval}
         </span>
       </div>
 
-      {/* Alert name, exchange, time */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span className="truncate mr-2">{alert.alert_name}</span>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="uppercase">{alert.exchange}</span>
-          <span>{formatTimestamp(alert.received_at)}</span>
-        </div>
+      {/* Time */}
+      <div className="text-xs text-muted-foreground">
+        {formatTimestamp(alert.received_at)}
       </div>
 
       {/* OHLCV Strip */}
@@ -69,7 +55,7 @@ export function AlertCardCompact({
       {/* Price at alert */}
       {alert.price_at_alert != null && (
         <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-1.5 flex items-center justify-between">
-          <span className="text-xs font-medium text-blue-700">Price at Alert</span>
+          <span className="text-xs font-medium text-blue-700">Close</span>
           <span className="text-sm font-bold text-blue-900">
             {formatPrice(alert.price_at_alert)}
           </span>
