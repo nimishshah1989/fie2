@@ -73,10 +73,13 @@ export function CsvUploadDialog({ open, onOpenChange, onSuccess }: CsvUploadDial
           <div className="rounded-lg border bg-muted/50 p-3 text-xs text-muted-foreground">
             <p className="font-semibold mb-1">CSV Format:</p>
             <code className="block bg-background rounded px-2 py-1 text-[11px] font-mono">
-              basket_name, ticker, company_name, weight(%)
+              basket_name, ticker, company_name, weight(%), price, quantity
             </code>
             <p className="mt-1">
               Group rows by basket_name. Weights per basket must sum to ~100%.
+            </p>
+            <p className="mt-0.5">
+              Price &amp; quantity are optional. If provided, portfolio value = sum(price × qty).
             </p>
           </div>
 

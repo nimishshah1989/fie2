@@ -31,7 +31,7 @@ interface CreateBasketDialogProps {
 }
 
 function emptyRow(): ConstituentInput {
-  return { ticker: "", company_name: "", weight_pct: 0 };
+  return { ticker: "", company_name: "", weight_pct: 0, buy_price: 0 };
 }
 
 export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }: CreateBasketDialogProps) {
@@ -57,6 +57,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
           ticker: c.ticker,
           company_name: c.company_name || "",
           weight_pct: c.weight_pct,
+          buy_price: c.buy_price ?? c.current_price ?? 0,
         }))
       );
     } else {
@@ -110,10 +111,20 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
         ticker: r.ticker.trim().toUpperCase(),
         company_name: r.company_name?.trim() || undefined,
         weight_pct: r.weight_pct,
+        buy_price: (r.buy_price ?? 0) > 0 ? r.buy_price : undefined,
       }));
 
       const parsedSize = parseFloat(portfolioSize);
-      const sizeValue = parsedSize > 0 ? parsedSize : undefined;
+      // Auto-compute from buy_price × weight if portfolio_size not explicitly set
+      let sizeValue = parsedSize > 0 ? parsedSize : undefined;
+      if (!sizeValue) {
+        const allHavePrices = validRows.every((r) => (r.buy_price ?? 0) > 0);
+        if (allHavePrices && sizeValue === undefined) {
+          // Sum of price × computed units (price × weight% / 100 × assumed base)
+          // Cannot compute without qty — leave for backend auto-compute
+          sizeValue = undefined;
+        }
+      }
 
       let result;
       if (isEdit && editBasket) {
@@ -149,7 +160,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Basket" : "Create Microbasket"}</DialogTitle>
         </DialogHeader>
@@ -209,7 +220,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
               step={1000}
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              If set, units per stock will be auto-calculated based on weights and current prices
+              Auto-computed from buy price × units if not set manually
             </p>
           </div>
 
@@ -224,48 +235,70 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
 
             <div className="space-y-2">
               {/* Header */}
-              <div className="grid grid-cols-[1fr_1.5fr_80px_32px] gap-2 text-[10px] font-semibold text-muted-foreground uppercase">
+              <div className="grid grid-cols-[1fr_1.2fr_70px_80px_70px_32px] gap-2 text-[10px] font-semibold text-muted-foreground uppercase">
                 <span>Ticker</span>
                 <span>Company Name</span>
-                <span className="text-right">Weight %</span>
+                <span className="text-right">Wt %</span>
+                <span className="text-right">Price ₹</span>
+                <span className="text-right">Units</span>
                 <span />
               </div>
 
-              {rows.map((row, idx) => (
-                <div key={idx} className="grid grid-cols-[1fr_1.5fr_80px_32px] gap-2">
-                  <Input
-                    placeholder="RELIANCE"
-                    value={row.ticker}
-                    onChange={(e) => updateRow(idx, "ticker", e.target.value)}
-                    className="font-mono text-sm"
-                  />
-                  <Input
-                    placeholder="Reliance Industries"
-                    value={row.company_name || ""}
-                    onChange={(e) => updateRow(idx, "company_name", e.target.value)}
-                    className="text-sm"
-                  />
-                  <Input
-                    type="number"
-                    placeholder="20"
-                    value={row.weight_pct || ""}
-                    onChange={(e) => updateRow(idx, "weight_pct", parseFloat(e.target.value) || 0)}
-                    className="text-right font-mono text-sm"
-                    min={0}
-                    max={100}
-                    step={0.1}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeRow(idx)}
-                    disabled={rows.length <= 1}
-                    className="h-9 w-8 p-0 text-muted-foreground hover:text-red-500"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
+              {rows.map((row, idx) => {
+                const parsedSize = parseFloat(portfolioSize);
+                const hasSize = parsedSize > 0;
+                const hasPrice = (row.buy_price ?? 0) > 0;
+                const units = hasSize && hasPrice && row.weight_pct > 0
+                  ? Math.floor((row.weight_pct / 100) * parsedSize / row.buy_price!)
+                  : null;
+                return (
+                  <div key={idx} className="grid grid-cols-[1fr_1.2fr_70px_80px_70px_32px] gap-2">
+                    <Input
+                      placeholder="RELIANCE"
+                      value={row.ticker}
+                      onChange={(e) => updateRow(idx, "ticker", e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <Input
+                      placeholder="Reliance Industries"
+                      value={row.company_name || ""}
+                      onChange={(e) => updateRow(idx, "company_name", e.target.value)}
+                      className="text-sm"
+                    />
+                    <Input
+                      type="number"
+                      placeholder="20"
+                      value={row.weight_pct || ""}
+                      onChange={(e) => updateRow(idx, "weight_pct", parseFloat(e.target.value) || 0)}
+                      className="text-right font-mono text-sm"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                    />
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={row.buy_price || ""}
+                      onChange={(e) => updateRow(idx, "buy_price", parseFloat(e.target.value) || 0)}
+                      className="text-right font-mono text-sm"
+                      min={0}
+                      step={0.01}
+                    />
+                    <div className="flex items-center justify-end font-mono text-sm text-muted-foreground h-9 px-2">
+                      {units != null ? units.toLocaleString("en-IN") : "—"}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeRow(idx)}
+                      disabled={rows.length <= 1}
+                      className="h-9 w-8 p-0 text-muted-foreground hover:text-red-500"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
 
             <Button

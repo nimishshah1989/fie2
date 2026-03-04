@@ -7,6 +7,8 @@ export interface BasketConstituent {
   ticker: string;
   company_name: string | null;
   weight_pct: number;
+  buy_price?: number | null;
+  quantity?: number | null;
   current_price?: number | null;
   weighted_value?: number | null;
   computed_units?: number | null;
@@ -69,6 +71,8 @@ export interface ConstituentInput {
   ticker: string;
   company_name?: string;
   weight_pct: number;
+  buy_price?: number;
+  quantity?: number;
 }
 
 export interface CreateBasketPayload {

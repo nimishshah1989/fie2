@@ -37,6 +37,8 @@ class ConstituentPayload(BaseModel):
     ticker: str
     company_name: Optional[str] = None
     weight_pct: float = Field(gt=0, le=100)
+    buy_price: Optional[float] = None
+    quantity: Optional[int] = None
 
 
 class CreateBasketRequest(BaseModel):
@@ -112,12 +114,22 @@ async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db))
             detail=f"Constituent weights sum to {total_weight:.1f}%, must be ~100%"
         )
 
+    # Auto-compute portfolio_size from price × quantity if not explicitly set
+    effective_size = req.portfolio_size
+    if not effective_size:
+        computed = sum(
+            (c.buy_price or 0) * (c.quantity or 0)
+            for c in req.constituents
+        )
+        if computed > 0:
+            effective_size = computed
+
     basket = Microbasket(
         name=req.name,
         slug=slug,
         description=req.description,
         benchmark=req.benchmark or "NIFTY",
-        portfolio_size=req.portfolio_size,
+        portfolio_size=effective_size,
     )
     db.add(basket)
     db.flush()
@@ -128,6 +140,8 @@ async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db))
             ticker=c.ticker.upper().strip(),
             company_name=c.company_name,
             weight_pct=c.weight_pct,
+            buy_price=c.buy_price,
+            quantity=c.quantity,
         ))
 
     db.commit()
@@ -306,6 +320,8 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
                 "ticker": c.ticker,
                 "company_name": c.company_name,
                 "weight_pct": c.weight_pct,
+                "buy_price": c.buy_price,
+                "quantity": c.quantity,
             }
             for c in b.constituents
         ]
@@ -426,6 +442,8 @@ async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = 
                 ticker=c.ticker.upper().strip(),
                 company_name=c.company_name,
                 weight_pct=c.weight_pct,
+                buy_price=c.buy_price,
+                quantity=c.quantity,
             ))
 
     db.commit()
@@ -455,8 +473,9 @@ async def archive_basket(basket_id: int, db: Session = Depends(get_db)):
 @router.post("/api/baskets/csv-upload")
 async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Parse CSV and create multiple baskets.
-    CSV format: basket_name, ticker, company_name, weight(%)
+    CSV format: basket_name, ticker, company_name, weight(%), price, quantity
     Groups rows by basket_name, validates each basket, reports per-basket results.
+    Price × Quantity per stock = starting reference NAV (auto-computed as portfolio_size).
     """
     if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file")
@@ -474,6 +493,8 @@ async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends
         ticker = (row.get("ticker") or "").strip().upper()
         company = (row.get("company_name") or "").strip()
         weight_str = (row.get("weight") or row.get("weight(%)") or row.get("weight_pct") or "").strip()
+        price_str = (row.get("price") or row.get("buy_price") or "").strip()
+        qty_str = (row.get("quantity") or row.get("qty") or "").strip()
 
         if not name or not ticker or not weight_str:
             continue
@@ -483,12 +504,28 @@ async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends
         except ValueError:
             continue
 
+        buy_price = None
+        if price_str:
+            try:
+                buy_price = float(price_str)
+            except ValueError:
+                pass
+
+        quantity = None
+        if qty_str:
+            try:
+                quantity = int(float(qty_str))
+            except ValueError:
+                pass
+
         if name not in baskets_map:
             baskets_map[name] = []
         baskets_map[name].append({
             "ticker": ticker,
             "company_name": company or None,
             "weight_pct": weight,
+            "buy_price": buy_price,
+            "quantity": quantity,
         })
 
     if not baskets_map:
@@ -517,8 +554,16 @@ async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends
             })
             continue
 
+        # Auto-compute portfolio_size from price × quantity
+        computed_size = sum(
+            (c.get("buy_price") or 0) * (c.get("quantity") or 0)
+            for c in constituents
+        )
+        portfolio_size = computed_size if computed_size > 0 else None
+
         basket = Microbasket(
             name=name, slug=slug, description=None, benchmark="NIFTY",
+            portfolio_size=portfolio_size,
         )
         db.add(basket)
         db.flush()
@@ -529,6 +574,8 @@ async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends
                 ticker=c["ticker"],
                 company_name=c["company_name"],
                 weight_pct=c["weight_pct"],
+                buy_price=c.get("buy_price"),
+                quantity=c.get("quantity"),
             ))
 
         db.commit()

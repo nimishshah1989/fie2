@@ -173,6 +173,8 @@ def _run_migrations():
         "ALTER TABLE model_portfolios ADD COLUMN inception_date VARCHAR(10)",
         "ALTER TABLE microbaskets ADD COLUMN portfolio_size FLOAT",
         "ALTER TABLE portfolio_holdings ADD COLUMN yf_symbol_override VARCHAR(50)",
+        "ALTER TABLE microbasket_constituents ADD COLUMN buy_price FLOAT",
+        "ALTER TABLE microbasket_constituents ADD COLUMN quantity INTEGER",
     ]
     for sql in migrations:
         try:
@@ -368,6 +370,8 @@ class MicrobasketConstituent(Base):
     ticker       = Column(String(50), nullable=False)
     company_name = Column(String(200), nullable=True)
     weight_pct   = Column(Float, nullable=False)   # e.g. 20.0 = 20%
+    buy_price    = Column(Float, nullable=True)     # initial buy price per share
+    quantity     = Column(Integer, nullable=True)    # number of shares purchased
     added_at     = Column(DateTime, default=func.now())
 
     basket = relationship("Microbasket", back_populates="constituents")
