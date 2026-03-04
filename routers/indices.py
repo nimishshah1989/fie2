@@ -357,7 +357,7 @@ async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Sessi
 
         return {
             "success": True, "count": len(data), "base": base,
-            "indices": data, "timestamp": datetime.now().isoformat(),
+            "indices": data, "timestamp": datetime.now().isoformat() + "Z",
         }
     except Exception as e:
         logger.error("Live indices fetch error: %s", e)

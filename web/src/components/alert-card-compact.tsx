@@ -1,7 +1,7 @@
 "use client";
 
 import type { Alert } from "@/lib/types";
-import { cn, formatPrice, formatTimestamp } from "@/lib/utils";
+import { formatPrice, formatTimestamp } from "@/lib/utils";
 import { OhlcvStrip } from "@/components/ohlcv-strip";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Eye } from "lucide-react";

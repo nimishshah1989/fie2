@@ -177,7 +177,7 @@ async def list_baskets(db: Session = Depends(get_db)):
             "num_constituents": len(b.constituents),
             "current_value": latest_nav.close_price if latest_nav else None,
             "value_date": latest_nav.date if latest_nav else None,
-            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "created_at": (b.created_at.isoformat() + "Z") if b.created_at else None,
         })
 
     return {"success": True, "baskets": results}
@@ -194,7 +194,7 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
     )
 
     if not baskets:
-        return {"success": True, "count": 0, "base": base, "baskets": [], "timestamp": datetime.now().isoformat()}
+        return {"success": True, "count": 0, "base": base, "baskets": [], "timestamp": datetime.now().isoformat() + "Z"}
 
     # Compute live values for all baskets
     results = []
@@ -331,7 +331,7 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
         "count": len(results),
         "base": base,
         "baskets": results,
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now().isoformat() + "Z",
     }
 
 
@@ -373,8 +373,8 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
         "current_value": live_data["current_price"] if live_data else None,
         "num_constituents": len(basket.constituents),
         "constituents": constituents,
-        "created_at": basket.created_at.isoformat() if basket.created_at else None,
-        "updated_at": basket.updated_at.isoformat() if basket.updated_at else None,
+        "created_at": (basket.created_at.isoformat() + "Z") if basket.created_at else None,
+        "updated_at": (basket.updated_at.isoformat() + "Z") if basket.updated_at else None,
     }
 
 

@@ -13,6 +13,7 @@ import { SignalChip } from "@/components/signal-chip";
 import {
   formatPrice,
   formatPct,
+  formatTimestamp,
   formatRatio,
   cn,
   getRelativeSignal,
@@ -161,7 +162,7 @@ export function IndexTable({ indices, period, timestamp }: IndexTableProps) {
                 Last Price
                 {timestamp && (
                   <span className="block text-[10px] font-normal text-muted-foreground/70">
-                    {timestamp}
+                    {formatTimestamp(timestamp)}
                   </span>
                 )}
               </TableHead>

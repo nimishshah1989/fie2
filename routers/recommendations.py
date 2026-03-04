@@ -371,7 +371,7 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
             "top_n": top_n,
             "qualifying_sectors": qualifying_sectors,
             "non_qualifying_sectors": non_qualifying_sectors,
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": datetime.now().isoformat() + "Z",
         }
 
     except HTTPException:

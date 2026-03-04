@@ -113,8 +113,8 @@ async def list_portfolios(db: Session = Depends(get_db)):
             "id": p.id, "name": p.name, "description": p.description,
             "benchmark": p.benchmark,
             "status": p.status.value if p.status else "ACTIVE",
-            "created_at": p.created_at.isoformat() if p.created_at else None,
-            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+            "created_at": (p.created_at.isoformat() + "Z") if p.created_at else None,
+            "updated_at": (p.updated_at.isoformat() + "Z") if p.updated_at else None,
             "num_holdings": len([h for h in holdings if h.quantity > 0]),
             "total_invested": round(total_invested, 2),
             "current_value": round(current_value, 2),
@@ -133,8 +133,8 @@ async def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
         "id": p.id, "name": p.name, "description": p.description,
         "benchmark": p.benchmark,
         "status": p.status.value if p.status else "ACTIVE",
-        "created_at": p.created_at.isoformat() if p.created_at else None,
-        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        "created_at": (p.created_at.isoformat() + "Z") if p.created_at else None,
+        "updated_at": (p.updated_at.isoformat() + "Z") if p.updated_at else None,
     }
 
 
@@ -293,7 +293,7 @@ async def list_transactions(
             "txn_date": t.txn_date, "notes": t.notes,
             "realized_pnl": t.realized_pnl, "realized_pnl_pct": t.realized_pnl_pct,
             "cost_basis_at_sell": t.cost_basis_at_sell,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "created_at": (t.created_at.isoformat() + "Z") if t.created_at else None,
         } for t in txns],
     }
 
