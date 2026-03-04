@@ -90,7 +90,7 @@ def _serialize(a: TradingViewAlert) -> dict:
             "priority":       ac.priority.value if ac.priority else None,
             "has_chart":      bool(ac.chart_image_b64),
             "chart_analysis": json.loads(ac.chart_analysis) if ac.chart_analysis else None,
-            "decision_at":    ac.decision_at.isoformat() if ac.decision_at else None,
+            "decision_at":    (ac.decision_at.isoformat() + "Z") if ac.decision_at else None,
             "fm_notes":       ac.fm_notes,
             "entry_price_low":  ac.entry_price_low,
             "entry_price_high": ac.entry_price_high,
@@ -114,7 +114,7 @@ def _serialize(a: TradingViewAlert) -> dict:
         "alert_name":       a.alert_name or a.ticker,
         "signal_direction": a.signal_direction or "NEUTRAL",
         "status":           a.status.value,
-        "received_at":      a.received_at.isoformat() if a.received_at else None,
+        "received_at":      (a.received_at.isoformat() + "Z") if a.received_at else None,
         "action":           action,
     }
 
@@ -165,23 +165,39 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         ticker     = _cs(data.get("ticker"))
         exchange   = _cs(data.get("exchange"))
         interval   = _cs(data.get("interval"))
-        time_val   = _cs(data.get("time"))
+        time_val   = _cs(data.get("time")) or _cs(data.get("time_utc"))
         timenow    = _cs(data.get("timenow"))
-        o          = _sf(data.get("open"))
-        h          = _sf(data.get("high"))
-        l          = _sf(data.get("low"))
-        c          = _sf(data.get("close"))
+        # Support both TradingView native keys (open/high/low/close)
+        # and prefixed keys (price_open/price_high/price_low/price_at_alert)
+        o          = _sf(data.get("open")) or _sf(data.get("price_open"))
+        h          = _sf(data.get("high")) or _sf(data.get("price_high"))
+        l          = _sf(data.get("low")) or _sf(data.get("price_low"))
+        c          = _sf(data.get("close")) or _sf(data.get("price_at_alert"))
         v          = _sf(data.get("volume"))
-        alert_data = _cs(data.get("data"))
+        # Support both "data" (legacy) and "alert_message" keys
+        alert_data = _cs(data.get("data")) or _cs(data.get("alert_message"))
 
-        sig        = _infer_signal(alert_data)
-        alert_name = _parse_alert_name(alert_data, ticker)
+        # Resolve signal: explicit field → strategy.order.action → text inference
+        _SIG_MAP = {"buy": "BULLISH", "sell": "BEARISH", "long": "BULLISH", "short": "BEARISH"}
+        explicit_sig = _cs(data.get("signal_direction")).upper()
+        strategy_action = _cs(data.get("strategy_action"))  # from {{strategy.order.action}}
+        if explicit_sig in ("BULLISH", "BEARISH", "NEUTRAL"):
+            sig = explicit_sig
+        elif strategy_action and strategy_action.lower() in _SIG_MAP:
+            sig = _SIG_MAP[strategy_action.lower()]
+        else:
+            sig = _infer_signal(alert_data)
 
+        # Use explicit alert_name if provided (skip placeholder values)
+        explicit_name = _cs(data.get("alert_name"))
+        alert_name = explicit_name if explicit_name and explicit_name.lower() not in _JUNK and "your_" not in explicit_name.lower() else _parse_alert_name(alert_data, ticker)
+
+        price_at = _sf(data.get("price_at_alert")) or c
         alert = TradingViewAlert(
             ticker=ticker or "UNKNOWN", exchange=exchange, interval=interval,
             time_utc=time_val, timenow_utc=timenow,
             price_open=o, price_high=h, price_low=l, price_close=c,
-            price_at_alert=c, volume=v, alert_data=alert_data,
+            price_at_alert=price_at, volume=v, alert_data=alert_data,
             alert_name=alert_name, signal_direction=sig,
             raw_payload=data, status=AlertStatus.PENDING,
         )
