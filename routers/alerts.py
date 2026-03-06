@@ -23,6 +23,7 @@ from models import (
 from services.claude_service import (
     ANTHROPIC_API_KEY, analyze_chart_vision, analyze_text_only,
 )
+from services.telegram_service import TELEGRAM_ENABLED, send_alert_card
 
 logger = logging.getLogger("fie_v3.alerts")
 router = APIRouter()
@@ -274,6 +275,32 @@ def _background_claude_analysis(
         logger.warning("Background Claude analysis failed for action %d: %s", action_id, e)
 
 
+def _background_telegram_notify(alert_id: int, alert_snapshot: dict, action_snapshot: dict):
+    """Wait for Claude analysis (up to 60s), then send full card to Telegram."""
+    import time
+    try:
+        db = SessionLocal()
+        action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
+
+        # Poll for Claude analysis to arrive (12 × 5s = 60s max)
+        for _ in range(12):
+            if action and action.chart_analysis:
+                break
+            time.sleep(5)
+            db.refresh(action) if action else None
+
+        # Build action dict with latest analysis
+        telegram_action = dict(action_snapshot)
+        if action and action.chart_analysis:
+            telegram_action["chart_analysis"] = action.chart_analysis
+
+        asyncio.run(send_alert_card(alert_snapshot, telegram_action))
+        logger.info("Telegram notification sent for alert #%d", alert_id)
+        db.close()
+    except Exception as exc:
+        logger.warning("Telegram notify failed for alert #%d: %s", alert_id, exc)
+
+
 @router.post("/api/alerts/{alert_id}/action")
 async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
@@ -318,20 +345,38 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     db.refresh(action)
 
     # Spawn background thread for Claude analysis + stock history on APPROVED
-    if decision == AlertStatus.APPROVED and ANTHROPIC_API_KEY:
+    if decision == AlertStatus.APPROVED:
         alert_snapshot = {
             "ticker": alert.ticker, "interval": alert.interval,
             "price_at_alert": alert.price_at_alert, "price_close": alert.price_close,
             "signal_direction": alert.signal_direction, "alert_name": alert.alert_name,
             "alert_data": alert.alert_data, "price_open": alert.price_open,
             "price_high": alert.price_high, "price_low": alert.price_low,
-            "volume": alert.volume,
+            "volume": alert.volume, "exchange": alert.exchange,
         }
-        threading.Thread(
-            target=_background_claude_analysis,
-            args=(action.id, req.chart_image_b64, alert_snapshot),
-            daemon=True, name=f"claude-analysis-{alert_id}",
-        ).start()
+        if ANTHROPIC_API_KEY:
+            threading.Thread(
+                target=_background_claude_analysis,
+                args=(action.id, req.chart_image_b64, alert_snapshot),
+                daemon=True, name=f"claude-analysis-{alert_id}",
+            ).start()
+
+        if TELEGRAM_ENABLED:
+            action_snapshot = {
+                "action_call": action.action_call,
+                "chart_image_b64": req.chart_image_b64,
+                "fm_notes": action.fm_notes,
+                "entry_price_low": action.entry_price_low,
+                "entry_price_high": action.entry_price_high,
+                "stop_loss": action.stop_loss,
+                "target_price": action.target_price,
+                "decision_at": (action.decision_at.isoformat() + "Z") if action.decision_at else None,
+            }
+            threading.Thread(
+                target=_background_telegram_notify,
+                args=(alert_id, alert_snapshot, action_snapshot),
+                daemon=True, name=f"telegram-{alert_id}",
+            ).start()
 
     return {"success": True, "alert_id": alert_id}
 

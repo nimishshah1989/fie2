@@ -23,18 +23,25 @@ import { createBasket, updateBasket } from "@/lib/basket-api";
 import { BASE_INDEX_OPTIONS } from "@/lib/constants";
 import type { BasketLiveItem, ConstituentInput } from "@/lib/basket-types";
 
+export interface BasketPrefill {
+  name: string;
+  benchmark: string;
+  constituents: ConstituentInput[];
+}
+
 interface CreateBasketDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
   editBasket?: BasketLiveItem | null;
+  prefill?: BasketPrefill | null;
 }
 
 function emptyRow(): ConstituentInput {
   return { ticker: "", company_name: "", weight_pct: 0, buy_price: 0 };
 }
 
-export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }: CreateBasketDialogProps) {
+export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket, prefill }: CreateBasketDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [benchmark, setBenchmark] = useState("NIFTY");
@@ -45,7 +52,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
 
   const isEdit = !!editBasket;
 
-  // Pre-fill when editing
+  // Pre-fill when editing or from prefill (recommendation → microbasket)
   useEffect(() => {
     if (editBasket) {
       setName(editBasket.name);
@@ -60,6 +67,17 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
           buy_price: c.buy_price ?? c.current_price ?? 0,
         }))
       );
+    } else if (prefill) {
+      setName(prefill.name);
+      setDescription("");
+      setBenchmark(prefill.benchmark);
+      setPortfolioSize("");
+      setRows(prefill.constituents.map((c) => ({
+        ticker: c.ticker,
+        company_name: c.company_name || "",
+        weight_pct: c.weight_pct,
+        buy_price: c.buy_price ?? 0,
+      })));
     } else {
       setName("");
       setDescription("");
@@ -68,7 +86,7 @@ export function CreateBasketDialog({ open, onOpenChange, onSuccess, editBasket }
       setRows([emptyRow()]);
     }
     setError("");
-  }, [editBasket, open]);
+  }, [editBasket, prefill, open]);
 
   const totalWeight = rows.reduce((sum, r) => sum + (r.weight_pct || 0), 0);
   const weightValid = Math.abs(totalWeight - 100) <= 1;

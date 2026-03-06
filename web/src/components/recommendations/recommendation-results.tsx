@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SECTOR_COLORS } from "@/lib/constants";
 import { SectorResultCard, type SectorResult } from "./sector-result-card";
+import type { BasketPrefill } from "@/components/basket/create-basket-dialog";
 
 interface RecommendationResultsProps {
   qualifyingSectors: SectorResult[];
@@ -12,6 +13,7 @@ interface RecommendationResultsProps {
   base: string;
   period: string;
   threshold: number;
+  onCreateBasket?: (prefill: BasketPrefill) => void;
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -28,6 +30,7 @@ export function RecommendationResults({
   base,
   period,
   threshold,
+  onCreateBasket,
 }: RecommendationResultsProps) {
   const [showNonQualifying, setShowNonQualifying] = useState(false);
   const totalSelected = qualifyingSectors.length + nonQualifyingSectors.length;
@@ -54,7 +57,7 @@ export function RecommendationResults({
       {qualifyingSectors.length > 0 ? (
         <div className="space-y-3">
           {qualifyingSectors.map((sector) => (
-            <SectorResultCard key={sector.sector_key} sector={sector} threshold={threshold} />
+            <SectorResultCard key={sector.sector_key} sector={sector} threshold={threshold} onCreateBasket={onCreateBasket} />
           ))}
         </div>
       ) : (

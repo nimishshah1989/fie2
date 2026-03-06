@@ -5,6 +5,7 @@ import { Compass } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SectorSelectionPanel } from "@/components/recommendations/sector-selection-panel";
 import { RecommendationResults } from "@/components/recommendations/recommendation-results";
+import { CreateBasketDialog, type BasketPrefill } from "@/components/basket/create-basket-dialog";
 import type { SectorResult } from "@/components/recommendations/sector-result-card";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
@@ -37,6 +38,8 @@ export default function RecommendationsPage() {
   const [generating, setGenerating] = useState(false);
   const [results, setResults] = useState<GenerateResponse | null>(null);
   const [error, setError] = useState("");
+  const [basketPrefill, setBasketPrefill] = useState<BasketPrefill | null>(null);
+  const [showBasketDialog, setShowBasketDialog] = useState(false);
 
   // Selection state
   const [selectedSectors, setSelectedSectors] = useState<string[]>([]);
@@ -158,12 +161,27 @@ export default function RecommendationsPage() {
             base={results.base}
             period={results.period}
             threshold={results.threshold}
+            onCreateBasket={(prefill) => {
+              setBasketPrefill(prefill);
+              setShowBasketDialog(true);
+            }}
           />
           <p className="text-[10px] text-muted-foreground text-right">
             Generated at {new Date(results.generated_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
           </p>
         </>
       )}
+
+      {/* Microbasket creation dialog (prefilled from recommendation) */}
+      <CreateBasketDialog
+        open={showBasketDialog}
+        onOpenChange={(open) => {
+          setShowBasketDialog(open);
+          if (!open) setBasketPrefill(null);
+        }}
+        onSuccess={() => setShowBasketDialog(false)}
+        prefill={basketPrefill}
+      />
     </div>
   );
 }

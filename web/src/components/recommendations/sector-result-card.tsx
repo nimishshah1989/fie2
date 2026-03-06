@@ -10,8 +10,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { ShoppingBasket } from "lucide-react";
 import { cn, formatPrice } from "@/lib/utils";
 import { SECTOR_COLORS } from "@/lib/constants";
+import type { BasketPrefill } from "@/components/basket/create-basket-dialog";
 
 interface TopStock {
   ticker: string;
@@ -43,6 +46,7 @@ export interface SectorResult {
 interface SectorResultCardProps {
   sector: SectorResult;
   threshold: number;
+  onCreateBasket?: (prefill: BasketPrefill) => void;
 }
 
 function formatMarketCap(crores: number | null): string {
@@ -59,9 +63,29 @@ function format52WRange(low: number | null, high: number | null): string {
   return `${lowStr} — ${highStr}`;
 }
 
-export function SectorResultCard({ sector, threshold }: SectorResultCardProps) {
+export function SectorResultCard({ sector, threshold, onCreateBasket }: SectorResultCardProps) {
   const colors = SECTOR_COLORS[sector.sector_key];
   const borderColor = colors?.border || "border-gray-200";
+
+  function handleCreateBasket() {
+    if (!onCreateBasket || sector.top_stocks.length === 0) return;
+    const n = sector.top_stocks.length;
+    const baseWeight = Math.floor((10000 / n)) / 100; // 2 decimal places
+    const constituents = sector.top_stocks.map((stock, idx) => ({
+      ticker: stock.ticker,
+      company_name: stock.name,
+      // Last stock gets remainder so weights sum to exactly 100
+      weight_pct: idx === n - 1
+        ? Math.round((100 - baseWeight * (n - 1)) * 100) / 100
+        : baseWeight,
+      buy_price: stock.last_price ?? 0,
+    }));
+    onCreateBasket({
+      name: `${sector.sector_name} Momentum`,
+      benchmark: "NIFTY",
+      constituents,
+    });
+  }
 
   return (
     <Card className={cn("gap-0 border-l-4", borderColor)}>
@@ -86,21 +110,35 @@ export function SectorResultCard({ sector, threshold }: SectorResultCardProps) {
               </span>
             </div>
           </div>
-          {/* ETF Badges */}
-          {sector.recommended_etfs.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {sector.recommended_etfs.map((etf) => (
-                <Badge key={etf.ticker} variant="secondary" className="text-[10px] font-mono">
-                  {etf.ticker}
-                  {etf.last_price != null && (
-                    <span className="ml-1 text-muted-foreground">
-                      ₹{formatPrice(etf.last_price)}
-                    </span>
-                  )}
-                </Badge>
-              ))}
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Create Microbasket Button */}
+            {onCreateBasket && sector.top_stocks.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCreateBasket}
+                className="h-7 text-xs gap-1.5 text-teal-600 border-teal-200 hover:bg-teal-50"
+              >
+                <ShoppingBasket className="h-3.5 w-3.5" />
+                Create Basket
+              </Button>
+            )}
+            {/* ETF Badges */}
+            {sector.recommended_etfs.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {sector.recommended_etfs.map((etf) => (
+                  <Badge key={etf.ticker} variant="secondary" className="text-[10px] font-mono">
+                    {etf.ticker}
+                    {etf.last_price != null && (
+                      <span className="ml-1 text-muted-foreground">
+                        ₹{formatPrice(etf.last_price)}
+                      </span>
+                    )}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Stock Table */}
