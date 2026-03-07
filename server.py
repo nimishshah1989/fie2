@@ -13,6 +13,28 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+from middleware.logging import setup_logging
+
+# ─── Structured Logging ──────────────────────────────────
+# Must be configured before any logger is used
+_fie_environment = os.getenv("FIE_ENVIRONMENT", "production")
+setup_logging(_fie_environment)
+logger = logging.getLogger("fie_v3")
+
+# ─── Sentry Error Tracking ──────────────────────────────
+import sentry_sdk
+
+_sentry_dsn = os.getenv("SENTRY_DSN", "")
+if _sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.getenv("FIE_ENVIRONMENT", "production"),
+        traces_sample_rate=0.1,  # 10% of requests for performance monitoring
+        profiles_sample_rate=0.1,
+        send_default_pii=False,  # Don't send PII (financial data protection)
+    )
+    logger.info("Sentry initialized for environment: %s", os.getenv("FIE_ENVIRONMENT", "production"))
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -23,7 +45,9 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from middleware.security import SecurityHeadersMiddleware, RequestSizeLimitMiddleware
+from middleware.security import (
+    SecurityHeadersMiddleware, RequestSizeLimitMiddleware, RequestLoggingMiddleware,
+)
 
 from models import (
     init_db, SessionLocal,
@@ -33,9 +57,6 @@ from services.data_helpers import upsert_price_row, get_all_portfolio_tickers_wi
 
 # ─── Routers ─────────────────────────────────────────────
 from routers import health, alerts, indices, portfolios, baskets, recommendations, pms
-
-logger = logging.getLogger("fie_v3")
-logging.basicConfig(level=logging.INFO)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -48,6 +69,9 @@ app = FastAPI(title="JHAVERI FIE v3", version="3.1")
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ─── Request Logging Middleware ──────────────────────────
+app.add_middleware(RequestLoggingMiddleware)
 
 # ─── Security Middleware ─────────────────────────────────
 app.add_middleware(RequestSizeLimitMiddleware, max_size=10 * 1024 * 1024)  # 10MB

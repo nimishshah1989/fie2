@@ -3,9 +3,11 @@ Security middleware for FIE v3.
 
 SecurityHeadersMiddleware — adds defensive HTTP headers to every response.
 RequestSizeLimitMiddleware — rejects request bodies exceeding a configurable max size.
+RequestLoggingMiddleware — logs all API requests with timing information.
 """
 
 import logging
+import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -98,3 +100,34 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                 )
 
         return await call_next(request)
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """Log all API requests with timing information."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+
+        response = await call_next(request)
+
+        duration_ms = round((time.perf_counter() - start) * 1000, 2)
+
+        # Only log API requests (not static files)
+        if request.url.path.startswith("/api") or request.url.path in ("/health", "/webhook/tradingview"):
+            access_logger = logging.getLogger("fie_v3.access")
+            access_logger.info(
+                "%s %s %d %.1fms",
+                request.method,
+                request.url.path,
+                response.status_code,
+                duration_ms,
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": response.status_code,
+                    "duration_ms": duration_ms,
+                    "client_ip": request.client.host if request.client else "unknown",
+                },
+            )
+
+        return response

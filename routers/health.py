@@ -4,14 +4,18 @@ Server status, health checks, and basic market summary.
 """
 
 import os
+import sys
+import time
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func as sa_func
+from sqlalchemy import func as sa_func, text
 
 from models import (
     get_db, TradingViewAlert, ModelPortfolio, PortfolioHolding, PortfolioNAV,
+    IndexPrice,
 )
 
 logger = logging.getLogger("fie_v3.health")
@@ -19,36 +23,102 @@ router = APIRouter()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+# Track server start time for uptime reporting
+_SERVER_START_TIME = datetime.utcnow()
+
 
 @router.get("/api/status")
 async def server_status():
     return {
         "analysis_enabled": bool(ANTHROPIC_API_KEY),
-        "version": "3.0",
+        "version": "3.1",
     }
 
 
 @router.get("/health")
 async def health(db: Session = Depends(get_db)):
-    """Health check with DB connectivity and row counts."""
+    """Health check with DB connectivity, data freshness, and system info."""
     from models import DATABASE_URL
+
+    environment = os.getenv("FIE_ENVIRONMENT", "production")
     db_type = "postgresql" if "postgresql" in DATABASE_URL else "sqlite"
+
+    # ── Database connectivity + latency ──────────────────
+    db_status = "connected"
+    db_latency_ms = 0.0
+    try:
+        db_start = time.perf_counter()
+        db.execute(text("SELECT 1"))
+        db_latency_ms = round((time.perf_counter() - db_start) * 1000, 2)
+    except Exception as exc:
+        db_status = "error"
+        logger.error("Health check DB connectivity failed: %s", exc)
+        return {
+            "status": "degraded",
+            "version": "3.1",
+            "environment": environment,
+            "db": {"status": "error", "error": str(exc), "type": db_type},
+        }
+
+    # ── Row counts ───────────────────────────────────────
     try:
         alert_count = db.query(sa_func.count(TradingViewAlert.id)).scalar() or 0
         portfolio_count = db.query(sa_func.count(ModelPortfolio.id)).scalar() or 0
         holding_count = db.query(sa_func.count(PortfolioHolding.id)).scalar() or 0
         nav_count = db.query(sa_func.count(PortfolioNAV.id)).scalar() or 0
     except Exception as exc:
-        return {"status": "error", "version": "3.0", "db_type": db_type, "error": str(exc)}
+        return {
+            "status": "degraded",
+            "version": "3.1",
+            "environment": environment,
+            "db": {"status": db_status, "latency_ms": db_latency_ms, "type": db_type},
+            "error": str(exc),
+        }
+
+    # ── Data freshness — latest IndexPrice record ────────
+    latest_price_date = None
+    hours_since_update = None
+    try:
+        latest_row = (
+            db.query(IndexPrice.date, IndexPrice.fetched_at)
+            .order_by(IndexPrice.fetched_at.desc())
+            .first()
+        )
+        if latest_row:
+            latest_price_date = latest_row.date
+            if latest_row.fetched_at:
+                delta = datetime.utcnow() - latest_row.fetched_at
+                hours_since_update = round(delta.total_seconds() / 3600, 1)
+    except Exception as exc:
+        logger.warning("Health check data freshness query failed: %s", exc)
+
+    # ── System info ──────────────────────────────────────
+    uptime_seconds = round((datetime.utcnow() - _SERVER_START_TIME).total_seconds())
+    uptime_hours = round(uptime_seconds / 3600, 1)
+
     return {
         "status": "ok",
-        "version": "3.0",
-        "db_type": db_type,
+        "version": "3.1",
+        "environment": environment,
+        "db": {
+            "status": db_status,
+            "latency_ms": db_latency_ms,
+            "type": db_type,
+        },
+        "data_freshness": {
+            "latest_price_date": latest_price_date,
+            "hours_since_update": hours_since_update,
+        },
         "counts": {
             "alerts": alert_count,
             "portfolios": portfolio_count,
             "holdings": holding_count,
             "nav_rows": nav_count,
+        },
+        "system": {
+            "python_version": sys.version.split()[0],
+            "uptime_hours": uptime_hours,
+            "uptime_seconds": uptime_seconds,
         },
     }
 
