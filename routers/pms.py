@@ -581,13 +581,21 @@ def get_monthly_returns(portfolio_id: int, db: Session = Depends(get_db)):
 SCRIPT_SECTOR_MAP: dict[str, str] = {
     "GOLDBEES": "Gold ETF",
     "SILVERBEES": "Silver ETF",
-    "LIQUIDCASE": "Liquid Fund",
-    "LIQUIDBEES": "Liquid Fund",
+    "LIQUIDCASE": "Cash & Liquid",
+    "LIQUIDBEES": "Cash & Liquid",
     "NIFTYBEES": "Index ETF",
     "BANKBEES": "Index ETF",
     "ITBEES": "Index ETF",
     "JUNIORBEES": "Index ETF",
     "SETFNIF50": "Index ETF",
+    "CPSE": "Index ETF",
+    "MOM50": "Index ETF",
+    "NETFNIF100": "Index ETF",
+    "PHARMABEES": "Index ETF",
+    "PSUBNKBEES": "Index ETF",
+    "FMCGIETF": "Index ETF",
+    "METALIETF": "Index ETF",
+    "NETFAUTO": "Index ETF",
 }
 
 
@@ -693,18 +701,25 @@ def get_pms_holdings(portfolio_id: int, db: Session = Depends(get_db)):
     total_with_cash = total_value + cash_value
 
     # by_stock: top holdings by value
+    # Merge LIQUIDCASE/LIQUIDBEES into the Cash & Liquid bucket
+    LIQUID_SCRIPTS = {"LIQUIDCASE", "LIQUIDBEES"}
+    liquid_value = sum(h["value"] for h in holdings if h["script"] in LIQUID_SCRIPTS)
+    combined_cash = cash_value + liquid_value
+
     by_stock = []
     for h in sorted(holdings, key=lambda x: x["value"], reverse=True):
+        if h["script"] in LIQUID_SCRIPTS:
+            continue  # merged into Cash & Liquid below
         by_stock.append({
             "label": h["script"],
             "value": h["value"],
             "pct": round(h["value"] / total_with_cash * 100, 1) if total_with_cash > 0 else 0,
         })
-    if cash_value > 0:
+    if combined_cash > 0:
         by_stock.append({
             "label": "Cash & Liquid",
-            "value": round(cash_value, 2),
-            "pct": round(cash_value / total_with_cash * 100, 1),
+            "value": round(combined_cash, 2),
+            "pct": round(combined_cash / total_with_cash * 100, 1),
         })
 
     # by_sector: group by sector
