@@ -3,14 +3,13 @@ FIE v3 — Portfolio Business Logic Service
 Live price fetching, NAV computation, XIRR, drawdown, and allocation helpers.
 """
 
-import json
 import logging
-import time as _time
 from datetime import datetime
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
+from cachetools import TTLCache
 from sqlalchemy import desc, func as sa_func
 from sqlalchemy.orm import Session
 
@@ -46,12 +45,13 @@ def get_yahoo_symbol(ticker: str) -> Optional[str]:
     return f"{ticker}.NS"
 
 
-# ─── Live Price Fetching (httpx + TTL cache) ────────────────────────
+# ─── Live Price Fetching (httpx + TTLCache) ────────────────────────
 
 _http_client: Optional[httpx.Client] = None
-_price_cache: Dict[str, Dict] = {}
-_price_cache_ts: Dict[str, float] = {}
-_PRICE_CACHE_TTL = 60
+
+# TTLCache automatically evicts entries after 60s and caps at 500 entries,
+# replacing the previous unbounded dict + manual timestamp tracking
+_price_cache: TTLCache = TTLCache(maxsize=500, ttl=60)
 
 
 def _get_http_client() -> httpx.Client:
@@ -67,9 +67,10 @@ def _get_http_client() -> httpx.Client:
 
 def fetch_live_price(yf_symbol: str) -> Optional[Dict]:
     """Fetch live price from Yahoo Finance with 60s TTL cache."""
-    now = _time.time()
-    if yf_symbol in _price_cache and (now - _price_cache_ts.get(yf_symbol, 0)) < _PRICE_CACHE_TTL:
-        return _price_cache[yf_symbol]
+    # TTLCache handles expiry automatically — no manual timestamp check needed
+    cached = _price_cache.get(yf_symbol)
+    if cached is not None:
+        return cached
 
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_symbol}"
@@ -107,7 +108,6 @@ def fetch_live_price(yf_symbol: str) -> Optional[Dict]:
             "market_time": market_time_str,
         }
         _price_cache[yf_symbol] = price_data
-        _price_cache_ts[yf_symbol] = now
         return price_data
     except Exception as exc:
         logger.debug("Price fetch failed for %s: %s", yf_symbol, exc)
@@ -127,7 +127,7 @@ def get_live_prices(tickers: List[str], overrides: Optional[Dict[str, str]] = No
         if ticker.upper().startswith("MB_"):
             basket_tickers.append(ticker.upper())
         else:
-            # Priority: per-holding override → YAHOO_SYMBOL_MAP → default .NS
+            # Priority: per-holding override -> YAHOO_SYMBOL_MAP -> default .NS
             if ticker in override_map and override_map[ticker]:
                 ticker_to_yf[ticker] = override_map[ticker]
             else:
@@ -222,7 +222,8 @@ def compute_max_drawdown(values) -> Optional[float]:
 # ─── NAV Computation ────────────────────────────────────────────────
 
 def compute_nav_for_portfolio(portfolio_id: int, date_str: str, db: Session):
-    """Compute and store NAV snapshot for a portfolio on a given date."""
+    """Compute and store NAV snapshot for a portfolio on a given date.
+    Uses batch query to fetch latest prices for all holdings (eliminates N+1)."""
     holdings = (
         db.query(PortfolioHolding)
         .filter(PortfolioHolding.portfolio_id == portfolio_id, PortfolioHolding.quantity > 0)
@@ -231,16 +232,29 @@ def compute_nav_for_portfolio(portfolio_id: int, date_str: str, db: Session):
     if not holdings:
         return None
 
+    # Batch-fetch latest price for each holding ticker on or before date_str
+    # instead of querying inside a loop (N+1 -> 1 query)
+    tickers = [h.ticker for h in holdings]
+    subq = (
+        db.query(
+            IndexPrice.index_name,
+            sa_func.max(IndexPrice.date).label("max_date"),
+        )
+        .filter(IndexPrice.index_name.in_(tickers), IndexPrice.date <= date_str)
+        .group_by(IndexPrice.index_name)
+        .subquery()
+    )
+    price_rows = (
+        db.query(IndexPrice.index_name, IndexPrice.close_price)
+        .join(subq, (IndexPrice.index_name == subq.c.index_name) & (IndexPrice.date == subq.c.max_date))
+        .all()
+    )
+    price_map = {r[0]: r[1] for r in price_rows if r[1]}
+
     total_value = 0.0
     total_cost = 0.0
     for h in holdings:
-        price_row = (
-            db.query(IndexPrice)
-            .filter(IndexPrice.index_name == h.ticker, IndexPrice.date <= date_str)
-            .order_by(desc(IndexPrice.date))
-            .first()
-        )
-        close = price_row.close_price if price_row and price_row.close_price else h.avg_cost
+        close = price_map.get(h.ticker) or h.avg_cost
         total_value += h.quantity * close
         total_cost += h.quantity * h.avg_cost
 

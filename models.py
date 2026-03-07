@@ -141,6 +141,8 @@ class IndexPrice(Base):
     __table_args__ = (
         Index('idx_indexprice_date_name', 'date', 'index_name', unique=True),
         Index('idx_indexprice_name', 'index_name'),
+        # Standalone date index for date-range queries (min/max date, date filtering)
+        Index('idx_indexprice_date', 'date'),
     )
 
 
@@ -153,7 +155,7 @@ def init_db():
 
 
 def _run_migrations():
-    """Idempotent column additions."""
+    """Idempotent column additions and index creation for existing databases."""
     db = SessionLocal()
     migrations = [
         "ALTER TABLE alert_actions ADD COLUMN is_ratio BOOLEAN DEFAULT FALSE",
@@ -181,6 +183,21 @@ def _run_migrations():
         "ALTER TABLE pms_nav_daily ADD COLUMN unit_nav FLOAT",
     ]
     for sql in migrations:
+        try:
+            from sqlalchemy import text
+            db.execute(text(sql))
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    # Index migrations — CREATE INDEX IF NOT EXISTS for existing databases
+    index_migrations = [
+        "CREATE INDEX IF NOT EXISTS idx_indexprice_date ON index_prices (date)",
+        "CREATE INDEX IF NOT EXISTS idx_pms_nav_date ON pms_nav_daily (date)",
+        "CREATE INDEX IF NOT EXISTS idx_metric_portfolio ON portfolio_metrics (portfolio_id)",
+        "CREATE INDEX IF NOT EXISTS idx_metric_portfolio_period ON portfolio_metrics (portfolio_id, period)",
+    ]
+    for sql in index_migrations:
         try:
             from sqlalchemy import text
             db.execute(text(sql))
@@ -412,6 +429,8 @@ class PmsNavDaily(Base):
     __table_args__ = (
         UniqueConstraint('portfolio_id', 'date', name='uq_pms_nav_portfolio_date'),
         Index('idx_pms_nav_portfolio_date', 'portfolio_id', 'date'),
+        # Standalone date index for date-range queries across all portfolios
+        Index('idx_pms_nav_date', 'date'),
     )
 
 
@@ -473,6 +492,9 @@ class PortfolioMetric(Base):
     __table_args__ = (
         UniqueConstraint('portfolio_id', 'as_of_date', 'period',
                          name='uq_metric_portfolio_date_period'),
+        # Index for portfolio lookups and period filtering
+        Index('idx_metric_portfolio', 'portfolio_id'),
+        Index('idx_metric_portfolio_period', 'portfolio_id', 'period'),
     )
 
 

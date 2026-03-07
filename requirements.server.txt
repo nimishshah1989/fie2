@@ -16,3 +16,4 @@ psycopg2-binary
 nselib>=2.4
 slowapi
 sentry-sdk[fastapi]
+cachetools

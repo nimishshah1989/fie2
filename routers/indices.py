@@ -117,7 +117,8 @@ async def fetch_stock_history_endpoint(db: Session = Depends(get_db)):
 
 @router.get("/api/indices/latest")
 async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
-    """Return latest index prices with ratio vs base, recommendations, and period returns."""
+    """Return latest index prices with ratio vs base, recommendations, and period returns.
+    Optimized: uses batch queries for period returns instead of per-index per-period queries."""
     latest_date = db.query(sqlfunc.max(IndexPrice.date)).scalar()
     if not latest_date:
         return {"date": None, "base": base, "indices": [],
@@ -128,20 +129,65 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
 
     all_rows = db.query(IndexPrice).filter_by(date=latest_date).order_by(IndexPrice.index_name).all()
 
-    def _get_period_return(idx_name, days):
-        target = (datetime.strptime(latest_date, "%Y-%m-%d") - timedelta(days=days)).strftime("%Y-%m-%d")
-        old = (
-            db.query(IndexPrice)
-            .filter(IndexPrice.index_name == idx_name, IndexPrice.date <= target)
-            .order_by(desc(IndexPrice.date))
-            .first()
-        )
-        if not old or not old.close_price:
-            return None
-        curr = db.query(IndexPrice).filter_by(date=latest_date, index_name=idx_name).first()
-        if not curr or not curr.close_price:
-            return None
-        return round(((curr.close_price - old.close_price) / old.close_price) * 100, 2)
+    # Build current close map from latest date rows (already fetched, no extra query)
+    current_close_map = {r.index_name: r.close_price for r in all_rows if r.close_price}
+
+    # Batch-fetch previous close for all indices (1 query instead of N)
+    prev_date = (
+        db.query(sqlfunc.max(IndexPrice.date))
+        .filter(IndexPrice.date < latest_date)
+        .scalar()
+    )
+    prev_close_map: dict = {}
+    if prev_date:
+        prev_rows = db.query(IndexPrice).filter_by(date=prev_date).all()
+        prev_close_map = {r.index_name: r.close_price for r in prev_rows if r.close_price}
+
+    # Batch-fetch historical prices for period returns using bidirectional date lookup
+    # Same approach as /api/indices/live — eliminates N*6 individual queries
+    period_map = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "6m": 180, "12m": 365}
+    tolerance = {"1d": 5, "1w": 5, "1m": 10, "3m": 15, "6m": 15, "12m": 15}
+
+    historical_dates: dict = {}
+    latest_dt = datetime.strptime(latest_date, "%Y-%m-%d")
+    for pk, days in period_map.items():
+        target = (latest_dt - timedelta(days=days)).strftime("%Y-%m-%d")
+        tol = tolerance.get(pk, 15)
+
+        before = db.query(sqlfunc.max(IndexPrice.date)).filter(IndexPrice.date <= target).scalar()
+        after = db.query(sqlfunc.min(IndexPrice.date)).filter(IndexPrice.date >= target).scalar()
+
+        best = None
+        if before:
+            gap_before = (datetime.strptime(target, "%Y-%m-%d") - datetime.strptime(before, "%Y-%m-%d")).days
+            if gap_before <= tol:
+                best = before
+        if after:
+            gap_after = (datetime.strptime(after, "%Y-%m-%d") - datetime.strptime(target, "%Y-%m-%d")).days
+            if gap_after <= tol:
+                if best is None:
+                    best = after
+                else:
+                    gap_best = abs((datetime.strptime(target, "%Y-%m-%d") - datetime.strptime(best, "%Y-%m-%d")).days)
+                    if gap_after < gap_best:
+                        best = after
+        if best:
+            historical_dates[pk] = best
+
+    # Load all prices at historical dates in one query
+    unique_dates = list(set(historical_dates.values()))
+    date_price_map: dict = {}
+    if unique_dates:
+        hist_rows = db.query(IndexPrice).filter(IndexPrice.date.in_(unique_dates)).all()
+        for r in hist_rows:
+            if r.date not in date_price_map:
+                date_price_map[r.date] = {}
+            if r.close_price:
+                date_price_map[r.date][r.index_name] = r.close_price
+
+    historical_prices: dict = {}
+    for pk, d in historical_dates.items():
+        historical_prices[pk] = date_price_map.get(d, {})
 
     results = []
     for row in all_rows:
@@ -162,27 +208,33 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
         else:
             signal = "BASE" if row.index_name == base else "NEUTRAL"
 
-        prev_row = (
-            db.query(IndexPrice)
-            .filter(IndexPrice.index_name == row.index_name, IndexPrice.date < latest_date)
-            .order_by(desc(IndexPrice.date))
-            .first()
-        )
+        # Previous day change from batch-loaded prev_close_map
+        prev_close = prev_close_map.get(row.index_name)
         chg_pct = None
-        if prev_row and prev_row.close_price and close:
-            chg_pct = round(((close - prev_row.close_price) / prev_row.close_price) * 100, 2)
+        if prev_close and prev_close > 0 and close:
+            chg_pct = round(((close - prev_close) / prev_close) * 100, 2)
 
         # Invert change_pct for currency pairs (rising USDINR = weaker rupee = negative)
         if chg_pct is not None and row.index_name in INVERTED_RETURN_KEYS:
             chg_pct = round(-chg_pct, 2)
 
+        # Period returns from batch-loaded historical prices
         periods = {}
-        for label, days in [("1d", 1), ("1w", 7), ("1m", 30), ("3m", 90), ("6m", 180), ("12m", 365)]:
-            ret = _get_period_return(row.index_name, days)
-            # Invert returns for currency pairs
-            if ret is not None and row.index_name in INVERTED_RETURN_KEYS:
-                ret = round(-ret, 2)
-            periods[label] = ret
+        if close:
+            for label in period_map:
+                old_prices = historical_prices.get(label, {})
+                old_close = old_prices.get(row.index_name)
+                if old_close and old_close > 0:
+                    ret = round(((close - old_close) / old_close) * 100, 2)
+                    # Invert returns for currency pairs
+                    if row.index_name in INVERTED_RETURN_KEYS:
+                        ret = round(-ret, 2)
+                    periods[label] = ret
+                else:
+                    periods[label] = None
+        else:
+            for label in period_map:
+                periods[label] = None
 
         results.append({
             "index_name": row.index_name,

@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from sqlalchemy import desc
+from sqlalchemy import desc, func as sqlfunc
 from sqlalchemy.orm import Session
 
 from models import IndexPrice, Microbasket, MicrobasketConstituent, BasketStatus
@@ -41,23 +41,47 @@ def compute_basket_value_from_db(
     """Compute weighted basket value on a given date using DB prices.
     basket_value = sum(weight_pct/100 * close_price) for each constituent.
     Returns None if any constituent is missing price data for that date.
+
+    Uses a single batch query instead of per-constituent queries (N+1 -> 1).
     """
+    if not constituents:
+        return None
+
+    # Batch-fetch latest price on or before date_str for all tickers
+    tickers = [c.ticker for c in constituents]
+    subq = (
+        db.query(
+            IndexPrice.index_name,
+            sqlfunc.max(IndexPrice.date).label("max_date"),
+        )
+        .filter(IndexPrice.index_name.in_(tickers), IndexPrice.date <= date_str)
+        .group_by(IndexPrice.index_name)
+        .subquery()
+    )
+    price_rows = (
+        db.query(IndexPrice.index_name, IndexPrice.close_price, IndexPrice.date)
+        .join(subq, (IndexPrice.index_name == subq.c.index_name) & (IndexPrice.date == subq.c.max_date))
+        .all()
+    )
+    price_map = {}
+    for row_name, close, row_date in price_rows:
+        if close:
+            # Only use prices within 5 trading days of target
+            row_dt = datetime.strptime(row_date, "%Y-%m-%d") if isinstance(row_date, str) else row_date
+            target_dt = datetime.strptime(date_str, "%Y-%m-%d")
+            if isinstance(row_dt, datetime):
+                gap = (target_dt - row_dt).days
+            else:
+                gap = (target_dt.date() - row_dt).days if hasattr(row_dt, 'day') else 999
+            if gap <= 7:
+                price_map[row_name] = close
+
     total = 0.0
     for c in constituents:
-        price_row = (
-            db.query(IndexPrice)
-            .filter(IndexPrice.index_name == c.ticker, IndexPrice.date <= date_str)
-            .order_by(desc(IndexPrice.date))
-            .first()
-        )
-        if not price_row or not price_row.close_price:
+        close = price_map.get(c.ticker)
+        if not close:
             return None
-        # Only use prices within 5 trading days of target
-        row_date = datetime.strptime(price_row.date, "%Y-%m-%d")
-        target_date = datetime.strptime(date_str, "%Y-%m-%d")
-        if (target_date - row_date).days > 7:
-            return None
-        total += (c.weight_pct / 100.0) * price_row.close_price
+        total += (c.weight_pct / 100.0) * close
     return round(total, 4) if total > 0 else None
 
 
@@ -151,8 +175,6 @@ def compute_constituent_units(
     units = (weight_pct / 100) * portfolio_size / last_price
     Uses a single batch query for all constituent prices.
     """
-    from sqlalchemy import func as sqlfunc
-
     # Batch-fetch latest prices for all tickers (1 query instead of N)
     tickers = [c.ticker for c in constituents]
     subq = (
