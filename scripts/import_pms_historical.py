@@ -39,14 +39,6 @@ PORTFOLIOS = [
     {
         'name': 'Multi Asset Alpha - Passive',
         'old_name': 'Momentum Passive',
-        'ucc_code': 'BJ53MF',
-        'inception_date': '2021-05-02',
-        'description': 'PMS Equity — Multi Asset Alpha Passive strategy',
-        'nav_file': PROJECT_ROOT / "BJ53-NAV report[1].xlsx",
-        'txn_file': PROJECT_ROOT / "BJ53-Transaction.xlsx",
-    },
-    {
-        'name': 'Multi Asset Alpha - Passive (JR100)',
         'ucc_code': 'JR100PASS',
         'inception_date': '2021-08-02',
         'description': 'PMS Passive — JR100 ETF-based strategy',

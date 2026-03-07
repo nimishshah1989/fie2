@@ -190,6 +190,7 @@ def get_nav_history(
             {
                 "date": str(r.date),
                 "nav": r.nav,
+                "unit_nav": r.unit_nav,
                 "corpus": r.corpus,
                 "equity_holding": r.equity_holding,
                 "etf_investment": r.etf_investment,

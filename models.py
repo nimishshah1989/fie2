@@ -178,6 +178,7 @@ def _run_migrations():
         "ALTER TABLE model_portfolios ADD COLUMN portfolio_type VARCHAR(20) DEFAULT 'manual'",
         "ALTER TABLE model_portfolios ADD COLUMN ucc_code VARCHAR(50)",
         "ALTER TABLE pms_nav_daily ADD COLUMN etf_investment FLOAT",
+        "ALTER TABLE pms_nav_daily ADD COLUMN unit_nav FLOAT",
     ]
     for sql in migrations:
         try:
@@ -403,6 +404,7 @@ class PmsNavDaily(Base):
     cash_equivalent = Column(Float, nullable=True)
     bank_balance   = Column(Float, nullable=True)
     nav            = Column(Float, nullable=False)
+    unit_nav       = Column(Float, nullable=True)   # TWR-adjusted index (base 100)
     liquidity_pct  = Column(Float, nullable=True)
     high_water_mark = Column(Float, nullable=True)
     created_at     = Column(DateTime, default=func.now())

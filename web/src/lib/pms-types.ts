@@ -6,6 +6,7 @@
 export interface PmsNavRecord {
   date: string;
   nav: number;
+  unit_nav: number | null;
   corpus: number | null;
   equity_holding: number | null;
   etf_investment: number | null;
@@ -67,6 +68,7 @@ export interface MonthlyReturn {
 export interface PmsSummary {
   latest_date: string;
   latest_nav: number;
+  latest_unit_nav: number | null;
   latest_corpus: number | null;
   latest_equity_holding: number | null;
   latest_etf_investment: number | null;
@@ -75,6 +77,7 @@ export interface PmsSummary {
   latest_high_water_mark: number | null;
   first_date: string | null;
   first_nav: number | null;
+  first_unit_nav: number | null;
   total_days: number;
   cagr_pct: number | null;
   max_drawdown_pct: number | null;

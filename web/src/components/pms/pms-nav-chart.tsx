@@ -20,7 +20,8 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-function formatNavAxis(value: number): string {
+function formatNavAxis(value: number, hasUnitNav: boolean): string {
+  if (hasUnitNav) return value.toLocaleString("en-IN", { maximumFractionDigits: 0 });
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
@@ -32,8 +33,14 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
     return <Skeleton className="h-80 rounded-xl" />;
   }
 
-  // Compute domain for Y-axis with some padding
-  const navValues = navHistory.map((d) => d.nav);
+  // Use TWR unit_nav for chart (adjusts for capital flows)
+  const hasUnitNav = navHistory.some((d) => d.unit_nav != null);
+  const chartData = navHistory.map((d) => ({
+    ...d,
+    display_nav: hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav,
+  }));
+
+  const navValues = chartData.map((d) => d.display_nav);
   const minNav = Math.min(...navValues);
   const maxNav = Math.max(...navValues);
   const padding = (maxNav - minNav) * 0.05;
@@ -41,7 +48,9 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-slate-700">NAV History</h3>
+        <h3 className="text-sm font-semibold text-slate-700">
+          {hasUnitNav ? "TWR Performance (Base 100)" : "NAV History"}
+        </h3>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
             <Button
@@ -58,7 +67,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
       </div>
 
       <ResponsiveContainer width="100%" height={320}>
-        <AreaChart data={navHistory} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+        <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
           <defs>
             <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#0d9488" stopOpacity={0.2} />
@@ -75,7 +84,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             minTickGap={40}
           />
           <YAxis
-            tickFormatter={formatNavAxis}
+            tickFormatter={(v: number) => formatNavAxis(v, hasUnitNav)}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             tickLine={false}
             axisLine={false}
@@ -84,8 +93,10 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
           />
           <Tooltip
             formatter={(value: number) => [
-              `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              "NAV",
+              hasUnitNav
+                ? value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              hasUnitNav ? "TWR Index" : "NAV",
             ]}
             labelFormatter={formatDate}
             contentStyle={{
@@ -96,7 +107,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
           />
           <Area
             type="monotone"
-            dataKey="nav"
+            dataKey="display_nav"
             stroke="#0d9488"
             strokeWidth={2}
             fill="url(#navGradient)"

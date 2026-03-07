@@ -23,7 +23,9 @@ export function PmsKpiStrip({ summary }: PmsKpiStripProps) {
     {
       label: "Current NAV",
       value: formatNav(summary.latest_nav),
-      sub: `as of ${summary.latest_date}`,
+      sub: summary.latest_unit_nav != null
+        ? `TWR Index: ${summary.latest_unit_nav.toFixed(2)} | ${summary.latest_date}`
+        : `as of ${summary.latest_date}`,
       color: "text-teal-600",
     },
     {

@@ -1,7 +1,7 @@
 """
 FIE v3 — PMS Service
-Risk/return metric calculations, drawdown detection,
-monthly returns, and portfolio summary queries.
+Time-weighted return (TWR) computation, risk/return metrics,
+drawdown detection, monthly returns, and portfolio summary.
 Excel parsing is in services/pms_parser.py.
 """
 
@@ -25,14 +25,75 @@ TRADING_DAYS_PER_YEAR = 252
 
 
 # ═══════════════════════════════════════════════════════════
-#  RISK / RETURN METRICS
+#  TIME-WEIGHTED RETURN (TWR) — UNIT NAV
+# ═══════════════════════════════════════════════════════════
+
+def compute_twr_unit_nav(portfolio_id: int, db: Session) -> int:
+    """Compute TWR-adjusted unit NAV for a portfolio.
+
+    Uses corpus changes to detect capital inflows/outflows.
+    For each day with a corpus change, the daily return is adjusted
+    so that the cash flow does not inflate/deflate the return.
+
+    unit_nav starts at 100 on inception date.
+    Returns count of records updated.
+    """
+    rows = (
+        db.query(PmsNavDaily)
+        .filter(PmsNavDaily.portfolio_id == portfolio_id)
+        .order_by(PmsNavDaily.date)
+        .all()
+    )
+    if not rows:
+        return 0
+
+    # First day: unit_nav = 100
+    rows[0].unit_nav = 100.0
+    count = 1
+
+    for i in range(1, len(rows)):
+        prev_nav = rows[i - 1].nav
+        curr_nav = rows[i].nav
+        prev_corpus = rows[i - 1].corpus
+        curr_corpus = rows[i].corpus
+
+        if prev_nav <= 0:
+            rows[i].unit_nav = rows[i - 1].unit_nav
+            count += 1
+            continue
+
+        # Detect capital flow from corpus change
+        cash_flow = 0.0
+        if prev_corpus is not None and curr_corpus is not None:
+            cash_flow = curr_corpus - prev_corpus
+
+        # Adjusted denominator: previous NAV + any cash inflow that day
+        # This neutralizes the effect of capital additions/withdrawals
+        adjusted_prev = prev_nav + cash_flow
+
+        if adjusted_prev <= 0:
+            # Defensive: if corpus withdrawal exceeded NAV, carry forward
+            rows[i].unit_nav = rows[i - 1].unit_nav
+        else:
+            daily_return = curr_nav / adjusted_prev
+            rows[i].unit_nav = round(rows[i - 1].unit_nav * daily_return, 6)
+        count += 1
+
+    db.commit()
+    logger.info("Computed TWR unit_nav for %d days, portfolio %d (final: %.2f)",
+                count, portfolio_id, rows[-1].unit_nav)
+    return count
+
+
+# ═══════════════════════════════════════════════════════════
+#  RISK / RETURN METRICS (uses unit_nav for TWR accuracy)
 # ═══════════════════════════════════════════════════════════
 
 def calculate_risk_metrics(nav_series: pd.Series, dates: pd.Series) -> dict:
-    """Compute risk/return metrics from a NAV time series.
+    """Compute risk/return metrics from a unit NAV time series.
 
     Args:
-        nav_series: pd.Series of NAV values (sorted by date)
+        nav_series: pd.Series of unit NAV values (TWR-adjusted, sorted by date)
         dates: pd.Series of corresponding dates
 
     Returns:
@@ -98,17 +159,17 @@ def calculate_risk_metrics(nav_series: pd.Series, dates: pd.Series) -> dict:
 
 # Period definitions: name → trading days lookback
 PERIOD_DAYS = {
-    '1M': 21,
-    '3M': 63,
-    '6M': 126,
-    '1Y': 252,
-    '3Y': 756,
-    '5Y': 1260,
+    '1M': 21, '3M': 63, '6M': 126,
+    '1Y': 252, '3Y': 756, '5Y': 1260,
 }
 
 
 def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
-    """Recompute all period metrics for a portfolio. Returns count of metrics stored."""
+    """Recompute TWR unit_nav, then all period metrics. Returns metric count."""
+    # Step 1: recompute TWR unit_nav from raw NAV + corpus
+    compute_twr_unit_nav(portfolio_id, db)
+
+    # Step 2: load unit_nav series for metric computation
     rows = (
         db.query(PmsNavDaily)
         .filter(PmsNavDaily.portfolio_id == portfolio_id)
@@ -118,7 +179,8 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
     if len(rows) < 2:
         return 0
 
-    nav_values = pd.Series([r.nav for r in rows])
+    # Use unit_nav for all metrics (TWR-adjusted)
+    nav_values = pd.Series([r.unit_nav for r in rows])
     nav_dates = pd.Series([r.date for r in rows])
     today = rows[-1].date
 
@@ -129,21 +191,17 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
     ).delete()
 
     count = 0
-    # Period-based metrics
     for period_name, trading_days in PERIOD_DAYS.items():
         if len(nav_values) < trading_days:
             continue
-        subset_nav = nav_values.iloc[-trading_days:]
-        subset_dates = nav_dates.iloc[-trading_days:]
-        metrics = calculate_risk_metrics(subset_nav.reset_index(drop=True),
-                                         subset_dates.reset_index(drop=True))
+        subset_nav = nav_values.iloc[-trading_days:].reset_index(drop=True)
+        subset_dates = nav_dates.iloc[-trading_days:].reset_index(drop=True)
+        metrics = calculate_risk_metrics(subset_nav, subset_dates)
         if not metrics:
             continue
         db.add(PortfolioMetric(
-            portfolio_id=portfolio_id,
-            as_of_date=today,
-            period=period_name,
-            **metrics,
+            portfolio_id=portfolio_id, as_of_date=today,
+            period=period_name, **metrics,
         ))
         count += 1
 
@@ -151,20 +209,18 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
     si_metrics = calculate_risk_metrics(nav_values, nav_dates)
     if si_metrics:
         db.add(PortfolioMetric(
-            portfolio_id=portfolio_id,
-            as_of_date=today,
-            period='SI',
-            **si_metrics,
+            portfolio_id=portfolio_id, as_of_date=today,
+            period='SI', **si_metrics,
         ))
         count += 1
 
     db.commit()
-    logger.info("Stored %d metrics for portfolio %d as of %s", count, portfolio_id, today)
+    logger.info("Stored %d TWR metrics for portfolio %d as of %s", count, portfolio_id, today)
     return count
 
 
 def detect_drawdown_events(portfolio_id: int, db: Session) -> int:
-    """Identify peak-to-trough drawdown events. Returns count of events."""
+    """Identify peak-to-trough drawdown events using unit_nav. Returns count."""
     rows = (
         db.query(PmsNavDaily)
         .filter(PmsNavDaily.portfolio_id == portfolio_id)
@@ -174,10 +230,10 @@ def detect_drawdown_events(portfolio_id: int, db: Session) -> int:
     if len(rows) < 2:
         return 0
 
-    navs = [r.nav for r in rows]
+    # Use unit_nav (TWR-adjusted) for drawdown detection
+    navs = [r.unit_nav if r.unit_nav else r.nav for r in rows]
     dates = [r.date for r in rows]
 
-    # Delete existing events
     db.query(DrawdownEvent).filter(DrawdownEvent.portfolio_id == portfolio_id).delete()
 
     events = []
@@ -187,17 +243,13 @@ def detect_drawdown_events(portfolio_id: int, db: Session) -> int:
 
     for i in range(1, len(navs)):
         if navs[i] >= navs[peak_idx]:
-            # New high — if we were in a drawdown, it has recovered
             if in_drawdown:
                 dd_pct = ((navs[trough_idx] - navs[peak_idx]) / navs[peak_idx]) * 100
-                # Only record meaningful drawdowns (> 2%)
                 if abs(dd_pct) >= 2.0:
                     events.append(DrawdownEvent(
                         portfolio_id=portfolio_id,
-                        peak_date=dates[peak_idx],
-                        peak_nav=navs[peak_idx],
-                        trough_date=dates[trough_idx],
-                        trough_nav=navs[trough_idx],
+                        peak_date=dates[peak_idx], peak_nav=navs[peak_idx],
+                        trough_date=dates[trough_idx], trough_nav=navs[trough_idx],
                         drawdown_pct=round(dd_pct, 2),
                         duration_days=(dates[trough_idx] - dates[peak_idx]).days,
                         recovery_date=dates[i],
@@ -211,16 +263,13 @@ def detect_drawdown_events(portfolio_id: int, db: Session) -> int:
             trough_idx = i
             in_drawdown = True
 
-    # If still in a drawdown at end of series
     if in_drawdown:
         dd_pct = ((navs[trough_idx] - navs[peak_idx]) / navs[peak_idx]) * 100
         if abs(dd_pct) >= 2.0:
             events.append(DrawdownEvent(
                 portfolio_id=portfolio_id,
-                peak_date=dates[peak_idx],
-                peak_nav=navs[peak_idx],
-                trough_date=dates[trough_idx],
-                trough_nav=navs[trough_idx],
+                peak_date=dates[peak_idx], peak_nav=navs[peak_idx],
+                trough_date=dates[trough_idx], trough_nav=navs[trough_idx],
                 drawdown_pct=round(dd_pct, 2),
                 duration_days=(dates[trough_idx] - dates[peak_idx]).days,
                 status='underwater',
@@ -233,7 +282,7 @@ def detect_drawdown_events(portfolio_id: int, db: Session) -> int:
 
 
 def compute_monthly_returns(portfolio_id: int, db: Session) -> list[dict]:
-    """Compute month-over-month NAV returns for calendar heatmap."""
+    """Compute month-over-month returns using TWR unit_nav."""
     rows = (
         db.query(PmsNavDaily)
         .filter(PmsNavDaily.portfolio_id == portfolio_id)
@@ -243,26 +292,26 @@ def compute_monthly_returns(portfolio_id: int, db: Session) -> list[dict]:
     if len(rows) < 2:
         return []
 
-    df = pd.DataFrame([{'date': r.date, 'nav': r.nav} for r in rows])
+    # Use unit_nav for accurate TWR monthly returns
+    df = pd.DataFrame([{
+        'date': r.date,
+        'nav': r.unit_nav if r.unit_nav else r.nav,
+    } for r in rows])
     df['date'] = pd.to_datetime(df['date'])
     df = df.set_index('date')
 
-    # Get last NAV of each month
     monthly = df['nav'].resample('ME').last().dropna()
     monthly_returns = monthly.pct_change().dropna() * 100
 
     return [
-        {
-            'year': idx.year,
-            'month': idx.month,
-            'return_pct': round(float(val), 2),
-        }
+        {'year': idx.year, 'month': idx.month, 'return_pct': round(float(val), 2)}
         for idx, val in monthly_returns.items()
+        if np.isfinite(val)
     ]
 
 
 def get_pms_summary(portfolio_id: int, db: Session) -> Optional[dict]:
-    """Get quick summary: latest NAV, corpus, and key SI metrics."""
+    """Get quick summary: latest NAV, corpus, unit_nav, and key SI metrics."""
     latest = (
         db.query(PmsNavDaily)
         .filter(PmsNavDaily.portfolio_id == portfolio_id)
@@ -285,13 +334,9 @@ def get_pms_summary(portfolio_id: int, db: Session) -> Optional[dict]:
         .count()
     )
 
-    # Get SI metrics
     si_metric = (
         db.query(PortfolioMetric)
-        .filter(
-            PortfolioMetric.portfolio_id == portfolio_id,
-            PortfolioMetric.period == 'SI',
-        )
+        .filter(PortfolioMetric.portfolio_id == portfolio_id, PortfolioMetric.period == 'SI')
         .order_by(PortfolioMetric.as_of_date.desc())
         .first()
     )
@@ -299,6 +344,7 @@ def get_pms_summary(portfolio_id: int, db: Session) -> Optional[dict]:
     return {
         'latest_date': str(latest.date),
         'latest_nav': latest.nav,
+        'latest_unit_nav': latest.unit_nav,
         'latest_corpus': latest.corpus,
         'latest_equity_holding': latest.equity_holding,
         'latest_etf_investment': latest.etf_investment,
@@ -307,6 +353,7 @@ def get_pms_summary(portfolio_id: int, db: Session) -> Optional[dict]:
         'latest_high_water_mark': latest.high_water_mark,
         'first_date': str(first.date) if first else None,
         'first_nav': first.nav if first else None,
+        'first_unit_nav': first.unit_nav if first else None,
         'total_days': nav_count,
         'cagr_pct': si_metric.cagr_pct if si_metric else None,
         'max_drawdown_pct': si_metric.max_drawdown_pct if si_metric else None,
