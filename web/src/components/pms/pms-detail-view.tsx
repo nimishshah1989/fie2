@@ -6,6 +6,7 @@ import { PmsNavChart } from "./pms-nav-chart";
 import { PmsPerformanceTable } from "./pms-performance-table";
 import { PmsDrawdownChart } from "./pms-drawdown-chart";
 import { PmsWinLoss } from "./pms-win-loss";
+import { PmsRiskScorecard } from "./pms-risk-scorecard";
 import { PmsMethodology } from "./pms-methodology";
 import { PmsUploadDialog } from "./pms-upload-dialog";
 import { Button } from "@/components/ui/button";
@@ -82,6 +83,9 @@ export function PmsDetailView({ id, name, description, benchmark, onBack }: PmsD
 
       {/* Drawdown Chart */}
       <PmsDrawdownChart portfolioId={id} />
+
+      {/* Risk Management Scorecard */}
+      <PmsRiskScorecard portfolioId={id} />
 
       {/* Win/Loss Analysis */}
       <PmsWinLoss portfolioId={id} />

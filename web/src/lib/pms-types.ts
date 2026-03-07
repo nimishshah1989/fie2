@@ -103,3 +103,24 @@ export interface PmsSummary {
   return_pct: number | null;
   volatility_pct: number | null;
 }
+
+export interface RiskAnalytics {
+  ulcer_index: number;
+  positive_months: number;
+  negative_months: number;
+  total_months: number;
+  hit_rate_monthly: number;
+  best_month_pct: number;
+  worst_month_pct: number;
+  avg_positive_month_pct: number;
+  avg_negative_month_pct: number;
+  max_consecutive_loss_months: number;
+  up_capture_ratio: number | null;
+  down_capture_ratio: number | null;
+  beta: number | null;
+  correlation: number | null;
+  information_ratio: number | null;
+  avg_cash_pct: number | null;
+  max_cash_pct: number | null;
+  current_cash_pct: number | null;
+}

@@ -23,7 +23,9 @@ const PERIOD_LABELS: Record<string, string> = {
   "3M": "3 Months",
   "6M": "6 Months",
   "1Y": "1 Year",
+  "2Y": "2 Years",
   "3Y": "3 Years",
+  "4Y": "4 Years",
   "5Y": "5 Years",
   "SI": "Since Inception",
 };

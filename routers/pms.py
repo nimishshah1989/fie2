@@ -20,6 +20,7 @@ from services.pms_service import (
     parse_nav_excel, parse_transaction_excel,
     recalculate_portfolio_metrics, detect_drawdown_events,
     compute_monthly_returns, get_pms_summary,
+    compute_enhanced_risk_metrics,
 )
 
 logger = logging.getLogger("fie_v3.pms")
@@ -194,7 +195,7 @@ def get_nav_history(
         nifty_rows = (
             db.query(IndexPrice)
             .filter(
-                IndexPrice.index_name == "NIFTY 50",
+                IndexPrice.index_name == "NIFTY",
                 IndexPrice.date >= str(start_date),
                 IndexPrice.date <= str(end_date),
             )
@@ -482,6 +483,20 @@ def get_monthly_returns(portfolio_id: int, db: Session = Depends(get_db)):
     """Return monthly NAV returns for calendar heatmap."""
     returns = compute_monthly_returns(portfolio_id, db)
     return {"portfolio_id": portfolio_id, "monthly_returns": returns}
+
+
+# ═══════════════════════════════════════════════════════════
+#  RISK ANALYTICS (enhanced risk management metrics)
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/{portfolio_id}/risk-analytics")
+def get_risk_analytics(portfolio_id: int, db: Session = Depends(get_db)):
+    """Enhanced risk management metrics: Ulcer Index, capture ratios, beta,
+    information ratio, monthly stats, cash allocation analysis."""
+    metrics = compute_enhanced_risk_metrics(portfolio_id, db)
+    if not metrics:
+        raise HTTPException(status_code=404, detail="Insufficient data for risk analytics")
+    return {"portfolio_id": portfolio_id, **metrics}
 
 
 # ═══════════════════════════════════════════════════════════

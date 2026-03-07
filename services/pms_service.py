@@ -157,15 +157,33 @@ def calculate_risk_metrics(nav_series: pd.Series, dates: pd.Series) -> dict:
     }
 
 
-# Period definitions: name → trading days lookback
-PERIOD_DAYS = {
-    '1M': 21, '3M': 63, '6M': 126,
-    '1Y': 252, '3Y': 756, '5Y': 1260,
+# Period definitions: name → calendar months lookback
+# Broker uses calendar dates (e.g., 1Y = Mar 6 2025 → Mar 6 2026), NOT trading days
+PERIOD_MONTHS = {
+    '1M': 1, '3M': 3, '6M': 6,
+    '1Y': 12, '2Y': 24, '3Y': 36, '4Y': 48, '5Y': 60,
 }
 
 
+def _find_closest_idx(dates: pd.Series, target_date) -> int:
+    """Find index of closest date on or after target_date in sorted date series."""
+    from datetime import date as date_type
+    if isinstance(target_date, str):
+        target_date = date_type.fromisoformat(target_date)
+    for i, d in enumerate(dates):
+        if d >= target_date:
+            return i
+    return len(dates) - 1
+
+
 def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
-    """Recompute TWR unit_nav, then all period metrics. Returns metric count."""
+    """Recompute TWR unit_nav, then all period metrics using calendar dates.
+
+    Uses calendar-date lookback (not trading-day counts) to match
+    broker's SEBI TWRR convention: 1Y = today minus 1 calendar year.
+    """
+    from dateutil.relativedelta import relativedelta
+
     # Step 1: recompute TWR unit_nav from raw NAV + corpus
     compute_twr_unit_nav(portfolio_id, db)
 
@@ -191,11 +209,16 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
     ).delete()
 
     count = 0
-    for period_name, trading_days in PERIOD_DAYS.items():
-        if len(nav_values) < trading_days:
+    for period_name, months in PERIOD_MONTHS.items():
+        cutoff_date = today - relativedelta(months=months)
+        # Find first data point on or after the cutoff date
+        start_idx = _find_closest_idx(nav_dates, cutoff_date)
+        if start_idx >= len(nav_values) - 1:
+            continue  # not enough data for this period
+        subset_nav = nav_values.iloc[start_idx:].reset_index(drop=True)
+        subset_dates = nav_dates.iloc[start_idx:].reset_index(drop=True)
+        if len(subset_nav) < 2:
             continue
-        subset_nav = nav_values.iloc[-trading_days:].reset_index(drop=True)
-        subset_dates = nav_dates.iloc[-trading_days:].reset_index(drop=True)
         metrics = calculate_risk_metrics(subset_nav, subset_dates)
         if not metrics:
             continue
@@ -308,6 +331,157 @@ def compute_monthly_returns(portfolio_id: int, db: Session) -> list[dict]:
         for idx, val in monthly_returns.items()
         if np.isfinite(val)
     ]
+
+
+def compute_enhanced_risk_metrics(
+    portfolio_id: int,
+    db: Session,
+    benchmark_name: str = "NIFTY",
+) -> dict:
+    """Compute advanced risk management metrics: Ulcer Index, capture ratios,
+    beta, information ratio, positive/negative month stats, cash utilisation.
+
+    These metrics demonstrate active risk management quality.
+    """
+    from models import IndexPrice
+
+    rows = (
+        db.query(PmsNavDaily)
+        .filter(PmsNavDaily.portfolio_id == portfolio_id)
+        .order_by(PmsNavDaily.date)
+        .all()
+    )
+    if len(rows) < 30:
+        return {}
+
+    # Build portfolio unit_nav series
+    nav_vals = pd.Series([r.unit_nav if r.unit_nav else r.nav for r in rows])
+    nav_dates = [r.date for r in rows]
+    daily_returns = nav_vals.pct_change().dropna()
+
+    # ── Ulcer Index (measures depth + duration of drawdowns) ──
+    running_max = nav_vals.cummax()
+    dd_pct = ((nav_vals - running_max) / running_max * 100)
+    ulcer_index = round(float(np.sqrt((dd_pct ** 2).mean())), 2)
+
+    # ── Monthly return stats ──
+    df = pd.DataFrame({'date': nav_dates, 'nav': nav_vals.values})
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.set_index('date')
+    monthly_nav = df['nav'].resample('ME').last().dropna()
+    monthly_returns = monthly_nav.pct_change().dropna() * 100
+
+    positive_months = int((monthly_returns > 0).sum())
+    negative_months = int((monthly_returns <= 0).sum())
+    total_months = positive_months + negative_months
+    hit_rate_monthly = round(positive_months / total_months * 100, 1) if total_months > 0 else 0.0
+    best_month = round(float(monthly_returns.max()), 2) if len(monthly_returns) > 0 else 0.0
+    worst_month = round(float(monthly_returns.min()), 2) if len(monthly_returns) > 0 else 0.0
+    avg_positive_month = round(float(monthly_returns[monthly_returns > 0].mean()), 2) if positive_months > 0 else 0.0
+    avg_negative_month = round(float(monthly_returns[monthly_returns <= 0].mean()), 2) if negative_months > 0 else 0.0
+
+    # Max consecutive losing months
+    max_consecutive_loss = 0
+    current_streak = 0
+    for ret in monthly_returns:
+        if ret <= 0:
+            current_streak += 1
+            max_consecutive_loss = max(max_consecutive_loss, current_streak)
+        else:
+            current_streak = 0
+
+    # ── Benchmark comparison metrics ──
+    start_str = str(nav_dates[0])
+    end_str = str(nav_dates[-1])
+    benchmark_rows = (
+        db.query(IndexPrice)
+        .filter(
+            IndexPrice.index_name == benchmark_name,
+            IndexPrice.date >= start_str,
+            IndexPrice.date <= end_str,
+        )
+        .order_by(IndexPrice.date)
+        .all()
+    )
+
+    up_capture = None
+    down_capture = None
+    beta = None
+    information_ratio = None
+    correlation = None
+
+    if len(benchmark_rows) > 30:
+        # Build benchmark return series aligned to portfolio dates
+        bench_map = {str(r.date): r.close_price for r in benchmark_rows}
+        bench_df = pd.DataFrame({'date': nav_dates, 'nav': nav_vals.values})
+        bench_prices = []
+        for d in nav_dates:
+            bench_prices.append(bench_map.get(str(d), None))
+        bench_df['bench'] = bench_prices
+        bench_df = bench_df.dropna(subset=['bench'])
+
+        if len(bench_df) > 30:
+            port_rets = bench_df['nav'].pct_change().dropna()
+            bench_rets = bench_df['bench'].pct_change().dropna()
+
+            # Align lengths
+            min_len = min(len(port_rets), len(bench_rets))
+            port_rets = port_rets.iloc[:min_len].reset_index(drop=True)
+            bench_rets = bench_rets.iloc[:min_len].reset_index(drop=True)
+
+            # Up/Down capture ratios
+            up_mask = bench_rets > 0
+            down_mask = bench_rets < 0
+            if up_mask.sum() > 5:
+                up_capture = round(float(port_rets[up_mask].mean() / bench_rets[up_mask].mean() * 100), 1)
+            if down_mask.sum() > 5:
+                down_capture = round(float(port_rets[down_mask].mean() / bench_rets[down_mask].mean() * 100), 1)
+
+            # Beta and correlation
+            bench_var = bench_rets.var()
+            if bench_var > 0:
+                cov = port_rets.cov(bench_rets)
+                beta = round(float(cov / bench_var), 2)
+                corr = port_rets.corr(bench_rets)
+                correlation = round(float(corr), 2) if np.isfinite(corr) else None
+
+            # Information ratio (annualized excess return / tracking error)
+            excess = port_rets - bench_rets
+            tracking_error = float(excess.std() * np.sqrt(TRADING_DAYS_PER_YEAR))
+            if tracking_error > 0:
+                ann_excess = float(excess.mean() * TRADING_DAYS_PER_YEAR)
+                information_ratio = round(ann_excess / tracking_error, 2)
+
+    # ── Cash allocation stats ──
+    cash_pcts = []
+    for r in rows:
+        if r.corpus and r.corpus > 0:
+            cash = (r.cash_equivalent or 0) + (r.bank_balance or 0)
+            cash_pcts.append(cash / r.corpus * 100)
+    avg_cash_pct = round(float(np.mean(cash_pcts)), 1) if cash_pcts else None
+    max_cash_pct = round(float(np.max(cash_pcts)), 1) if cash_pcts else None
+    current_cash_pct = round(cash_pcts[-1], 1) if cash_pcts else None
+
+    return {
+        'ulcer_index': ulcer_index,
+        'positive_months': positive_months,
+        'negative_months': negative_months,
+        'total_months': total_months,
+        'hit_rate_monthly': hit_rate_monthly,
+        'best_month_pct': best_month,
+        'worst_month_pct': worst_month,
+        'avg_positive_month_pct': avg_positive_month,
+        'avg_negative_month_pct': avg_negative_month,
+        'max_consecutive_loss_months': max_consecutive_loss,
+        'up_capture_ratio': up_capture,
+        'down_capture_ratio': down_capture,
+        'beta': beta,
+        'correlation': correlation,
+        'information_ratio': information_ratio,
+        'avg_cash_pct': avg_cash_pct,
+        'max_cash_pct': max_cash_pct,
+        'current_cash_pct': current_cash_pct,
+    }
 
 
 def get_pms_summary(portfolio_id: int, db: Session) -> Optional[dict]:

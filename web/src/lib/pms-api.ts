@@ -11,6 +11,7 @@ import type {
   MonthlyReturn,
   PmsSummary,
   WinLossStats,
+  RiskAnalytics,
 } from "@/lib/pms-types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
@@ -78,6 +79,14 @@ export async function fetchPmsWinLoss(
   portfolioId: number
 ): Promise<WinLossStats | null> {
   const res = await fetch(`${API}/api/pms/${portfolioId}/win-loss`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchPmsRiskAnalytics(
+  portfolioId: number
+): Promise<RiskAnalytics | null> {
+  const res = await fetch(`${API}/api/pms/${portfolioId}/risk-analytics`);
   if (!res.ok) return null;
   return res.json();
 }

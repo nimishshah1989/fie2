@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Line, ComposedChart, Legend,
+  XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Line, ComposedChart, Legend, Bar,
+  Area,
 } from "recharts";
 import { usePmsNav } from "@/hooks/use-pms-detail";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,11 +14,17 @@ interface PmsNavChartProps {
   portfolioId: number;
 }
 
-const PERIODS = ["1M", "3M", "6M", "1Y", "3Y", "ALL"] as const;
+const PERIODS = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "ALL"] as const;
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+function formatLakhs(value: number): string {
+  if (value >= 1e7) return `₹${(value / 1e7).toFixed(1)}Cr`;
+  if (value >= 1e5) return `₹${(value / 1e5).toFixed(1)}L`;
+  return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
@@ -28,25 +35,33 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
     return <Skeleton className="h-80 rounded-xl" />;
   }
 
-  // Use TWR unit_nav for chart (adjusts for capital flows)
   const hasUnitNav = navHistory.some((d) => d.unit_nav != null);
   const hasBenchmark = navHistory.some((d) => d.benchmark_nav != null);
+  const hasCash = navHistory.some(
+    (d) => (d.cash_equivalent != null && d.cash_equivalent > 0) ||
+           (d.bank_balance != null && d.bank_balance > 0)
+  );
 
   const chartData = navHistory.map((d) => ({
     date: d.date,
     portfolio: hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav,
     benchmark: d.benchmark_nav ?? undefined,
+    cash: hasCash ? ((d.cash_equivalent || 0) + (d.bank_balance || 0)) : undefined,
   }));
 
-  // Compute domain for Y-axis — include both portfolio and benchmark values
-  const allValues = chartData.flatMap((d) => {
+  // Y-axis domain for portfolio/benchmark
+  const navValues = chartData.flatMap((d) => {
     const vals = [d.portfolio];
     if (d.benchmark != null) vals.push(d.benchmark);
     return vals;
   });
-  const minVal = Math.min(...allValues);
-  const maxVal = Math.max(...allValues);
-  const padding = (maxVal - minVal) * 0.05;
+  const minNav = Math.min(...navValues);
+  const maxNav = Math.max(...navValues);
+  const navPadding = (maxNav - minNav) * 0.05;
+
+  // Y-axis domain for cash (secondary)
+  const cashValues = chartData.map((d) => d.cash || 0).filter((v) => v > 0);
+  const maxCash = cashValues.length > 0 ? Math.max(...cashValues) : 0;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -54,6 +69,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
         <h3 className="text-sm font-semibold text-slate-700">
           {hasUnitNav ? "TWR Performance (Base 100)" : "NAV History"}
           {hasBenchmark && <span className="text-slate-400 font-normal"> vs NIFTY 50</span>}
+          {hasCash && <span className="text-slate-400 font-normal"> | Cash Position</span>}
         </h3>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
@@ -70,7 +86,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height={320}>
+      <ResponsiveContainer width="100%" height={360}>
         <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
           <defs>
             <linearGradient id="navGradient" x1="0" y1="0" x2="0" y2="1">
@@ -87,7 +103,9 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             axisLine={{ stroke: "#e2e8f0" }}
             minTickGap={40}
           />
+          {/* Primary Y-axis: TWR index */}
           <YAxis
+            yAxisId="nav"
             tickFormatter={(v: number) =>
               hasUnitNav
                 ? v.toLocaleString("en-IN", { maximumFractionDigits: 0 })
@@ -96,11 +114,25 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             tickLine={false}
             axisLine={false}
-            domain={[minVal - padding, maxVal + padding]}
+            domain={[minNav - navPadding, maxNav + navPadding]}
             width={70}
           />
+          {/* Secondary Y-axis: Cash position */}
+          {hasCash && (
+            <YAxis
+              yAxisId="cash"
+              orientation="right"
+              tickFormatter={formatLakhs}
+              tick={{ fontSize: 10, fill: "#f59e0b" }}
+              tickLine={false}
+              axisLine={false}
+              domain={[0, maxCash * 1.2]}
+              width={65}
+            />
+          )}
           <Tooltip
             formatter={(value: number, name: string) => {
+              if (name === "cash") return [formatLakhs(value), "Cash Position"];
               const label = name === "portfolio" ? "Portfolio" : "NIFTY 50";
               const formatted = hasUnitNav
                 ? value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -114,20 +146,36 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
               fontSize: "12px",
             }}
           />
-          {hasBenchmark && (
-            <Legend
-              verticalAlign="top"
-              align="right"
-              height={24}
-              iconSize={10}
-              formatter={(value: string) => (
-                <span className="text-xs text-slate-500">
-                  {value === "portfolio" ? "Portfolio" : "NIFTY 50"}
-                </span>
-              )}
+          <Legend
+            verticalAlign="top"
+            align="right"
+            height={24}
+            iconSize={10}
+            formatter={(value: string) => {
+              const labels: Record<string, string> = {
+                portfolio: "Portfolio",
+                benchmark: "NIFTY 50",
+                cash: "Cash Position",
+              };
+              return (
+                <span className="text-xs text-slate-500">{labels[value] || value}</span>
+              );
+            }}
+          />
+          {/* Cash bars (behind lines) */}
+          {hasCash && (
+            <Bar
+              yAxisId="cash"
+              dataKey="cash"
+              fill="#fbbf24"
+              opacity={0.25}
+              name="cash"
+              barSize={2}
             />
           )}
+          {/* Portfolio area */}
           <Area
+            yAxisId="nav"
             type="monotone"
             dataKey="portfolio"
             stroke="#0d9488"
@@ -137,8 +185,10 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             activeDot={{ r: 4, fill: "#0d9488" }}
             name="portfolio"
           />
+          {/* NIFTY 50 benchmark line */}
           {hasBenchmark && (
             <Line
+              yAxisId="nav"
               type="monotone"
               dataKey="benchmark"
               stroke="#94a3b8"
@@ -152,6 +202,12 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
           )}
         </ComposedChart>
       </ResponsiveContainer>
+
+      {hasCash && (
+        <p className="text-[11px] text-slate-400 mt-2 text-center italic">
+          Amber bars show cash + liquid fund position — &quot;Cash is a position&quot; during market stress
+        </p>
+      )}
     </div>
   );
 }

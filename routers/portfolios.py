@@ -63,7 +63,7 @@ class CreateTransactionRequest(BaseModel):
 def _get_pms_list_data(portfolio_id: int, db: Session) -> dict:
     """Fetch PMS summary data for the portfolio list view.
 
-    Returns total_invested (first corpus), current_value (latest NAV),
+    Returns total_invested (sum of all capital infusions), current_value (latest NAV),
     and total_return_pct (CAGR from SI metric or simple return).
     """
     # Latest NAV row for current value
@@ -78,17 +78,25 @@ def _get_pms_list_data(portfolio_id: int, db: Session) -> dict:
 
     current_value = latest_nav.nav or 0.0
 
-    # First corpus as total_invested (the initial capital deployed)
-    first_nav = (
-        db.query(PmsNavDaily)
+    # Total invested = first corpus + sum of all positive corpus changes (capital infusions)
+    nav_rows = (
+        db.query(PmsNavDaily.corpus)
         .filter(
             PmsNavDaily.portfolio_id == portfolio_id,
             PmsNavDaily.corpus.isnot(None),
         )
         .order_by(PmsNavDaily.date)
-        .first()
+        .all()
     )
-    total_invested = first_nav.corpus if first_nav and first_nav.corpus else current_value
+    total_invested = 0.0
+    if nav_rows:
+        total_invested = nav_rows[0][0] or 0.0  # first corpus
+        for i in range(1, len(nav_rows)):
+            prev = nav_rows[i - 1][0] or 0.0
+            curr = nav_rows[i][0] or 0.0
+            delta = curr - prev
+            if delta > 10000:  # capital infusion threshold (>10K)
+                total_invested += delta
 
     # Try to get CAGR from SI (Since Inception) metric
     total_return_pct = 0.0
