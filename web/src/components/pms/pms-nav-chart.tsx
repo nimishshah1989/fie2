@@ -205,7 +205,8 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
 
       {hasCash && (
         <p className="text-[11px] text-slate-400 mt-2 text-center italic">
-          Amber bars show cash + liquid fund position — &quot;Cash is a position&quot; during market stress
+          Amber bars = Cash Equivalents (PMS Fund Manager account) + Bank Balance on each day.
+          This is uninvested capital held as a tactical risk management position — &quot;Cash is a position.&quot;
         </p>
       )}
     </div>

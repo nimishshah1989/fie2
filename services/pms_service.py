@@ -23,6 +23,9 @@ logger = logging.getLogger("fie_v3.pms_service")
 RISK_FREE_RATE = 0.07
 TRADING_DAYS_PER_YEAR = 252
 
+# Base value for TWR unit_nav series — represents 100% of corpus invested
+TWR_BASE_VALUE = 100.0
+
 
 # ═══════════════════════════════════════════════════════════
 #  TIME-WEIGHTED RETURN (TWR) — UNIT NAV
@@ -35,7 +38,10 @@ def compute_twr_unit_nav(portfolio_id: int, db: Session) -> int:
     For each day with a corpus change, the daily return is adjusted
     so that the cash flow does not inflate/deflate the return.
 
-    unit_nav starts at 100 on inception date.
+    On inception day: if NAV differs from corpus (pre-existing gain/loss),
+    unit_nav captures this as 100 * (NAV / corpus). This matches the
+    SEBI TWRR convention where TWR tracks return on invested capital.
+
     Returns count of records updated.
     """
     rows = (
@@ -47,8 +53,15 @@ def compute_twr_unit_nav(portfolio_id: int, db: Session) -> int:
     if not rows:
         return 0
 
-    # First day: unit_nav = 100
-    rows[0].unit_nav = 100.0
+    # Day 0: capture any pre-existing gain/loss relative to corpus
+    # If NAV > corpus on inception, the portfolio already had gains
+    # before our data begins — the broker's TWRR includes this.
+    nav_0 = rows[0].nav
+    corpus_0 = rows[0].corpus
+    if corpus_0 and corpus_0 > 0 and nav_0 > 0:
+        rows[0].unit_nav = round(TWR_BASE_VALUE * (nav_0 / corpus_0), 6)
+    else:
+        rows[0].unit_nav = TWR_BASE_VALUE
     count = 1
 
     for i in range(1, len(rows)):
@@ -89,12 +102,20 @@ def compute_twr_unit_nav(portfolio_id: int, db: Session) -> int:
 #  RISK / RETURN METRICS (uses unit_nav for TWR accuracy)
 # ═══════════════════════════════════════════════════════════
 
-def calculate_risk_metrics(nav_series: pd.Series, dates: pd.Series) -> dict:
+def calculate_risk_metrics(
+    nav_series: pd.Series,
+    dates: pd.Series,
+    base_value: Optional[float] = None,
+) -> dict:
     """Compute risk/return metrics from a unit NAV time series.
 
     Args:
         nav_series: pd.Series of unit NAV values (TWR-adjusted, sorted by date)
         dates: pd.Series of corresponding dates
+        base_value: If provided, use this as the denominator for return and CAGR
+                    instead of nav_series[0]. Used for SI metrics where
+                    unit_nav[0] may be > 100 due to pre-inception gains,
+                    but the CAGR should be measured from 100 (the corpus base).
 
     Returns:
         dict with return_pct, cagr_pct, volatility_pct, max_drawdown_pct,
@@ -108,14 +129,19 @@ def calculate_risk_metrics(nav_series: pd.Series, dates: pd.Series) -> dict:
     start_date = dates.iloc[0]
     end_date = dates.iloc[-1]
 
-    # Total return
-    total_return_pct = ((end_nav / start_nav) - 1) * 100
+    # Use base_value for return computation if provided (SI metrics)
+    return_base = base_value if base_value is not None else start_nav
+    if return_base <= 0:
+        return_base = start_nav
 
-    # CAGR
+    # Total return (relative to base)
+    total_return_pct = ((end_nav / return_base) - 1) * 100
+
+    # CAGR (relative to base)
     years = (end_date - start_date).days / 365.25
-    cagr_pct = ((end_nav / start_nav) ** (1 / years) - 1) * 100 if years > 0 else 0.0
+    cagr_pct = ((end_nav / return_base) ** (1 / years) - 1) * 100 if years > 0 else 0.0
 
-    # Daily returns
+    # Daily returns (these use actual unit_nav values, not base)
     daily_returns = nav_series.pct_change().dropna()
 
     # Annualized volatility
@@ -157,8 +183,8 @@ def calculate_risk_metrics(nav_series: pd.Series, dates: pd.Series) -> dict:
     }
 
 
-# Period definitions: name → calendar months lookback
-# Broker uses calendar dates (e.g., 1Y = Mar 6 2025 → Mar 6 2026), NOT trading days
+# Period definitions: name -> calendar months lookback
+# Broker uses calendar dates (e.g., 1Y = Mar 6 2025 -> Mar 6 2026), NOT trading days
 PERIOD_MONTHS = {
     '1M': 1, '3M': 3, '6M': 6,
     '1Y': 12, '2Y': 24, '3Y': 36, '4Y': 48, '5Y': 60,
@@ -181,6 +207,9 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
 
     Uses calendar-date lookback (not trading-day counts) to match
     broker's SEBI TWRR convention: 1Y = today minus 1 calendar year.
+
+    For SI (Since Inception) metrics, CAGR is computed relative to
+    TWR_BASE_VALUE (100) to capture any day-0 NAV/corpus gain.
     """
     from dateutil.relativedelta import relativedelta
 
@@ -219,6 +248,7 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
         subset_dates = nav_dates.iloc[start_idx:].reset_index(drop=True)
         if len(subset_nav) < 2:
             continue
+        # Sub-periods use actual unit_nav values (no base override)
         metrics = calculate_risk_metrics(subset_nav, subset_dates)
         if not metrics:
             continue
@@ -228,8 +258,11 @@ def recalculate_portfolio_metrics(portfolio_id: int, db: Session) -> int:
         ))
         count += 1
 
-    # Since inception (SI)
-    si_metrics = calculate_risk_metrics(nav_values, nav_dates)
+    # Since inception (SI): CAGR relative to base 100 (corpus baseline)
+    # This captures any pre-existing gain on day 0 when NAV > corpus
+    si_metrics = calculate_risk_metrics(
+        nav_values, nav_dates, base_value=TWR_BASE_VALUE,
+    )
     if si_metrics:
         db.add(PortfolioMetric(
             portfolio_id=portfolio_id, as_of_date=today,

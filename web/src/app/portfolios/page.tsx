@@ -118,21 +118,34 @@ function PortfolioListView() {
 
   const totalInvested = portfolios.reduce((s, p) => s + p.total_invested, 0);
   const totalCurrent = portfolios.reduce((s, p) => s + p.current_value, 0);
-  const totalHoldings = portfolios.reduce((s, p) => s + p.num_holdings, 0);
-  const overallReturn = totalInvested > 0
-    ? ((totalCurrent - totalInvested) / totalInvested) * 100
+
+  // Format in Crores for PMS portfolios
+  const fmtCr = (v: number) => {
+    const cr = v / 1e7;
+    return `₹${cr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
+  };
+
+  // Weighted average CAGR across portfolios (weighted by current value)
+  const pmsPortfolios = portfolios.filter((p) => p.portfolio_type === "pms");
+  const weightedCagr = totalCurrent > 0
+    ? pmsPortfolios.reduce((s, p) => s + (p.total_return_pct * p.current_value), 0) / totalCurrent
     : 0;
+  const overallPnl = totalCurrent - totalInvested;
 
   const stats = [
-    { label: "Portfolios", value: portfolios.length },
-    { label: "Total Holdings", value: totalHoldings },
-    { label: "Total Invested", value: formatPrice(totalInvested) },
-    { label: "Current Value", value: formatPrice(totalCurrent) },
+    { label: "Total AUM", value: fmtCr(totalCurrent) },
+    { label: "Total Invested", value: fmtCr(totalInvested) },
     {
-      label: "Overall Return",
-      value: formatPct(overallReturn),
-      color: overallReturn >= 0 ? "text-emerald-600" : "text-red-600",
+      label: "Total P&L",
+      value: fmtCr(overallPnl),
+      color: overallPnl >= 0 ? "text-emerald-600" : "text-red-600",
     },
+    {
+      label: "Weighted Avg CAGR",
+      value: formatPct(weightedCagr),
+      color: weightedCagr >= 0 ? "text-emerald-600" : "text-red-600",
+    },
+    { label: "Strategies", value: portfolios.length },
   ];
 
   return (

@@ -8,6 +8,7 @@ import logging
 from collections import defaultdict
 from datetime import date, timedelta
 
+import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -20,7 +21,7 @@ from services.pms_service import (
     parse_nav_excel, parse_transaction_excel,
     recalculate_portfolio_metrics, detect_drawdown_events,
     compute_monthly_returns, get_pms_summary,
-    compute_enhanced_risk_metrics,
+    compute_enhanced_risk_metrics, calculate_risk_metrics,
 )
 
 logger = logging.getLogger("fie_v3.pms")
@@ -252,12 +253,76 @@ def get_nav_history(
 
 
 # ═══════════════════════════════════════════════════════════
-#  METRICS
+#  METRICS (portfolio + NIFTY benchmark side-by-side)
 # ═══════════════════════════════════════════════════════════
+
+def _load_nifty_series(db: Session) -> tuple[pd.Series, pd.Series]:
+    """Load all NIFTY close prices from IndexPrice, return (nav_series, date_series).
+
+    IndexPrice dates are stored as strings ("YYYY-MM-DD"). We convert them
+    to datetime.date objects so they can be compared with PortfolioMetric dates.
+    """
+    nifty_rows = (
+        db.query(IndexPrice)
+        .filter(IndexPrice.index_name == "NIFTY")
+        .order_by(IndexPrice.date)
+        .all()
+    )
+    if not nifty_rows:
+        return pd.Series(dtype=float), pd.Series(dtype=object)
+
+    prices = []
+    dates = []
+    for row in nifty_rows:
+        if row.close_price is None:
+            continue
+        # Convert string date to datetime.date for consistent comparison
+        parsed_date = date.fromisoformat(row.date) if isinstance(row.date, str) else row.date
+        dates.append(parsed_date)
+        prices.append(row.close_price)
+
+    return pd.Series(prices, dtype=float), pd.Series(dates)
+
+
+def _benchmark_metrics_for_period(
+    nifty_nav: pd.Series,
+    nifty_dates: pd.Series,
+    start_date: date,
+    end_date: date,
+) -> dict:
+    """Slice NIFTY series to a date range and compute risk metrics.
+
+    Returns a dict with benchmark_* keys, or empty dict if insufficient data.
+    """
+    if nifty_nav.empty or start_date is None or end_date is None:
+        return {}
+
+    # Find indices within the date range (inclusive)
+    mask = (nifty_dates >= start_date) & (nifty_dates <= end_date)
+    subset_nav = nifty_nav[mask].reset_index(drop=True)
+    subset_dates = nifty_dates[mask].reset_index(drop=True)
+
+    if len(subset_nav) < 2:
+        return {}
+
+    metrics = calculate_risk_metrics(subset_nav, subset_dates)
+    if not metrics:
+        return {}
+
+    # Return with benchmark_ prefix (only the fields the frontend needs)
+    return {
+        "benchmark_return_pct": metrics.get("return_pct"),
+        "benchmark_cagr_pct": metrics.get("cagr_pct"),
+        "benchmark_volatility_pct": metrics.get("volatility_pct"),
+        "benchmark_max_drawdown_pct": metrics.get("max_drawdown_pct"),
+        "benchmark_sharpe_ratio": metrics.get("sharpe_ratio"),
+        "benchmark_sortino_ratio": metrics.get("sortino_ratio"),
+    }
+
 
 @router.get("/{portfolio_id}/metrics")
 def get_metrics(portfolio_id: int, db: Session = Depends(get_db)):
-    """Return risk/return metrics for all computed periods."""
+    """Return risk/return metrics for all computed periods, with NIFTY benchmark."""
     rows = (
         db.query(PortfolioMetric)
         .filter(PortfolioMetric.portfolio_id == portfolio_id)
@@ -272,30 +337,53 @@ def get_metrics(portfolio_id: int, db: Session = Depends(get_db)):
     latest_date = rows[0].as_of_date
     latest_metrics = [r for r in rows if r.as_of_date == latest_date]
 
-    # Sort by period order
-    period_order = {'1M': 0, '3M': 1, '6M': 2, '1Y': 3, '3Y': 4, '5Y': 5, 'SI': 6}
+    # Sort by period order (includes 2Y and 4Y)
+    period_order = {
+        '1M': 0, '3M': 1, '6M': 2, '1Y': 3,
+        '2Y': 4, '3Y': 5, '4Y': 6, '5Y': 7, 'SI': 8,
+    }
     latest_metrics.sort(key=lambda m: period_order.get(m.period, 99))
+
+    # Load NIFTY price series once for all periods
+    nifty_nav, nifty_dates = _load_nifty_series(db)
+
+    metrics_list = []
+    for m in latest_metrics:
+        entry = {
+            "period": m.period,
+            "start_date": str(m.start_date) if m.start_date else None,
+            "end_date": str(m.end_date) if m.end_date else None,
+            "start_nav": m.start_nav,
+            "end_nav": m.end_nav,
+            "return_pct": m.return_pct,
+            "cagr_pct": m.cagr_pct,
+            "volatility_pct": m.volatility_pct,
+            "max_drawdown_pct": m.max_drawdown_pct,
+            "sharpe_ratio": m.sharpe_ratio,
+            "sortino_ratio": m.sortino_ratio,
+            "calmar_ratio": m.calmar_ratio,
+            # Benchmark defaults (overwritten below if data available)
+            "benchmark_return_pct": None,
+            "benchmark_cagr_pct": None,
+            "benchmark_volatility_pct": None,
+            "benchmark_max_drawdown_pct": None,
+            "benchmark_sharpe_ratio": None,
+            "benchmark_sortino_ratio": None,
+        }
+
+        # Compute benchmark metrics over the same date range as the portfolio period
+        if m.start_date and m.end_date and not nifty_nav.empty:
+            bench = _benchmark_metrics_for_period(
+                nifty_nav, nifty_dates, m.start_date, m.end_date,
+            )
+            entry.update(bench)
+
+        metrics_list.append(entry)
 
     return {
         "portfolio_id": portfolio_id,
         "as_of_date": str(latest_date),
-        "metrics": [
-            {
-                "period": m.period,
-                "start_date": str(m.start_date) if m.start_date else None,
-                "end_date": str(m.end_date) if m.end_date else None,
-                "start_nav": m.start_nav,
-                "end_nav": m.end_nav,
-                "return_pct": m.return_pct,
-                "cagr_pct": m.cagr_pct,
-                "volatility_pct": m.volatility_pct,
-                "max_drawdown_pct": m.max_drawdown_pct,
-                "sharpe_ratio": m.sharpe_ratio,
-                "sortino_ratio": m.sortino_ratio,
-                "calmar_ratio": m.calmar_ratio,
-            }
-            for m in latest_metrics
-        ],
+        "metrics": metrics_list,
     }
 
 

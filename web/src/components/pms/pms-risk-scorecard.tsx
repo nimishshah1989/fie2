@@ -3,7 +3,6 @@
 import useSWR from "swr";
 import { fetchPmsRiskAnalytics } from "@/lib/pms-api";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPct } from "@/lib/utils";
 
 interface PmsRiskScorecardProps {
   portfolioId: number;
@@ -31,37 +30,37 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
           <p className="text-[10px] text-slate-400 uppercase tracking-wide font-medium mb-2">
             vs NIFTY 50
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {risk.up_capture_ratio != null && (
               <MetricCard
                 label="Up Capture"
-                value={`${risk.up_capture_ratio}%`}
-                sub="% of benchmark gains captured"
+                value={`${risk.up_capture_ratio.toFixed(1)}%`}
                 color={risk.up_capture_ratio >= 100 ? "text-emerald-600" : "text-slate-700"}
+                explanation="Measures what % of the benchmark's gains the portfolio captures on up days. Above 100% means we gain more than the market when it rises."
               />
             )}
             {risk.down_capture_ratio != null && (
               <MetricCard
                 label="Down Capture"
-                value={`${risk.down_capture_ratio}%`}
-                sub="% of benchmark losses taken"
+                value={`${risk.down_capture_ratio.toFixed(1)}%`}
                 color={risk.down_capture_ratio <= 80 ? "text-emerald-600" : "text-red-600"}
+                explanation="Measures what % of the benchmark's losses the portfolio takes on down days. Below 100% means we lose less than the market when it falls — a key sign of active risk management."
               />
             )}
             {risk.beta != null && (
               <MetricCard
                 label="Beta"
                 value={risk.beta.toFixed(2)}
-                sub={risk.beta < 1 ? "Lower risk than market" : "Higher risk than market"}
                 color={risk.beta <= 1 ? "text-emerald-600" : "text-amber-600"}
+                explanation="Measures portfolio sensitivity to market movements. Beta < 1 means lower volatility than the market. Calculated as covariance(portfolio, benchmark) / variance(benchmark)."
               />
             )}
             {risk.information_ratio != null && (
               <MetricCard
                 label="Information Ratio"
                 value={risk.information_ratio.toFixed(2)}
-                sub="Risk-adjusted active return"
                 color={risk.information_ratio > 0 ? "text-emerald-600" : "text-red-600"}
+                explanation="Measures risk-adjusted excess return over the benchmark. Calculated as annualised excess return / tracking error. Above 0.5 is considered good active management."
               />
             )}
           </div>
@@ -73,33 +72,33 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
         <p className="text-[10px] text-slate-400 uppercase tracking-wide font-medium mb-2">
           Drawdown & Stress Management
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard
             label="Ulcer Index"
             value={risk.ulcer_index.toFixed(2)}
-            sub="Pain of drawdowns (lower = better)"
             color={risk.ulcer_index < 5 ? "text-emerald-600" : risk.ulcer_index < 10 ? "text-amber-600" : "text-red-600"}
+            explanation="Measures the depth and duration of drawdowns. Unlike max drawdown which is a single point, Ulcer Index captures sustained pain. Calculated as RMS of all drawdown percentages. Lower is better."
           />
           <MetricCard
             label="Max Consecutive Loss"
             value={`${risk.max_consecutive_loss_months} months`}
-            sub="Longest losing streak"
             color={risk.max_consecutive_loss_months <= 3 ? "text-emerald-600" : "text-red-600"}
+            explanation="The longest streak of consecutive negative monthly returns. Fewer consecutive losing months indicates better drawdown recovery and risk control."
           />
           {risk.avg_cash_pct != null && (
             <MetricCard
               label="Avg Cash Held"
-              value={`${risk.avg_cash_pct}%`}
-              sub={`Current: ${risk.current_cash_pct ?? 0}%`}
+              value={`${risk.avg_cash_pct.toFixed(1)}%`}
               color="text-amber-600"
+              explanation={`Average cash + liquid fund allocation as a % of corpus across all days. Current allocation: ${risk.current_cash_pct?.toFixed(1) ?? 0}%. Higher cash during volatile markets shows tactical risk management.`}
             />
           )}
           {risk.max_cash_pct != null && (
             <MetricCard
               label="Max Cash Held"
-              value={`${risk.max_cash_pct}%`}
-              sub="Peak defensive positioning"
+              value={`${risk.max_cash_pct.toFixed(1)}%`}
               color="text-amber-600"
+              explanation="Peak defensive positioning — the highest % of the portfolio held in cash and liquid funds on any single day. Shows willingness to go heavily defensive during market stress."
             />
           )}
         </div>
@@ -110,31 +109,31 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
         <p className="text-[10px] text-slate-400 uppercase tracking-wide font-medium mb-2">
           Monthly Return Profile
         </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <MetricCard
-            label="Hit Rate"
-            value={`${risk.hit_rate_monthly}%`}
-            sub={`${risk.positive_months} up / ${risk.negative_months} down of ${risk.total_months} months`}
+            label="Monthly Hit Rate"
+            value={`${risk.hit_rate_monthly.toFixed(1)}%`}
             color={risk.hit_rate_monthly >= 60 ? "text-emerald-600" : "text-slate-700"}
+            explanation={`Percentage of months with positive returns: ${risk.positive_months} profitable months out of ${risk.total_months} total. A hit rate above 60% is excellent for an actively managed portfolio.`}
           />
           <MetricCard
             label="Best Month"
-            value={formatPct(risk.best_month_pct)}
-            sub={`Avg gain: ${formatPct(risk.avg_positive_month_pct)}`}
+            value={`+${risk.best_month_pct.toFixed(2)}%`}
             color="text-emerald-600"
+            explanation={`The single best monthly return achieved. Average gain in positive months: +${risk.avg_positive_month_pct.toFixed(2)}%. Compares the upside potential to the downside risk.`}
           />
           <MetricCard
             label="Worst Month"
-            value={formatPct(risk.worst_month_pct)}
-            sub={`Avg loss: ${formatPct(risk.avg_negative_month_pct)}`}
+            value={`${risk.worst_month_pct.toFixed(2)}%`}
             color="text-red-600"
+            explanation={`The single worst monthly return suffered. Average loss in negative months: ${risk.avg_negative_month_pct.toFixed(2)}%. The ratio of avg gain to avg loss shows asymmetric return quality.`}
           />
           {risk.correlation != null && (
             <MetricCard
               label="Market Correlation"
               value={risk.correlation.toFixed(2)}
-              sub={risk.correlation < 0.7 ? "Low market dependence" : "Moves with market"}
               color={risk.correlation < 0.7 ? "text-emerald-600" : "text-slate-700"}
+              explanation="Pearson correlation of daily returns with NIFTY 50. Below 0.7 means the portfolio has meaningful independent return sources. High correlation means returns closely track the market."
             />
           )}
         </div>
@@ -158,12 +157,12 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
 }
 
 function MetricCard({
-  label, value, sub, color,
+  label, value, color, explanation,
 }: {
   label: string;
   value: string;
-  sub?: string;
   color: string;
+  explanation: string;
 }) {
   return (
     <div className="p-3 rounded-lg bg-slate-50">
@@ -173,9 +172,9 @@ function MetricCard({
       <p className={`text-lg font-bold font-mono tabular-nums mt-0.5 ${color}`}>
         {value}
       </p>
-      {sub && (
-        <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>
-      )}
+      <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+        {explanation}
+      </p>
     </div>
   );
 }

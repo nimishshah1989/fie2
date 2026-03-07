@@ -22,28 +22,28 @@ export function PmsWinLoss({ portfolioId }: PmsWinLossProps) {
   const kpis = [
     {
       label: "Win Rate",
-      value: `${stats.win_rate_pct.toFixed(1)}%`,
-      sub: `${stats.winning_trades}W / ${stats.losing_trades}L of ${stats.total_scripts_traded} trades`,
+      value: `${stats.win_rate_pct.toFixed(2)}%`,
+      explanation: `${stats.winning_trades} profitable exits vs ${stats.losing_trades} loss-making exits out of ${stats.total_scripts_traded} total scripts traded. Calculated as winning trades / total trades with exits.`,
       color: stats.win_rate_pct >= 50 ? "text-emerald-600" : "text-red-600",
     },
     {
       label: "Profit Factor",
       value: stats.profit_factor != null ? stats.profit_factor.toFixed(2) : "N/A",
-      sub: stats.profit_factor != null && stats.profit_factor >= 1
-        ? "Profitable overall"
-        : "Losses exceed profits",
+      explanation: stats.profit_factor != null
+        ? `Ratio of total profits to total losses: ${formatPrice(stats.total_profit)} gained / ${formatPrice(Math.abs(stats.total_loss))} lost. Above 1.0 means profits exceed losses; above 2.0 is excellent.`
+        : "Cannot compute — no losing trades recorded.",
       color: stats.profit_factor != null && stats.profit_factor >= 1 ? "text-emerald-600" : "text-red-600",
     },
     {
       label: "Avg Win",
       value: formatPrice(stats.avg_win),
-      sub: stats.best_trade ? `Best: ${stats.best_trade.script}` : undefined,
+      explanation: `Average profit per winning trade. ${stats.best_trade ? `Best single trade: ${stats.best_trade.script} (${formatPrice(stats.best_trade.pnl)} profit).` : ""} Calculated as total realised profit / number of winning trades.`,
       color: "text-emerald-600",
     },
     {
       label: "Avg Loss",
       value: formatPrice(Math.abs(stats.avg_loss)),
-      sub: stats.worst_trade ? `Worst: ${stats.worst_trade.script}` : undefined,
+      explanation: `Average loss per losing trade. ${stats.worst_trade ? `Worst single trade: ${stats.worst_trade.script} (${formatPrice(Math.abs(stats.worst_trade.pnl))} loss).` : ""} Calculated as total realised loss / number of losing trades.`,
       color: "text-red-600",
     },
   ];
@@ -57,16 +57,16 @@ export function PmsWinLoss({ portfolioId }: PmsWinLossProps) {
         </span>
       </h3>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
         {kpis.map((kpi) => (
           <div key={kpi.label} className="p-3 rounded-lg bg-slate-50">
             <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">{kpi.label}</p>
             <p className={`text-lg font-bold font-mono tabular-nums mt-0.5 ${kpi.color}`}>
               {kpi.value}
             </p>
-            {kpi.sub && (
-              <p className="text-[10px] text-slate-400 mt-0.5 truncate">{kpi.sub}</p>
-            )}
+            <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+              {kpi.explanation}
+            </p>
           </div>
         ))}
       </div>
@@ -77,7 +77,7 @@ export function PmsWinLoss({ portfolioId }: PmsWinLossProps) {
           <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${stats.win_rate_pct}%` }} />
           <div className="h-2 rounded-full bg-red-400 flex-1" />
         </div>
-        <span className="text-slate-500 whitespace-nowrap">
+        <span className="text-slate-500 whitespace-nowrap font-mono tabular-nums">
           {formatPrice(stats.total_profit)} profit / {formatPrice(Math.abs(stats.total_loss))} loss
         </span>
       </div>

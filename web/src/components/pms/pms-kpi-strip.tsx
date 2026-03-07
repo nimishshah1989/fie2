@@ -7,9 +7,9 @@ interface PmsKpiStripProps {
   summary: PmsSummary;
 }
 
-function formatNav(nav: number | null): string {
-  if (nav == null) return "—";
-  return `₹${nav.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatRs(value: number | null): string {
+  if (value == null) return "—";
+  return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 function formatCrores(value: number | null): string {
@@ -22,7 +22,7 @@ export function PmsKpiStrip({ summary }: PmsKpiStripProps) {
   const kpis = [
     {
       label: "Current NAV",
-      value: formatNav(summary.latest_nav),
+      value: formatRs(summary.latest_nav),
       sub: summary.latest_unit_nav != null
         ? `TWR Index: ${summary.latest_unit_nav.toFixed(2)} | ${summary.latest_date}`
         : `as of ${summary.latest_date}`,
@@ -32,7 +32,7 @@ export function PmsKpiStrip({ summary }: PmsKpiStripProps) {
       label: "Corpus",
       value: formatCrores(summary.latest_corpus),
       sub: summary.latest_liquidity_pct != null
-        ? `${summary.latest_liquidity_pct.toFixed(1)}% liquidity`
+        ? `${summary.latest_liquidity_pct.toFixed(2)}% liquidity`
         : undefined,
       color: "text-slate-900",
     },

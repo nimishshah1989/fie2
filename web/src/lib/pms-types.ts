@@ -45,6 +45,12 @@ export interface PmsMetric {
   sharpe_ratio: number | null;
   sortino_ratio: number | null;
   calmar_ratio: number | null;
+  benchmark_return_pct: number | null;
+  benchmark_cagr_pct: number | null;
+  benchmark_volatility_pct: number | null;
+  benchmark_max_drawdown_pct: number | null;
+  benchmark_sharpe_ratio: number | null;
+  benchmark_sortino_ratio: number | null;
 }
 
 export interface DrawdownEvent {
