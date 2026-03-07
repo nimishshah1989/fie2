@@ -19,6 +19,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import desc
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+from middleware.security import SecurityHeadersMiddleware, RequestSizeLimitMiddleware
+
 from models import (
     init_db, SessionLocal,
     TradingViewAlert, AlertStatus, IndexPrice, IndexConstituent,
@@ -38,8 +44,18 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="JHAVERI FIE v3", version="3.1")
 
+# ─── Rate Limiting ───────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ─── Security Middleware ─────────────────────────────────
+app.add_middleware(RequestSizeLimitMiddleware, max_size=10 * 1024 * 1024)  # 10MB
+app.add_middleware(SecurityHeadersMiddleware)
+
 # ─── CORS ─────────────────────────────────────────────────
 # Restrict to known frontends; add more origins as needed
+# Added AFTER security middleware so CORS runs first (LIFO order)
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.getenv("CORS_ORIGINS", "").split(",")

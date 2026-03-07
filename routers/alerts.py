@@ -9,10 +9,10 @@ import logging
 import threading
 import types
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 from fastapi import APIRouter, Request, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
@@ -125,6 +125,69 @@ def _serialize(a: TradingViewAlert) -> dict:
 
 # ─── Pydantic Models ─────────────────────────────────────────────
 
+class WebhookPayload(BaseModel):
+    """Validates TradingView webhook input after JSON parsing.
+
+    TradingView sends flexible payloads with varying field names, so we allow
+    extra fields and use lenient types. The _cs()/_sf() helpers still handle
+    template variable cleanup after validation.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    # ticker is the only truly required field — defaults to empty string
+    # if absent so we can return a 400 with a clear message
+    ticker: Optional[str] = Field(None, max_length=50)
+    exchange: Optional[str] = Field(None, max_length=50)
+    interval: Optional[str] = Field(None, max_length=20)
+
+    # TradingView uses both "time"/"timenow" and "time_utc"/"timenow_utc"
+    time: Optional[str] = Field(None, max_length=50)
+    time_utc: Optional[str] = Field(None, max_length=50)
+    timenow: Optional[str] = Field(None, max_length=50)
+
+    # Price fields — accept Any because TradingView may send strings or numbers
+    open: Optional[Any] = None
+    high: Optional[Any] = None
+    low: Optional[Any] = None
+    close: Optional[Any] = None
+    price_open: Optional[Any] = None
+    price_high: Optional[Any] = None
+    price_low: Optional[Any] = None
+    price_at_alert: Optional[Any] = None
+    volume: Optional[Any] = None
+
+    # Alert metadata
+    data: Optional[str] = Field(None, max_length=5000)
+    alert_message: Optional[str] = Field(None, max_length=5000)
+    alert_name: Optional[str] = Field(None, max_length=200)
+    signal_direction: Optional[str] = Field(None, max_length=20)
+    strategy_action: Optional[str] = Field(None, max_length=20)
+
+    @field_validator("ticker", mode="before")
+    @classmethod
+    def clean_ticker(cls, v: Any) -> Optional[str]:
+        if v is None:
+            return None
+        s = str(v).strip()
+        # Reject unresolved TradingView template variables
+        if "{{" in s or s.lower() in ("null", "none", ""):
+            return None
+        return s[:50]
+
+
+def _validate_webhook_payload(data: dict) -> WebhookPayload:
+    """Parse and validate webhook dict. Raises HTTPException on failure."""
+    try:
+        payload = WebhookPayload.model_validate(data)
+    except Exception as exc:
+        logger.warning("Webhook validation failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid webhook payload: {exc}",
+        )
+    return payload
+
+
 class ActionRequest(BaseModel):
     alert_id:        int
     decision:        str
@@ -166,6 +229,9 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         except Exception:
             data = {"data": body}
 
+        # Validate payload structure and field constraints
+        _validate_webhook_payload(data)
+
         ticker     = _cs(data.get("ticker"))
         exchange   = _cs(data.get("exchange"))
         interval   = _cs(data.get("interval"))
@@ -181,7 +247,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         # Support both "data" (legacy) and "alert_message" keys
         alert_data = _cs(data.get("data")) or _cs(data.get("alert_message"))
 
-        # Resolve signal: explicit field → strategy.order.action → text inference
+        # Resolve signal: explicit field -> strategy.order.action -> text inference
         _SIG_MAP = {"buy": "BULLISH", "sell": "BEARISH", "long": "BULLISH", "short": "BEARISH"}
         explicit_sig = _cs(data.get("signal_direction")).upper()
         strategy_action = _cs(data.get("strategy_action"))  # from {{strategy.order.action}}
@@ -211,6 +277,8 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
         logger.info("Alert #%d — %s @ %s | %s", alert.id, ticker, c, sig)
         return {"success": True, "alert_id": alert.id}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Webhook error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -282,7 +350,7 @@ def _background_telegram_notify(alert_id: int, alert_snapshot: dict, action_snap
         db = SessionLocal()
         action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
 
-        # Poll for Claude analysis to arrive (12 × 5s = 60s max)
+        # Poll for Claude analysis to arrive (12 x 5s = 60s max)
         for _ in range(12):
             if action and action.chart_analysis:
                 break

@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir -r requirements.server.txt
 COPY server.py models.py price_service.py ./
 COPY routers/ ./routers/
 COPY services/ ./services/
+COPY middleware/ ./middleware/
 
 # Copy built frontend from Stage 1
 COPY --from=frontend /app/web/out ./web/out
