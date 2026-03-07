@@ -33,6 +33,7 @@ import {
   Clock,
 } from "lucide-react";
 import { getHoldingsExportURL, updateHoldingSymbol, archivePortfolio } from "@/lib/portfolio-api";
+import { PmsDetailView } from "@/components/pms/pms-detail-view";
 import type { Portfolio } from "@/lib/portfolio-types";
 
 export default function PortfoliosPage() {
@@ -53,8 +54,22 @@ function PortfoliosContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const selectedId = searchParams.get("id") ? parseInt(searchParams.get("id")!) : null;
+  const { portfolios } = usePortfolios();
 
   if (selectedId) {
+    const portfolio = portfolios.find((p) => p.id === selectedId);
+    // If portfolio is PMS type, show PMS analytics dashboard
+    if (portfolio?.portfolio_type === "pms") {
+      return (
+        <PmsDetailView
+          id={selectedId}
+          name={portfolio.name}
+          description={portfolio.description}
+          benchmark={portfolio.benchmark}
+          onBack={() => router.push("/portfolios")}
+        />
+      );
+    }
     return <PortfolioDetailView id={selectedId} onBack={() => router.push("/portfolios")} />;
   }
 

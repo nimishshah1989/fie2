@@ -6,7 +6,7 @@ Simplified: webhook data only, FM actions, Claude chart analysis
 
 from sqlalchemy import (
     create_engine, Column, Integer, String, Float, Text, DateTime, Boolean, JSON,
-    Enum as SQLEnum, ForeignKey, Index
+    Enum as SQLEnum, ForeignKey, Index, Date, UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from sqlalchemy.sql import func
@@ -175,6 +175,9 @@ def _run_migrations():
         "ALTER TABLE portfolio_holdings ADD COLUMN yf_symbol_override VARCHAR(50)",
         "ALTER TABLE microbasket_constituents ADD COLUMN buy_price FLOAT",
         "ALTER TABLE microbasket_constituents ADD COLUMN quantity INTEGER",
+        "ALTER TABLE model_portfolios ADD COLUMN portfolio_type VARCHAR(20) DEFAULT 'manual'",
+        "ALTER TABLE model_portfolios ADD COLUMN ucc_code VARCHAR(50)",
+        "ALTER TABLE pms_nav_daily ADD COLUMN etf_investment FLOAT",
     ]
     for sql in migrations:
         try:
@@ -231,6 +234,8 @@ class ModelPortfolio(Base):
     benchmark   = Column(String(50), default="NIFTY")
     status      = Column(SQLEnum(PortfolioStatus), default=PortfolioStatus.ACTIVE)
     inception_date = Column(String(10), nullable=True)
+    portfolio_type = Column(String(20), default="manual")  # 'manual' or 'pms'
+    ucc_code    = Column(String(50), nullable=True)        # e.g. 'BJ53' for PMS filtering
     tenant_id   = Column(String(50), default="jhaveri")
     created_at  = Column(DateTime, default=func.now())
     updated_at  = Column(DateTime, default=func.now(), onupdate=func.now())
@@ -378,4 +383,113 @@ class MicrobasketConstituent(Base):
 
     __table_args__ = (
         Index('idx_constituent_basket_ticker', 'basket_id', 'ticker', unique=True),
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+#  PMS (Portfolio Management Service) TABLES
+# ═══════════════════════════════════════════════════════════
+
+class PmsNavDaily(Base):
+    """Daily NAV record from PMS broker NAV report."""
+    __tablename__ = "pms_nav_daily"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id   = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False)
+    date           = Column(Date, nullable=False)
+    corpus         = Column(Float, nullable=True)
+    equity_holding = Column(Float, nullable=True)
+    etf_investment = Column(Float, nullable=True)
+    cash_equivalent = Column(Float, nullable=True)
+    bank_balance   = Column(Float, nullable=True)
+    nav            = Column(Float, nullable=False)
+    liquidity_pct  = Column(Float, nullable=True)
+    high_water_mark = Column(Float, nullable=True)
+    created_at     = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('portfolio_id', 'date', name='uq_pms_nav_portfolio_date'),
+        Index('idx_pms_nav_portfolio_date', 'portfolio_id', 'date'),
+    )
+
+
+class PmsTransaction(Base):
+    """Individual buy/sell transaction from PMS broker transaction log."""
+    __tablename__ = "pms_transactions"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id   = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False)
+    date           = Column(Date, nullable=False)
+    script         = Column(String(100), nullable=False)
+    exchange       = Column(String(20), nullable=True)
+    stno           = Column(String(50), nullable=True)
+    # Buy columns
+    buy_qty        = Column(Float, nullable=True)
+    buy_rate       = Column(Float, nullable=True)
+    buy_gst        = Column(Float, nullable=True)
+    buy_other_charges = Column(Float, nullable=True)
+    buy_stt        = Column(Float, nullable=True)
+    buy_cost_rate  = Column(Float, nullable=True)
+    buy_amt_with_cost = Column(Float, nullable=True)
+    buy_amt_without_stt = Column(Float, nullable=True)
+    # Sale columns
+    sale_qty       = Column(Float, nullable=True)
+    sale_rate      = Column(Float, nullable=True)
+    sale_gst       = Column(Float, nullable=True)
+    sale_stt       = Column(Float, nullable=True)
+    sale_other_charges = Column(Float, nullable=True)
+    sale_cost_rate = Column(Float, nullable=True)
+    sale_amt_with_cost = Column(Float, nullable=True)
+    sale_amt_without_stt = Column(Float, nullable=True)
+
+    __table_args__ = (
+        Index('idx_pms_txn_portfolio_date', 'portfolio_id', 'date'),
+    )
+
+
+class PortfolioMetric(Base):
+    """Computed risk/return metrics for a portfolio over a given period."""
+    __tablename__ = "portfolio_metrics"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id    = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False)
+    as_of_date      = Column(Date, nullable=False)
+    period          = Column(String(10), nullable=False)  # 1M, 3M, 6M, 1Y, 3Y, 5Y, SI
+    start_date      = Column(Date, nullable=True)
+    end_date        = Column(Date, nullable=True)
+    start_nav       = Column(Float, nullable=True)
+    end_nav         = Column(Float, nullable=True)
+    absolute_return = Column(Float, nullable=True)
+    return_pct      = Column(Float, nullable=True)
+    cagr_pct        = Column(Float, nullable=True)
+    volatility_pct  = Column(Float, nullable=True)
+    max_drawdown_pct = Column(Float, nullable=True)
+    sharpe_ratio    = Column(Float, nullable=True)
+    sortino_ratio   = Column(Float, nullable=True)
+    calmar_ratio    = Column(Float, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('portfolio_id', 'as_of_date', 'period',
+                         name='uq_metric_portfolio_date_period'),
+    )
+
+
+class DrawdownEvent(Base):
+    """Peak-to-trough drawdown events for a portfolio."""
+    __tablename__ = "drawdown_events"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id   = Column(Integer, ForeignKey("model_portfolios.id"), nullable=False)
+    peak_date      = Column(Date, nullable=False)
+    peak_nav       = Column(Float, nullable=False)
+    trough_date    = Column(Date, nullable=True)
+    trough_nav     = Column(Float, nullable=True)
+    drawdown_pct   = Column(Float, nullable=True)
+    duration_days  = Column(Integer, nullable=True)
+    recovery_date  = Column(Date, nullable=True)
+    recovery_days  = Column(Integer, nullable=True)
+    status         = Column(String(20), default="underwater")  # 'recovered' or 'underwater'
+
+    __table_args__ = (
+        Index('idx_drawdown_portfolio', 'portfolio_id'),
     )

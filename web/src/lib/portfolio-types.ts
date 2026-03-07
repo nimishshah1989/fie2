@@ -9,6 +9,8 @@ export interface Portfolio {
   description: string | null;
   benchmark: string;
   status: "ACTIVE" | "ARCHIVED";
+  portfolio_type: "manual" | "pms";
+  ucc_code: string | null;
   created_at: string | null;
   updated_at: string | null;
   // Summary fields from list endpoint

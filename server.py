@@ -26,7 +26,7 @@ from models import (
 from services.data_helpers import upsert_price_row, get_all_portfolio_tickers_with_inception
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import health, alerts, indices, portfolios, baskets, recommendations
+from routers import health, alerts, indices, portfolios, baskets, recommendations, pms
 
 logger = logging.getLogger("fie_v3")
 logging.basicConfig(level=logging.INFO)
@@ -91,6 +91,7 @@ app.include_router(indices.router)
 app.include_router(portfolios.router)
 app.include_router(baskets.router)
 app.include_router(recommendations.router)
+app.include_router(pms.router)
 
 
 # ═══════════════════════════════════════════════════════════

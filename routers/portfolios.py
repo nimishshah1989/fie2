@@ -113,6 +113,8 @@ async def list_portfolios(db: Session = Depends(get_db)):
             "id": p.id, "name": p.name, "description": p.description,
             "benchmark": p.benchmark,
             "status": p.status.value if p.status else "ACTIVE",
+            "portfolio_type": getattr(p, 'portfolio_type', 'manual') or 'manual',
+            "ucc_code": getattr(p, 'ucc_code', None),
             "created_at": (p.created_at.isoformat() + "Z") if p.created_at else None,
             "updated_at": (p.updated_at.isoformat() + "Z") if p.updated_at else None,
             "num_holdings": len([h for h in holdings if h.quantity > 0]),

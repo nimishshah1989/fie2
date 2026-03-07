@@ -26,3 +26,6 @@ fie2.env
 web/out/
 web/node_modules/
 web/.next/
+
+# PMS Excel data files (contain client data)
+*.xlsx

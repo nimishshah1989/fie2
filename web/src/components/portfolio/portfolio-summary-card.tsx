@@ -61,8 +61,11 @@ export function PortfolioSummaryCard({ portfolio, onClick, onEdit, onArchive }: 
                 )}
               </div>
             )}
+            {portfolio.portfolio_type === "pms" && (
+              <Badge className="bg-teal-100 text-teal-700 text-[10px]">PMS</Badge>
+            )}
             <Badge variant="outline" className="text-[10px]">
-              {portfolio.num_holdings} holdings
+              {portfolio.portfolio_type === "pms" ? "Analytics" : `${portfolio.num_holdings} holdings`}
             </Badge>
           </div>
         </div>
