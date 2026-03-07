@@ -1,0 +1,37 @@
+# FIE v3 — Local Development Stack
+# Usage: docker compose up -d
+version: "3.8"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: fie
+      POSTGRES_PASSWORD: fie_dev_password
+      POSTGRES_DB: fie_v3
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fie"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://fie:fie_dev_password@db:5432/fie_v3
+      FIE_ENVIRONMENT: dev
+      CORS_ORIGINS: http://localhost:3000,http://localhost:8000
+      PORT: "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

@@ -29,3 +29,7 @@ web/.next/
 
 # PMS Excel data files (contain client data)
 *.xlsx
+
+# Environment files (secrets)
+env/*.env
+!env/*.env.example
