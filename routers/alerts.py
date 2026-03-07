@@ -9,19 +9,25 @@ import logging
 import threading
 import types
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, Request, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import desc
+from sqlalchemy.orm import Session
 
 from models import (
-    get_db, IndexPrice, SessionLocal,
-    TradingViewAlert, AlertAction, AlertStatus, ActionPriority,
+    ActionPriority,
+    AlertAction,
+    AlertStatus,
+    SessionLocal,
+    TradingViewAlert,
+    get_db,
 )
 from services.claude_service import (
-    ANTHROPIC_API_KEY, analyze_chart_vision, analyze_text_only,
+    ANTHROPIC_API_KEY,
+    analyze_chart_vision,
+    analyze_text_only,
 )
 from services.telegram_service import TELEGRAM_ENABLED, send_alert_card
 

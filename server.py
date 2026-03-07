@@ -7,8 +7,8 @@ background backfill, scheduled jobs, and static file serving.
 All endpoint logic lives in routers/ and services/.
 """
 
-import os
 import logging
+import os
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -37,27 +37,29 @@ if _sentry_dsn:
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import desc
-
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from middleware.security import (
-    SecurityHeadersMiddleware, RequestSizeLimitMiddleware, RequestLoggingMiddleware,
+    RequestLoggingMiddleware,
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
 )
-
 from models import (
-    init_db, SessionLocal,
-    TradingViewAlert, AlertStatus, IndexPrice, IndexConstituent,
+    AlertStatus,
+    IndexConstituent,
+    IndexPrice,
+    SessionLocal,
+    TradingViewAlert,
+    init_db,
 )
-from services.data_helpers import upsert_price_row, get_all_portfolio_tickers_with_inception
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import health, alerts, indices, portfolios, baskets, recommendations, pms
-
+from routers import alerts, baskets, health, indices, pms, portfolios, recommendations
+from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
 #  APP SETUP
@@ -156,8 +158,10 @@ def _background_yfinance_backfill():
     db = None
     try:
         from price_service import (
-            fetch_yfinance_bulk_history, fetch_yfinance_bulk_stock_history,
-            NSE_INDEX_KEYS, NSE_ETF_UNIVERSE,
+            NSE_ETF_UNIVERSE,
+            NSE_INDEX_KEYS,
+            fetch_yfinance_bulk_history,
+            fetch_yfinance_bulk_stock_history,
         )
         db = SessionLocal()
 
@@ -230,10 +234,11 @@ def _background_yfinance_backfill():
 
         # 5. Microbasket constituent prices + NAV computation
         try:
+            from models import BasketStatus, Microbasket
             from services.basket_service import (
-                get_all_basket_constituent_tickers, compute_today_basket_navs, backfill_basket_nav,
+                backfill_basket_nav,
+                get_all_basket_constituent_tickers,
             )
-            from models import Microbasket, BasketStatus
 
             basket_tickers = get_all_basket_constituent_tickers(db)
             # Deduplicate against already-fetched tickers
@@ -306,9 +311,11 @@ def _background_yfinance_backfill():
 def _scheduled_eod_fetch():
     """Background job: store ALL nsetools indices + ETFs + portfolio stocks daily."""
     from price_service import (
-        fetch_live_indices, fetch_yfinance_bulk_history,
+        NSE_ETF_UNIVERSE,
+        NSE_INDEX_KEYS,
+        fetch_live_indices,
+        fetch_yfinance_bulk_history,
         fetch_yfinance_bulk_stock_history,
-        NSE_ETF_UNIVERSE, NSE_INDEX_KEYS,
     )
     from services.data_helpers import get_portfolio_tickers
 
@@ -395,7 +402,8 @@ def _scheduled_eod_fetch():
         basket_nav_count = 0
         try:
             from services.basket_service import (
-                get_all_basket_constituent_tickers, compute_today_basket_navs,
+                compute_today_basket_navs,
+                get_all_basket_constituent_tickers,
             )
             # Fetch basket constituent prices that aren't already covered
             basket_tickers = get_all_basket_constituent_tickers(db)
@@ -459,9 +467,9 @@ async def startup():
 @app.on_event("startup")
 async def start_scheduler():
     try:
+        import pytz
         from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.cron import CronTrigger
-        import pytz
 
         scheduler = BackgroundScheduler()
         ist = pytz.timezone("Asia/Kolkata")

@@ -11,7 +11,6 @@ or other tests.
 
 from models import IndexPrice
 
-
 # ── Latest Indices ──────────────────────────────────────────
 
 

@@ -9,7 +9,10 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from models import (
-    IndexPrice, PortfolioHolding, ModelPortfolio, PortfolioStatus,
+    IndexPrice,
+    ModelPortfolio,
+    PortfolioHolding,
+    PortfolioStatus,
 )
 
 logger = logging.getLogger("fie_v3.data")

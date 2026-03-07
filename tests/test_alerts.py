@@ -5,11 +5,7 @@ Covers: webhook ingestion, alert CRUD, FM actions (approve/deny),
 signal inference, chart retrieval, and edge cases.
 """
 
-import json
 
-from models import (
-    TradingViewAlert, AlertAction, AlertStatus, ActionPriority,
-)
 
 
 # ── Webhook Ingestion ───────────────────────────────────────

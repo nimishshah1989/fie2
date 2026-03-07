@@ -6,9 +6,9 @@ and request logging for the FastAPI application.
 """
 
 from middleware.security import (
-    SecurityHeadersMiddleware,
-    RequestSizeLimitMiddleware,
     RequestLoggingMiddleware,
+    RequestSizeLimitMiddleware,
+    SecurityHeadersMiddleware,
 )
 
 __all__ = [

@@ -7,8 +7,6 @@ Covers:
 - API key authentication — optional auth gating for /api paths
 """
 
-import os
-import pytest
 
 
 # ═══════════════════════════════════════════════════════════

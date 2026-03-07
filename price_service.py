@@ -8,7 +8,8 @@ Fallback: yfinance for individual stocks, BSE, commodities, currencies.
 
 import logging
 import time
-from datetime import datetime, timedelta, date as date_type
+from datetime import date as date_type
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
@@ -673,10 +674,9 @@ def fetch_yfinance_index_history(index_key: str, period: str = "2y") -> list:
         return []
 
 
-def _yf_download_with_retry(tickers: str, max_retries: int = 3, **kwargs) -> "pd.DataFrame":
+def _yf_download_with_retry(tickers: str, max_retries: int = 3, **kwargs):  # -> pd.DataFrame
     """Wrapper around yf.download() with retry logic for rate limits."""
     import yfinance as yf
-    import pandas as pd
 
     for attempt in range(max_retries):
         try:
@@ -701,7 +701,6 @@ def fetch_yfinance_bulk_history(index_keys: list, period: str = "2y", start: str
     When start is provided, uses start/end instead of period.
     Returns {index_key: [{date, open, high, low, close, volume}, ...]}
     """
-    import yfinance as yf
     import pandas as pd
 
     results = {}
@@ -790,7 +789,6 @@ def fetch_yfinance_bulk_stock_history(tickers: list, period: str = "2y", start: 
     When start is provided, uses start/end instead of period.
     Returns {ticker: [{date, open, high, low, close, volume}, ...]}
     """
-    import yfinance as yf
     import pandas as pd
 
     results = {}
@@ -904,8 +902,8 @@ def fetch_all_index_eod(period: str = "5d") -> dict:
 
     if yf_keys:
         try:
-            import yfinance as yf
             import pandas as pd
+            import yfinance as yf
 
             sym_map = {}
             for key in yf_keys:

@@ -4,17 +4,21 @@ Live price fetching, NAV computation, XIRR, drawdown, and allocation helpers.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import httpx
 from cachetools import TTLCache
-from sqlalchemy import desc, func as sa_func
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 
 from models import (
-    IndexPrice, PortfolioHolding, PortfolioTransaction, PortfolioNAV, TransactionType,
+    IndexPrice,
+    PortfolioHolding,
+    PortfolioNAV,
+    PortfolioTransaction,
+    TransactionType,
 )
 
 logger = logging.getLogger("fie_v3.portfolio")
@@ -156,7 +160,7 @@ def get_live_prices(tickers: List[str], overrides: Optional[Dict[str, str]] = No
     # Fetch microbasket live prices
     if basket_tickers:
         try:
-            from models import SessionLocal, Microbasket, BasketStatus
+            from models import BasketStatus, Microbasket, SessionLocal
             from services.basket_service import compute_basket_live_value
 
             db = SessionLocal()

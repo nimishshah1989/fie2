@@ -6,12 +6,16 @@ EOD fetch, historical fetch, bulk upload, stock history, latest, and live indice
 import logging
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Request, Depends
-from sqlalchemy import desc, func as sqlfunc
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy import desc
+from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
 from models import (
-    get_db, IndexPrice, TradingViewAlert, AlertStatus,
+    AlertStatus,
+    IndexPrice,
+    TradingViewAlert,
+    get_db,
 )
 from services.data_helpers import upsert_price_row
 
@@ -283,7 +287,7 @@ async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Sessi
     """Return real-time live index data from NSE with ratio-based period returns.
     tracked_only=True (default) filters to only indices with yfinance historical data.
     Also includes non-nsetools instruments (BSE, commodities, currencies) from DB."""
-    from price_service import fetch_live_indices, NSE_INDEX_KEYS, NON_NSETOOLS_KEYS, NSE_DISPLAY_MAP
+    from price_service import NON_NSETOOLS_KEYS, NSE_DISPLAY_MAP, NSE_INDEX_KEYS, fetch_live_indices
 
     try:
         data = fetch_live_indices()

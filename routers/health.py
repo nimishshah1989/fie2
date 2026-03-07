@@ -3,19 +3,24 @@ FIE v3 — Health & Status Routes
 Server status, health checks, and basic market summary.
 """
 
+import logging
 import os
 import sys
 import time
-import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func as sa_func
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-from sqlalchemy import func as sa_func, text
 
 from models import (
-    get_db, TradingViewAlert, ModelPortfolio, PortfolioHolding, PortfolioNAV,
     IndexPrice,
+    ModelPortfolio,
+    PortfolioHolding,
+    PortfolioNAV,
+    TradingViewAlert,
+    get_db,
 )
 
 logger = logging.getLogger("fie_v3.health")

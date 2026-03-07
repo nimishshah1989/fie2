@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
-from models import PmsNavDaily, PortfolioMetric, DrawdownEvent
+from models import DrawdownEvent, PmsNavDaily, PortfolioMetric
 
 # Re-export parsers so existing imports still work
 from services.pms_parser import parse_nav_excel, parse_transaction_excel  # noqa: F401
@@ -377,8 +377,9 @@ def compute_enhanced_risk_metrics(
 
     These metrics demonstrate active risk management quality.
     """
-    from models import IndexPrice
     from datetime import timedelta
+
+    from models import IndexPrice
 
     query = (
         db.query(PmsNavDaily)

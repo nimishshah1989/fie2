@@ -5,10 +5,9 @@ Covers CRUD endpoints, validation, edge cases, and error paths
 for the microbasket feature.
 """
 
-import pytest
 from unittest.mock import patch
-from models import Microbasket, MicrobasketConstituent, BasketStatus, IndexPrice
 
+from models import BasketStatus, IndexPrice, Microbasket, MicrobasketConstituent
 
 # ─── Helpers ────────────────────────────────────────────────
 

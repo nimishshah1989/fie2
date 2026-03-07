@@ -10,19 +10,23 @@ import threading
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
 from sqlalchemy import func as sqlfunc
+from sqlalchemy.orm import Session
 
 from models import (
-    get_db, IndexPrice,
-    Microbasket, MicrobasketConstituent, BasketStatus,
+    BasketStatus,
+    IndexPrice,
+    Microbasket,
+    MicrobasketConstituent,
+    get_db,
 )
 from services.basket_service import (
-    basket_slug, compute_basket_live_value, backfill_basket_nav,
-    get_all_basket_constituent_tickers, is_basket_ticker,
+    backfill_basket_nav,
+    basket_slug,
+    compute_basket_live_value,
     compute_constituent_units,
 )
 from services.data_helpers import upsert_price_row

@@ -5,10 +5,9 @@ Covers the sectors listing endpoint, generate endpoint with various
 parameter combinations, validation, and edge cases.
 """
 
-import pytest
 from unittest.mock import patch
-from models import IndexPrice, IndexConstituent
 
+from models import IndexConstituent, IndexPrice
 
 # ─── Helpers ────────────────────────────────────────────────
 

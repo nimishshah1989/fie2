@@ -8,24 +8,36 @@ import csv
 import io
 import logging
 import threading
-from datetime import date as date_type, datetime, timedelta
+from datetime import date as date_type
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import desc, func as sa_func
+from sqlalchemy import desc
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session
 
 from models import (
-    get_db, SessionLocal, IndexPrice,
-    ModelPortfolio, PortfolioHolding, PortfolioTransaction, PortfolioNAV,
-    PortfolioStatus, TransactionType,
-    PmsNavDaily, PortfolioMetric,
+    IndexPrice,
+    ModelPortfolio,
+    PmsNavDaily,
+    PortfolioHolding,
+    PortfolioMetric,
+    PortfolioNAV,
+    PortfolioStatus,
+    PortfolioTransaction,
+    SessionLocal,
+    TransactionType,
+    get_db,
 )
 from services.portfolio_service import (
-    get_live_prices, compute_xirr, compute_max_drawdown,
-    compute_nav_for_portfolio, empty_totals,
+    compute_max_drawdown,
+    compute_nav_for_portfolio,
+    compute_xirr,
+    empty_totals,
+    get_live_prices,
 )
 
 logger = logging.getLogger("fie_v3.portfolios")

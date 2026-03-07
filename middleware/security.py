@@ -11,7 +11,7 @@ import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response, JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
 logger = logging.getLogger("fie_v3.security")

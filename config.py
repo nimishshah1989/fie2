@@ -2,10 +2,9 @@
 FIE v3 — Environment Configuration
 Centralized configuration with validation and defaults.
 """
-import os
 import logging
+import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger("fie_v3.config")
 

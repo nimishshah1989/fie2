@@ -9,14 +9,13 @@ since the test database is shared across the session and background threads
 may seed data during app startup.
 """
 
-import json
 from unittest.mock import patch
 
 from models import (
-    ModelPortfolio, PortfolioHolding, PortfolioTransaction,
-    PortfolioNAV, PortfolioStatus, TransactionType, IndexPrice,
+    ModelPortfolio,
+    PortfolioHolding,
+    PortfolioNAV,
 )
-
 
 # ── Portfolio CRUD ──────────────────────────────────────────
 

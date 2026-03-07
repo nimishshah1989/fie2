@@ -16,13 +16,13 @@ from typing import Dict, List, Optional, Set
 import yfinance as yf
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import desc
-from sqlalchemy.orm import Session
 from sqlalchemy import func as sqlfunc
+from sqlalchemy.orm import Session
 
-from models import get_db, IndexPrice, IndexConstituent
+from models import IndexConstituent, IndexPrice, get_db
 from price_service import (
-    SECTOR_INDICES_FOR_RECO, SECTOR_ETF_MAP,
+    SECTOR_ETF_MAP,
+    SECTOR_INDICES_FOR_RECO,
     fetch_nse_index_constituents,
 )
 

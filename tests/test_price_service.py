@@ -5,23 +5,20 @@ These tests cover ticker normalization, symbol mappings, and data constants
 WITHOUT making actual API calls to Yahoo Finance or NSE.
 """
 
-import pytest
 
 from price_service import (
-    normalize_ticker,
-    normalize_ticker_for_yfinance,
-    NSE_TICKER_MAP,
-    NSE_INDEX_KEYS,
-    NSE_ETF_UNIVERSE,
-    NSE_DISPLAY_MAP,
     FALLBACK_MAP,
+    NON_NSETOOLS_KEYS,
+    NSE_DISPLAY_MAP,
+    NSE_ETF_UNIVERSE,
+    NSE_INDEX_KEYS,
+    NSE_TICKER_MAP,
     SECTOR_ETF_MAP,
     SECTOR_INDICES_FOR_RECO,
-    NON_NSETOOLS_KEYS,
     _safe_float,
-    compute_returns,
+    normalize_ticker,
+    normalize_ticker_for_yfinance,
 )
-
 
 # ═══════════════════════════════════════════════════════════
 #  TICKER NORMALIZATION

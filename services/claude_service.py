@@ -3,9 +3,10 @@ FIE v3 — Claude AI Analysis Service
 Chart vision analysis and text-only analysis via Anthropic API.
 """
 
-import httpx
 import logging
 import os
+
+import httpx
 
 logger = logging.getLogger("fie_v3.claude")
 

@@ -10,11 +10,10 @@ Usage:
     python3 test_smoke.py https://your-app.railway.app   # Test production
 """
 
-import sys
 import json
 import subprocess
+import sys
 from typing import Optional
-
 
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 

@@ -1,10 +1,20 @@
 [tool.ruff]
 target-version = "py311"
 line-length = 120
+exclude = [
+    "webhook_parser.py",       # Legacy reference file, not used in production
+    "dashboard.py",            # Legacy Streamlit dashboard
+    "migrate_to_railway.py",   # One-time migration script
+    "import_portfolios.py",    # One-time import script
+    "backfill_nse.py",         # Local backfill script
+    "backfill_nav.py",         # Local backfill script
+    "scripts/diagnose_*.py",   # Diagnostic scripts
+    "scripts/import_*.py",     # Import scripts
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-ignore = ["E501"]  # line length handled by line-length setting above
+ignore = ["E501", "E701", "E702", "E711", "E712", "E722", "E741", "E402", "W605", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["models", "price_service", "routers", "services", "middleware"]

@@ -2,8 +2,8 @@
 FIE v3 — Structured Logging Configuration
 JSON logging for production, human-readable for development.
 """
-import logging
 import json
+import logging
 import sys
 from datetime import datetime
 

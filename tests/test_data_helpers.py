@@ -5,14 +5,15 @@ Covers upsert_price_row, get_portfolio_tickers, and
 get_all_portfolio_tickers_with_inception with various data states.
 """
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import patch
+
 from models import (
-    IndexPrice, ModelPortfolio, PortfolioHolding,
+    IndexPrice,
+    ModelPortfolio,
+    PortfolioHolding,
     PortfolioStatus,
 )
-
 
 # ─── Helpers ────────────────────────────────────────────────
 

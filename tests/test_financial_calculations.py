@@ -9,20 +9,18 @@ Covers:
 - Price return computation (compute_returns)
 """
 
-from datetime import datetime, date, timedelta
-import pytest
-
-# ─── Import the functions under test from portfolio_service ───
-from services.portfolio_service import (
-    compute_xirr,
-    compute_max_drawdown,
-    get_yahoo_symbol,
-    YAHOO_SYMBOL_MAP,
-    empty_totals,
-)
+from datetime import date
 
 from price_service import compute_returns
 
+# ─── Import the functions under test from portfolio_service ───
+from services.portfolio_service import (
+    YAHOO_SYMBOL_MAP,
+    compute_max_drawdown,
+    compute_xirr,
+    empty_totals,
+    get_yahoo_symbol,
+)
 
 # ═══════════════════════════════════════════════════════════
 #  XIRR COMPUTATION

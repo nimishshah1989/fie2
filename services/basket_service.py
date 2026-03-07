@@ -11,10 +11,10 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from sqlalchemy import desc, func as sqlfunc
+from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
-from models import IndexPrice, Microbasket, MicrobasketConstituent, BasketStatus
+from models import BasketStatus, IndexPrice, Microbasket, MicrobasketConstituent
 from services.data_helpers import upsert_price_row
 
 logger = logging.getLogger("fie_v3.baskets")
