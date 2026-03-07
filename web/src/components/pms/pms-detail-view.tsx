@@ -1,17 +1,15 @@
 "use client";
 
-import useSWR from "swr";
 import { usePmsDetail } from "@/hooks/use-pms-detail";
-import { fetchPmsHoldings } from "@/lib/pms-api";
 import { PmsKpiStrip } from "./pms-kpi-strip";
 import { PmsNavChart } from "./pms-nav-chart";
 import { PmsPerformanceTable } from "./pms-performance-table";
 import { PmsDrawdownChart } from "./pms-drawdown-chart";
 import { PmsWinLoss } from "./pms-win-loss";
 import { PmsRiskScorecard } from "./pms-risk-scorecard";
+import { PmsAllocation } from "./pms-allocation";
 import { PmsMethodology } from "./pms-methodology";
 import { PmsUploadDialog } from "./pms-upload-dialog";
-import { AllocationChart } from "@/components/portfolio/allocation-chart";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,11 +26,6 @@ interface PmsDetailViewProps {
 
 export function PmsDetailView({ id, name, description, benchmark, onBack }: PmsDetailViewProps) {
   const { summary, summaryLoading, metrics, metricsAsOf, refresh } = usePmsDetail(id);
-  const { data: holdingsData } = useSWR(
-    `pms-holdings-${id}`,
-    () => fetchPmsHoldings(id),
-    { refreshInterval: 300_000 }
-  );
 
   // Loading state
   if (summaryLoading) {
@@ -89,10 +82,8 @@ export function PmsDetailView({ id, name, description, benchmark, onBack }: PmsD
       {/* Performance Table */}
       <PmsPerformanceTable metrics={metrics} asOfDate={metricsAsOf} />
 
-      {/* Current Portfolio Allocation */}
-      {holdingsData && (holdingsData.by_stock.length > 0 || holdingsData.by_sector.length > 0) && (
-        <AllocationChart byStock={holdingsData.by_stock} bySector={holdingsData.by_sector} />
-      )}
+      {/* Portfolio Allocation: stock pie + sector history table */}
+      <PmsAllocation portfolioId={id} />
 
       {/* Drawdown Chart */}
       <PmsDrawdownChart portfolioId={id} />

@@ -92,6 +92,17 @@ export async function fetchPmsRiskAnalytics(
   return res.json();
 }
 
+export async function fetchPmsSectorHistory(
+  portfolioId: number,
+): Promise<{
+  snapshots: { label: string; date: string; sectors: Record<string, number> }[];
+  sectors: string[];
+} | null> {
+  const res = await fetch(`${API}/api/pms/${portfolioId}/sector-history`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchPmsHoldings(
   portfolioId: number,
 ): Promise<{

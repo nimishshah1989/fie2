@@ -733,6 +733,156 @@ def get_pms_holdings(portfolio_id: int, db: Session = Depends(get_db)):
 
 
 # ═══════════════════════════════════════════════════════════
+#  SECTOR ALLOCATION HISTORY
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/{portfolio_id}/sector-history")
+def get_sector_history(portfolio_id: int, db: Session = Depends(get_db)):
+    """Compute sector allocation at multiple historical points (today, 1M, 3M, 6M, 12M).
+    Uses transaction replay + closest available prices from IndexPrice table."""
+    from dateutil.relativedelta import relativedelta
+
+    txns = (
+        db.query(PmsTransaction)
+        .filter(PmsTransaction.portfolio_id == portfolio_id)
+        .order_by(PmsTransaction.date)
+        .all()
+    )
+    if not txns:
+        return {"snapshots": [], "sectors": []}
+
+    # Define snapshot dates
+    today = date.today()
+    snapshot_labels = ["Today", "1M", "3M", "6M", "12M"]
+    snapshot_dates = [
+        today,
+        today - relativedelta(months=1),
+        today - relativedelta(months=3),
+        today - relativedelta(months=6),
+        today - relativedelta(months=12),
+    ]
+
+    # Build sector map for all scripts ever traded
+    all_scripts = set(t.script for t in txns)
+    sectors: dict[str, str] = {}
+    unknown = []
+    for s in all_scripts:
+        if s in SCRIPT_SECTOR_MAP:
+            sectors[s] = SCRIPT_SECTOR_MAP[s]
+        else:
+            unknown.append(s)
+    if unknown:
+        try:
+            import yfinance as yf
+            for s in unknown:
+                try:
+                    info = yf.Ticker(f"{s}.NS").info
+                    sectors[s] = info.get("sector", "Other") or "Other"
+                except Exception:
+                    sectors[s] = "Other"
+        except Exception:
+            for s in unknown:
+                sectors[s] = "Other"
+
+    # Collect all scripts that were ever held to fetch prices in bulk
+    # For each snapshot date, compute net holdings up to that date
+    snapshot_holdings: list[dict[str, float]] = []
+    for snap_date in snapshot_dates:
+        net_qty: dict[str, float] = defaultdict(float)
+        for t in txns:
+            if t.date > snap_date:
+                break
+            if t.buy_qty and t.buy_qty > 0:
+                net_qty[t.script] += t.buy_qty
+            if t.sale_qty and t.sale_qty > 0:
+                net_qty[t.script] -= t.sale_qty
+        active = {k: v for k, v in net_qty.items() if v > 0.5}
+        snapshot_holdings.append(active)
+
+    # Get all unique scripts across all snapshots
+    all_active_scripts = set()
+    for sh in snapshot_holdings:
+        all_active_scripts.update(sh.keys())
+
+    # Fetch prices: for today use live, for historical use IndexPrice closest date
+    from price_service import get_batch_prices
+
+    # Live prices for today
+    live_prices = get_batch_prices(list(all_active_scripts)) if all_active_scripts else {}
+
+    # Historical prices from IndexPrice (closest available date)
+    def _get_price_on_date(script: str, target_date: date) -> float | None:
+        row = (
+            db.query(IndexPrice)
+            .filter(
+                IndexPrice.index_name == script,
+                IndexPrice.date <= str(target_date),
+            )
+            .order_by(desc(IndexPrice.date))
+            .first()
+        )
+        if row and row.close_price:
+            return float(row.close_price)
+        return None
+
+    # Also get cash from PmsNavDaily for each snapshot
+    def _get_cash_on_date(pid: int, target_date: date) -> float:
+        nav_row = (
+            db.query(PmsNavDaily)
+            .filter(PmsNavDaily.portfolio_id == pid, PmsNavDaily.date <= target_date)
+            .order_by(desc(PmsNavDaily.date))
+            .first()
+        )
+        if nav_row:
+            return (nav_row.cash_equivalent or 0) + (nav_row.bank_balance or 0)
+        return 0.0
+
+    # Compute sector allocation for each snapshot
+    all_sectors_set: set[str] = set()
+    snapshots = []
+    for i, (label, snap_date, holdings) in enumerate(
+        zip(snapshot_labels, snapshot_dates, snapshot_holdings)
+    ):
+        if not holdings:
+            snapshots.append({"label": label, "date": str(snap_date), "sectors": {}})
+            continue
+
+        # Get prices
+        sector_values: dict[str, float] = defaultdict(float)
+        for script, qty in holdings.items():
+            if i == 0:
+                price = live_prices.get(script, {}).get("current_price")
+            else:
+                price = _get_price_on_date(script, snap_date)
+                if not price:
+                    price = live_prices.get(script, {}).get("current_price")
+            if price:
+                sector = sectors.get(script, "Other")
+                sector_values[sector] += qty * price
+
+        cash = _get_cash_on_date(portfolio_id, snap_date)
+        if cash > 0:
+            sector_values["Cash & Liquid"] += cash
+
+        total = sum(sector_values.values())
+        sector_pcts = {}
+        for sec, val in sector_values.items():
+            sector_pcts[sec] = round(val / total * 100, 1) if total > 0 else 0
+            all_sectors_set.add(sec)
+
+        snapshots.append({
+            "label": label,
+            "date": str(snap_date),
+            "sectors": sector_pcts,
+        })
+
+    return {
+        "snapshots": snapshots,
+        "sectors": sorted(all_sectors_set),
+    }
+
+
+# ═══════════════════════════════════════════════════════════
 #  RISK ANALYTICS (enhanced risk management metrics)
 # ═══════════════════════════════════════════════════════════
 
