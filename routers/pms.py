@@ -574,6 +574,165 @@ def get_monthly_returns(portfolio_id: int, db: Session = Depends(get_db)):
 
 
 # ═══════════════════════════════════════════════════════════
+#  CURRENT HOLDINGS & ALLOCATION
+# ═══════════════════════════════════════════════════════════
+
+# Sector mapping for common PMS holdings (yfinance sector lookup is slow)
+SCRIPT_SECTOR_MAP: dict[str, str] = {
+    "GOLDBEES": "Gold ETF",
+    "SILVERBEES": "Silver ETF",
+    "LIQUIDCASE": "Liquid Fund",
+    "LIQUIDBEES": "Liquid Fund",
+    "NIFTYBEES": "Index ETF",
+    "BANKBEES": "Index ETF",
+    "ITBEES": "Index ETF",
+    "JUNIORBEES": "Index ETF",
+    "SETFNIF50": "Index ETF",
+}
+
+
+@router.get("/{portfolio_id}/holdings")
+def get_pms_holdings(portfolio_id: int, db: Session = Depends(get_db)):
+    """Compute current holdings from net buy-sell transactions, fetch live prices,
+    and return stock-wise and sector-wise allocation."""
+    from price_service import get_batch_prices
+
+    txns = (
+        db.query(PmsTransaction)
+        .filter(PmsTransaction.portfolio_id == portfolio_id)
+        .all()
+    )
+    if not txns:
+        return {"holdings": [], "by_stock": [], "by_sector": []}
+
+    # Net quantity per script
+    net_qty: dict[str, float] = defaultdict(float)
+    avg_cost: dict[str, list] = defaultdict(list)
+    for t in txns:
+        if t.buy_qty and t.buy_qty > 0:
+            net_qty[t.script] += t.buy_qty
+            rate = t.buy_cost_rate or t.buy_rate or 0
+            avg_cost[t.script].append((t.buy_qty, rate))
+        if t.sale_qty and t.sale_qty > 0:
+            net_qty[t.script] -= t.sale_qty
+
+    # Filter to active holdings (qty > 0)
+    active = {k: round(v, 2) for k, v in net_qty.items() if v > 0.5}
+    if not active:
+        return {"holdings": [], "by_stock": [], "by_sector": []}
+
+    # Compute weighted average cost per script
+    def weighted_avg(trades: list) -> float:
+        total_qty = sum(q for q, _ in trades)
+        if total_qty == 0:
+            return 0
+        return sum(q * r for q, r in trades) / total_qty
+
+    # Fetch live prices
+    prices = get_batch_prices(list(active.keys()))
+
+    # Look up sectors via yfinance (with cache)
+    sectors: dict[str, str] = {}
+    unknown_scripts = []
+    for script in active:
+        if script in SCRIPT_SECTOR_MAP:
+            sectors[script] = SCRIPT_SECTOR_MAP[script]
+        else:
+            unknown_scripts.append(script)
+
+    if unknown_scripts:
+        try:
+            import yfinance as yf
+            for script in unknown_scripts:
+                try:
+                    info = yf.Ticker(f"{script}.NS").info
+                    sectors[script] = info.get("sector", "Other") or "Other"
+                except Exception:
+                    sectors[script] = "Other"
+        except Exception:
+            for s in unknown_scripts:
+                sectors[s] = "Other"
+
+    # Build holdings list
+    holdings = []
+    total_value = 0.0
+    for script, qty in sorted(active.items()):
+        price_data = prices.get(script, {})
+        current_price = price_data.get("current_price")
+        if not current_price:
+            continue
+        value = qty * current_price
+        total_value += value
+        cost = weighted_avg(avg_cost.get(script, []))
+        holdings.append({
+            "script": script,
+            "qty": qty,
+            "avg_cost": round(cost, 2),
+            "current_price": round(current_price, 2),
+            "value": round(value, 2),
+            "pnl": round(value - qty * cost, 2),
+            "pnl_pct": round(((current_price - cost) / cost * 100), 2) if cost > 0 else 0,
+            "sector": sectors.get(script, "Other"),
+        })
+
+    # Compute allocation percentages
+    for h in holdings:
+        h["weight_pct"] = round(h["value"] / total_value * 100, 2) if total_value > 0 else 0
+
+    # Also include cash/liquid position from latest NAV
+    latest_nav = (
+        db.query(PmsNavDaily)
+        .filter(PmsNavDaily.portfolio_id == portfolio_id)
+        .order_by(desc(PmsNavDaily.date))
+        .first()
+    )
+    cash_value = 0.0
+    if latest_nav:
+        cash_value = (latest_nav.cash_equivalent or 0) + (latest_nav.bank_balance or 0)
+
+    total_with_cash = total_value + cash_value
+
+    # by_stock: top holdings by value
+    by_stock = []
+    for h in sorted(holdings, key=lambda x: x["value"], reverse=True):
+        by_stock.append({
+            "label": h["script"],
+            "value": h["value"],
+            "pct": round(h["value"] / total_with_cash * 100, 1) if total_with_cash > 0 else 0,
+        })
+    if cash_value > 0:
+        by_stock.append({
+            "label": "Cash & Liquid",
+            "value": round(cash_value, 2),
+            "pct": round(cash_value / total_with_cash * 100, 1),
+        })
+
+    # by_sector: group by sector
+    sector_values: dict[str, float] = defaultdict(float)
+    for h in holdings:
+        sector_values[h["sector"]] += h["value"]
+    if cash_value > 0:
+        sector_values["Cash & Liquid"] += cash_value
+
+    by_sector = []
+    for sector, val in sorted(sector_values.items(), key=lambda x: x[1], reverse=True):
+        by_sector.append({
+            "label": sector,
+            "value": round(val, 2),
+            "pct": round(val / total_with_cash * 100, 1) if total_with_cash > 0 else 0,
+        })
+
+    return {
+        "holdings": holdings,
+        "by_stock": by_stock,
+        "by_sector": by_sector,
+        "total_equity_value": round(total_value, 2),
+        "cash_value": round(cash_value, 2),
+        "total_value": round(total_with_cash, 2),
+    }
+
+
+# ═══════════════════════════════════════════════════════════
 #  RISK ANALYTICS (enhanced risk management metrics)
 # ═══════════════════════════════════════════════════════════
 

@@ -92,6 +92,21 @@ export async function fetchPmsRiskAnalytics(
   return res.json();
 }
 
+export async function fetchPmsHoldings(
+  portfolioId: number,
+): Promise<{
+  holdings: { script: string; qty: number; avg_cost: number; current_price: number; value: number; pnl: number; pnl_pct: number; sector: string; weight_pct: number }[];
+  by_stock: { label: string; value: number; pct: number }[];
+  by_sector: { label: string; value: number; pct: number }[];
+  total_equity_value: number;
+  cash_value: number;
+  total_value: number;
+} | null> {
+  const res = await fetch(`${API}/api/pms/${portfolioId}/holdings`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function uploadPmsFiles(
   portfolioId: number,
   navFile: File,
