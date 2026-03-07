@@ -9,6 +9,7 @@ nsetools
 pytz
 httpx
 python-multipart
+openpyxl
 python-dateutil
 apscheduler
 psycopg2-binary
