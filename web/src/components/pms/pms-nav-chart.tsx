@@ -42,14 +42,26 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
            (d.bank_balance != null && d.bank_balance > 0)
   );
 
-  const chartData = navHistory.map((d) => ({
-    date: d.date,
-    portfolio: hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav,
-    benchmark: d.benchmark_nav ?? undefined,
-    cash: hasCash ? ((d.cash_equivalent || 0) + (d.bank_balance || 0)) : undefined,
-  }));
+  // Get first-day values for rebasing both lines to 100
+  const firstPortfolio = hasUnitNav && navHistory[0].unit_nav != null
+    ? navHistory[0].unit_nav : navHistory[0].nav;
+  const firstBenchmark = navHistory.find((d) => d.benchmark_nav != null)?.benchmark_nav ?? null;
 
-  // Y-axis domain for portfolio/benchmark
+  const chartData = navHistory.map((d) => {
+    const rawPort = hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav;
+    const rebasedPort = (rawPort / firstPortfolio) * 100;
+    const rebasedBench = d.benchmark_nav != null && firstBenchmark != null
+      ? (d.benchmark_nav / firstBenchmark) * 100
+      : undefined;
+    return {
+      date: d.date,
+      portfolio: Math.round(rebasedPort * 100) / 100,
+      benchmark: rebasedBench != null ? Math.round(rebasedBench * 100) / 100 : undefined,
+      cash: hasCash ? ((d.cash_equivalent || 0) + (d.bank_balance || 0)) : undefined,
+    };
+  });
+
+  // Y-axis domain for portfolio/benchmark (rebased)
   const navValues = chartData.flatMap((d) => {
     const vals = [d.portfolio];
     if (d.benchmark != null) vals.push(d.benchmark);
@@ -67,7 +79,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
     <div className="bg-white rounded-xl border border-slate-200 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-slate-700">
-          {hasUnitNav ? "TWR Performance (Base 100)" : "NAV History"}
+          Relative Performance (Base 100)
           {hasBenchmark && <span className="text-slate-400 font-normal"> vs NIFTY 50</span>}
           {hasCash && <span className="text-slate-400 font-normal"> | Cash Position</span>}
         </h3>
@@ -103,19 +115,15 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             axisLine={{ stroke: "#e2e8f0" }}
             minTickGap={40}
           />
-          {/* Primary Y-axis: TWR index */}
+          {/* Primary Y-axis: rebased index */}
           <YAxis
             yAxisId="nav"
-            tickFormatter={(v: number) =>
-              hasUnitNav
-                ? v.toLocaleString("en-IN", { maximumFractionDigits: 0 })
-                : `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
-            }
+            tickFormatter={(v: number) => v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             tickLine={false}
             axisLine={false}
             domain={[minNav - navPadding, maxNav + navPadding]}
-            width={70}
+            width={55}
           />
           {/* Secondary Y-axis: Cash position */}
           {hasCash && (
@@ -134,9 +142,9 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             formatter={(value: number, name: string) => {
               if (name === "cash") return [formatLakhs(value), "Cash Position"];
               const label = name === "portfolio" ? "Portfolio" : "NIFTY 50";
-              const formatted = hasUnitNav
-                ? value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                : `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              const pctChange = value - 100;
+              const sign = pctChange >= 0 ? "+" : "";
+              const formatted = `${value.toFixed(2)} (${sign}${pctChange.toFixed(2)}%)`;
               return [formatted, label];
             }}
             labelFormatter={formatDate}
