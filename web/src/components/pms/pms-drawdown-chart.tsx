@@ -1,15 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import { usePmsNav } from "@/hooks/use-pms-detail";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 
 interface PmsDrawdownChartProps {
   portfolioId: number;
 }
+
+const PERIODS = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "ALL"] as const;
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -17,7 +21,8 @@ function formatDate(dateStr: string): string {
 }
 
 export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
-  const { navHistory } = usePmsNav(portfolioId, "all");
+  const [period, setPeriod] = useState<string>("ALL");
+  const { navHistory } = usePmsNav(portfolioId, period === "ALL" ? "all" : period);
 
   if (!navHistory || navHistory.length < 2) {
     return <Skeleton className="h-64 rounded-xl" />;
@@ -38,7 +43,22 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <h3 className="text-sm font-semibold text-slate-700 mb-4">Underwater Chart (Drawdown %)</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-slate-700">Underwater Chart (Drawdown %)</h3>
+        <div className="flex gap-1">
+          {PERIODS.map((p) => (
+            <Button
+              key={p}
+              variant={period === p ? "default" : "ghost"}
+              size="sm"
+              className="text-xs h-7 px-2.5"
+              onClick={() => setPeriod(p)}
+            >
+              {p}
+            </Button>
+          ))}
+        </div>
+      </div>
       <ResponsiveContainer width="100%" height={240}>
         <AreaChart data={drawdownData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
           <defs>
@@ -88,11 +108,10 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
       {/* Explanation */}
       <div className="mt-3 pt-3 border-t border-slate-100">
         <p className="text-[11px] text-slate-500 leading-relaxed">
-          <span className="font-semibold text-slate-600">What this shows:</span> The underwater chart tracks how far the portfolio has fallen from its all-time high at any point in time.
+          <span className="font-semibold text-slate-600">What this shows:</span> The underwater chart tracks how far the portfolio has fallen from its peak at any point in time.
           A value of 0% means the portfolio is at or above its peak. A value of {minDD.toFixed(1)}% (the deepest red)
-          represents the worst peak-to-trough decline.
-          Shallower dips that recover quickly indicate resilience; deep, prolonged underwater periods signal sustained losses.
-          {hasUnitNav && " This chart uses TWR-adjusted values, so drawdowns reflect true investment performance excluding capital flows."}
+          represents the worst peak-to-trough decline in this period.
+          {hasUnitNav && " Uses TWR-adjusted values, so drawdowns reflect true investment performance excluding capital flows."}
         </p>
       </div>
     </div>

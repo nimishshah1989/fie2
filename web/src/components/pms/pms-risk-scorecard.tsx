@@ -1,17 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { fetchPmsRiskAnalytics } from "@/lib/pms-api";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+
+const PERIODS = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "ALL"] as const;
 
 interface PmsRiskScorecardProps {
   portfolioId: number;
 }
 
 export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
+  const [period, setPeriod] = useState<string>("ALL");
   const { data: risk, isLoading } = useSWR(
-    `pms-risk-${portfolioId}`,
-    () => fetchPmsRiskAnalytics(portfolioId),
+    `pms-risk-${portfolioId}-${period}`,
+    () => fetchPmsRiskAnalytics(portfolioId, period === "ALL" ? "all" : period),
     { refreshInterval: 300_000 }
   );
 
@@ -20,9 +25,24 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
-      <h3 className="text-sm font-semibold text-slate-700">
-        Risk Management Scorecard
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-700">
+          Risk Management Scorecard
+        </h3>
+        <div className="flex gap-1">
+          {PERIODS.map((p) => (
+            <Button
+              key={p}
+              variant={period === p ? "default" : "ghost"}
+              size="sm"
+              className="text-xs h-7 px-2.5"
+              onClick={() => setPeriod(p)}
+            >
+              {p}
+            </Button>
+          ))}
+        </div>
+      </div>
 
       {/* Benchmark Comparison */}
       {(risk.up_capture_ratio != null || risk.beta != null) && (

@@ -370,6 +370,7 @@ def compute_enhanced_risk_metrics(
     portfolio_id: int,
     db: Session,
     benchmark_name: str = "NIFTY",
+    period: str = "all",
 ) -> dict:
     """Compute advanced risk management metrics: Ulcer Index, capture ratios,
     beta, information ratio, positive/negative month stats, cash utilisation.
@@ -377,13 +378,21 @@ def compute_enhanced_risk_metrics(
     These metrics demonstrate active risk management quality.
     """
     from models import IndexPrice
+    from datetime import timedelta
 
-    rows = (
+    query = (
         db.query(PmsNavDaily)
         .filter(PmsNavDaily.portfolio_id == portfolio_id)
-        .order_by(PmsNavDaily.date)
-        .all()
     )
+    if period != "all":
+        days_map = {'1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '3Y': 1095, '5Y': 1825}
+        days = days_map.get(period.upper())
+        if days:
+            from datetime import date as date_cls
+            cutoff = date_cls.today() - timedelta(days=days)
+            query = query.filter(PmsNavDaily.date >= cutoff)
+
+    rows = query.order_by(PmsNavDaily.date).all()
     if len(rows) < 30:
         return {}
 

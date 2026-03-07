@@ -578,13 +578,13 @@ def get_monthly_returns(portfolio_id: int, db: Session = Depends(get_db)):
 # ═══════════════════════════════════════════════════════════
 
 @router.get("/{portfolio_id}/risk-analytics")
-def get_risk_analytics(portfolio_id: int, db: Session = Depends(get_db)):
+def get_risk_analytics(portfolio_id: int, period: str = "all", db: Session = Depends(get_db)):
     """Enhanced risk management metrics: Ulcer Index, capture ratios, beta,
     information ratio, monthly stats, cash allocation analysis."""
-    metrics = compute_enhanced_risk_metrics(portfolio_id, db)
+    metrics = compute_enhanced_risk_metrics(portfolio_id, db, period=period)
     if not metrics:
         raise HTTPException(status_code=404, detail="Insufficient data for risk analytics")
-    return {"portfolio_id": portfolio_id, **metrics}
+    return {"portfolio_id": portfolio_id, "period": period, **metrics}
 
 
 # ═══════════════════════════════════════════════════════════
