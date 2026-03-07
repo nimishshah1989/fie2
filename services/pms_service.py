@@ -442,6 +442,7 @@ def compute_enhanced_risk_metrics(
     beta = None
     information_ratio = None
     correlation = None
+    benchmark_ulcer_index = None
 
     if len(benchmark_rows) > 30:
         # Build benchmark return series aligned to portfolio dates
@@ -485,6 +486,12 @@ def compute_enhanced_risk_metrics(
                 ann_excess = float(excess.mean() * TRADING_DAYS_PER_YEAR)
                 information_ratio = round(ann_excess / tracking_error, 2)
 
+            # Benchmark Ulcer Index
+            bench_nav = bench_df['bench']
+            bench_running_max = bench_nav.cummax()
+            bench_dd_pct = ((bench_nav - bench_running_max) / bench_running_max * 100)
+            benchmark_ulcer_index = round(float(np.sqrt((bench_dd_pct ** 2).mean())), 2)
+
     # ── Cash allocation stats (as % of NAV, not corpus) ──
     cash_pcts = []
     for r in rows:
@@ -511,6 +518,7 @@ def compute_enhanced_risk_metrics(
         'beta': beta,
         'correlation': correlation,
         'information_ratio': information_ratio,
+        'benchmark_ulcer_index': benchmark_ulcer_index,
         'avg_cash_pct': avg_cash_pct,
         'max_cash_pct': max_cash_pct,
         'current_cash_pct': current_cash_pct,

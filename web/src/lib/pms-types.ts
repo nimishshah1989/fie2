@@ -126,6 +126,7 @@ export interface RiskAnalytics {
   beta: number | null;
   correlation: number | null;
   information_ratio: number | null;
+  benchmark_ulcer_index: number | null;
   avg_cash_pct: number | null;
   max_cash_pct: number | null;
   current_cash_pct: number | null;

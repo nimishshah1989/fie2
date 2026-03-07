@@ -77,7 +77,7 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
             label="Ulcer Index"
             value={risk.ulcer_index.toFixed(2)}
             color={risk.ulcer_index < 5 ? "text-emerald-600" : risk.ulcer_index < 10 ? "text-amber-600" : "text-red-600"}
-            explanation="Measures the depth and duration of drawdowns. Unlike max drawdown which is a single point, Ulcer Index captures sustained pain. Calculated as RMS of all drawdown percentages. Lower is better."
+            explanation={`Measures depth and duration of drawdowns (RMS of all drawdown %). Scale: 0–2 very low, 2–5 low, 5–10 moderate, 10–20 high, 20+ severe.${risk.benchmark_ulcer_index != null ? ` NIFTY 50: ${risk.benchmark_ulcer_index.toFixed(2)} — ${risk.ulcer_index < risk.benchmark_ulcer_index ? "portfolio experiences less downside stress than the market." : "portfolio experiences more downside stress than the market."}` : ""}`}
           />
           <MetricCard
             label="Max Consecutive Loss"
