@@ -443,6 +443,10 @@ def compute_enhanced_risk_metrics(
     information_ratio = None
     correlation = None
     benchmark_ulcer_index = None
+    benchmark_hit_rate = None
+    benchmark_best_month = None
+    benchmark_worst_month = None
+    benchmark_max_consecutive_loss = None
 
     if len(benchmark_rows) > 30:
         # Build benchmark return series aligned to portfolio dates
@@ -492,6 +496,27 @@ def compute_enhanced_risk_metrics(
             bench_dd_pct = ((bench_nav - bench_running_max) / bench_running_max * 100)
             benchmark_ulcer_index = round(float(np.sqrt((bench_dd_pct ** 2).mean())), 2)
 
+            # Benchmark monthly stats (hit rate, best/worst month, max consecutive loss)
+            bench_monthly_df = bench_df[['date', 'bench']].copy()
+            bench_monthly_df = bench_monthly_df.set_index(pd.to_datetime(bench_monthly_df['date'])).drop(columns=['date'])
+            bench_monthly_nav = bench_monthly_df['bench'].resample('ME').last().dropna()
+            bench_monthly_rets = bench_monthly_nav.pct_change().dropna() * 100
+            if len(bench_monthly_rets) > 0:
+                b_pos = int((bench_monthly_rets > 0).sum())
+                b_total = len(bench_monthly_rets)
+                benchmark_hit_rate = round(b_pos / b_total * 100, 1) if b_total > 0 else None
+                benchmark_best_month = round(float(bench_monthly_rets.max()), 2)
+                benchmark_worst_month = round(float(bench_monthly_rets.min()), 2)
+                b_streak = 0
+                b_max_streak = 0
+                for r in bench_monthly_rets:
+                    if r <= 0:
+                        b_streak += 1
+                        b_max_streak = max(b_max_streak, b_streak)
+                    else:
+                        b_streak = 0
+                benchmark_max_consecutive_loss = b_max_streak
+
     # ── Cash allocation stats (as % of NAV, not corpus) ──
     cash_pcts = []
     for r in rows:
@@ -519,6 +544,10 @@ def compute_enhanced_risk_metrics(
         'correlation': correlation,
         'information_ratio': information_ratio,
         'benchmark_ulcer_index': benchmark_ulcer_index,
+        'benchmark_hit_rate': benchmark_hit_rate,
+        'benchmark_best_month': benchmark_best_month,
+        'benchmark_worst_month': benchmark_worst_month,
+        'benchmark_max_consecutive_loss': benchmark_max_consecutive_loss,
         'avg_cash_pct': avg_cash_pct,
         'max_cash_pct': max_cash_pct,
         'current_cash_pct': current_cash_pct,

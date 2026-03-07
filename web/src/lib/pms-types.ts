@@ -127,6 +127,10 @@ export interface RiskAnalytics {
   correlation: number | null;
   information_ratio: number | null;
   benchmark_ulcer_index: number | null;
+  benchmark_hit_rate: number | null;
+  benchmark_best_month: number | null;
+  benchmark_worst_month: number | null;
+  benchmark_max_consecutive_loss: number | null;
   avg_cash_pct: number | null;
   max_cash_pct: number | null;
   current_cash_pct: number | null;
