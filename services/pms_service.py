@@ -485,12 +485,12 @@ def compute_enhanced_risk_metrics(
                 ann_excess = float(excess.mean() * TRADING_DAYS_PER_YEAR)
                 information_ratio = round(ann_excess / tracking_error, 2)
 
-    # ── Cash allocation stats ──
+    # ── Cash allocation stats (as % of NAV, not corpus) ──
     cash_pcts = []
     for r in rows:
-        if r.corpus and r.corpus > 0:
+        if r.nav and r.nav > 0:
             cash = (r.cash_equivalent or 0) + (r.bank_balance or 0)
-            cash_pcts.append(cash / r.corpus * 100)
+            cash_pcts.append(cash / r.nav * 100)
     avg_cash_pct = round(float(np.mean(cash_pcts)), 1) if cash_pcts else None
     max_cash_pct = round(float(np.max(cash_pcts)), 1) if cash_pcts else None
     current_cash_pct = round(cash_pcts[-1], 1) if cash_pcts else None

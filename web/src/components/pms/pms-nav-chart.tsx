@@ -148,7 +148,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
           />
           <Legend
             verticalAlign="top"
-            align="right"
+            align="center"
             height={24}
             iconSize={10}
             formatter={(value: string) => {
