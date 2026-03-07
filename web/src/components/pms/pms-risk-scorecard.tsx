@@ -73,11 +73,9 @@ export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
           Drawdown & Stress Management
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <MetricCard
-            label="Ulcer Index"
-            value={risk.ulcer_index.toFixed(2)}
-            color={risk.ulcer_index < 5 ? "text-emerald-600" : risk.ulcer_index < 10 ? "text-amber-600" : "text-red-600"}
-            explanation={`Measures depth and duration of drawdowns (RMS of all drawdown %). Scale: 0–2 very low, 2–5 low, 5–10 moderate, 10–20 high, 20+ severe.${risk.benchmark_ulcer_index != null ? ` NIFTY 50: ${risk.benchmark_ulcer_index.toFixed(2)} — ${risk.ulcer_index < risk.benchmark_ulcer_index ? "portfolio experiences less downside stress than the market." : "portfolio experiences more downside stress than the market."}` : ""}`}
+          <UlcerCard
+            portfolio={risk.ulcer_index}
+            benchmark={risk.benchmark_ulcer_index}
           />
           <MetricCard
             label="Max Consecutive Loss"
@@ -174,6 +172,40 @@ function MetricCard({
       </p>
       <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
         {explanation}
+      </p>
+    </div>
+  );
+}
+
+function UlcerCard({ portfolio, benchmark }: { portfolio: number; benchmark: number | null }) {
+  const portColor = portfolio < 5 ? "text-emerald-600" : portfolio < 10 ? "text-amber-600" : "text-red-600";
+  const benchColor = benchmark != null
+    ? (benchmark < 5 ? "text-emerald-600" : benchmark < 10 ? "text-amber-600" : "text-red-600")
+    : "text-slate-400";
+  const verdict = benchmark != null
+    ? (portfolio < benchmark
+        ? "Portfolio experiences less downside stress than the market."
+        : "Portfolio experiences more downside stress than the market.")
+    : "";
+
+  return (
+    <div className="p-3 rounded-lg bg-slate-50">
+      <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">
+        Ulcer Index
+      </p>
+      <div className="flex items-baseline gap-2 mt-0.5">
+        <span className={`text-lg font-bold font-mono tabular-nums ${portColor}`}>
+          {portfolio.toFixed(2)}
+        </span>
+        {benchmark != null && (
+          <span className={`text-sm font-mono tabular-nums ${benchColor}`}>
+            vs {benchmark.toFixed(2)}
+            <span className="text-[10px] text-slate-400 ml-0.5">NIFTY</span>
+          </span>
+        )}
+      </div>
+      <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+        Measures depth and duration of drawdowns (RMS of all drawdown %). Scale: 0–2 very low, 2–5 low, 5–10 moderate, 10–20 high, 20+ severe. {verdict}
       </p>
     </div>
   );

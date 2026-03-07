@@ -37,13 +37,13 @@ export function PmsWinLoss({ portfolioId }: PmsWinLossProps) {
     {
       label: "Avg Win",
       value: formatPrice(stats.avg_win),
-      explanation: `Average profit per winning trade. ${stats.best_trade ? `Best single trade: ${stats.best_trade.script} (${formatPrice(stats.best_trade.pnl)} profit).` : ""} Calculated as total realised profit / number of winning trades.`,
+      explanation: `Average profit per winning trade. Calculated as total realised profit / number of winning trades.`,
       color: "text-emerald-600",
     },
     {
       label: "Avg Loss",
       value: formatPrice(Math.abs(stats.avg_loss)),
-      explanation: `Average loss per losing trade. ${stats.worst_trade ? `Worst single trade: ${stats.worst_trade.script} (${formatPrice(Math.abs(stats.worst_trade.pnl))} loss).` : ""} Calculated as total realised loss / number of losing trades.`,
+      explanation: `Average loss per losing trade. Calculated as total realised loss / number of losing trades.`,
       color: "text-red-600",
     },
   ];
