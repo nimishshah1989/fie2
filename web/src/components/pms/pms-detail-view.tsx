@@ -5,6 +5,7 @@ import { PmsKpiStrip } from "./pms-kpi-strip";
 import { PmsNavChart } from "./pms-nav-chart";
 import { PmsPerformanceTable } from "./pms-performance-table";
 import { PmsDrawdownChart } from "./pms-drawdown-chart";
+import { PmsMethodology } from "./pms-methodology";
 import { PmsUploadDialog } from "./pms-upload-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,9 @@ export function PmsDetailView({ id, name, description, benchmark, onBack }: PmsD
 
       {/* Drawdown Chart */}
       <PmsDrawdownChart portfolioId={id} />
+
+      {/* Methodology */}
+      <PmsMethodology />
     </div>
   );
 }
