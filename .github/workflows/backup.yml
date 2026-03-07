@@ -1,0 +1,75 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    # Run daily at 11:30 PM IST (6:00 PM UTC)
+    - cron: '0 18 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+env:
+  AWS_REGION: ap-south-1
+  EC2_HOST: 13.206.50.251
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backup on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Load environment variables
+            set -euo pipefail
+            set -a
+            source /home/ec2-user/fie2.env
+            set +a
+
+            export BACKUP_S3_BUCKET=fie2-backups
+
+            # Run pg_dump directly (no Docker needed)
+            TIMESTAMP=$(date +%Y-%m-%d_%H%M%S)
+            BACKUP_FILE="fie_v3_${TIMESTAMP}.sql.gz"
+
+            # Parse DATABASE_URL for pg_dump
+            PGUSER=$(echo "$DATABASE_URL" | sed -E 's|postgresql://([^:]+):.*|\1|')
+            PGPASSWORD=$(echo "$DATABASE_URL" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
+            PGHOST=$(echo "$DATABASE_URL" | sed -E 's|postgresql://[^@]+@([^:]+):.*|\1|')
+            PGPORT=$(echo "$DATABASE_URL" | sed -E 's|postgresql://[^@]+@[^:]+:([0-9]+)/.*|\1|')
+            PGDATABASE=$(echo "$DATABASE_URL" | sed -E 's|postgresql://[^/]+/(.+)|\1|')
+
+            export PGPASSWORD
+
+            # Check if pg_dump is available, install if not
+            which pg_dump || sudo yum install -y postgresql16
+
+            # Dump and compress
+            pg_dump -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" \
+              --format=plain --no-owner --no-privileges 2>/dev/null | gzip > "/tmp/${BACKUP_FILE}"
+
+            FILESIZE=$(du -h "/tmp/${BACKUP_FILE}" | cut -f1)
+            echo "Backup created: ${BACKUP_FILE} (${FILESIZE})"
+
+            # Upload to S3
+            aws s3 cp "/tmp/${BACKUP_FILE}" "s3://${BACKUP_S3_BUCKET}/db-backups/${BACKUP_FILE}" \
+              --storage-class STANDARD_IA --region ap-south-1
+
+            echo "Uploaded to S3"
+
+            # Clean up
+            rm -f "/tmp/${BACKUP_FILE}"
+
+            # Delete backups older than 30 days
+            CUTOFF=$(date -d "-30 days" +%Y-%m-%d)
+            aws s3 ls "s3://${BACKUP_S3_BUCKET}/db-backups/" | while read -r line; do
+              FILE_DATE=$(echo "$line" | awk '{print $1}')
+              FILE_NAME=$(echo "$line" | awk '{print $4}')
+              if [[ "$FILE_DATE" < "$CUTOFF" ]] && [[ -n "$FILE_NAME" ]]; then
+                aws s3 rm "s3://${BACKUP_S3_BUCKET}/db-backups/${FILE_NAME}" --region ap-south-1
+                echo "Deleted old: ${FILE_NAME}"
+              fi
+            done
+
+            echo "Backup complete!"
