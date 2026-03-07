@@ -22,7 +22,12 @@ router = APIRouter()
 INVERTED_RETURN_KEYS = {"USDINR"}
 
 
-@router.post("/api/indices/fetch-eod")
+@router.post(
+    "/api/indices/fetch-eod",
+    tags=["Market Data"],
+    summary="Fetch EOD index data",
+    description="Fetches end-of-day data for all NSE indices via yfinance (5-day window) and stores in the database. Typically triggered by the scheduled EOD job.",
+)
 async def fetch_eod(db: Session = Depends(get_db)):
     """Fetch EOD data for all NSE indices and store in DB."""
     from price_service import fetch_all_index_eod
@@ -37,7 +42,12 @@ async def fetch_eod(db: Session = Depends(get_db)):
     return {"success": True, "stored": stored, "indices": len(data)}
 
 
-@router.post("/api/indices/fetch-historical")
+@router.post(
+    "/api/indices/fetch-historical",
+    tags=["Market Data"],
+    summary="Fetch 1Y historical index data",
+    description="Fetches 1-year historical data from NSE API for all tracked indices, plus today's live prices from nsetools. Used for initial backfill.",
+)
 async def fetch_historical(db: Session = Depends(get_db)):
     """Fetch 1Y historical data from NSE API for all indices + today's live from nsetools."""
     from price_service import fetch_historical_indices_nse_sync, fetch_live_indices
@@ -69,7 +79,12 @@ async def fetch_historical(db: Session = Depends(get_db)):
     return {"success": True, "stored_historical": stored, "stored_live": live_stored, "indices": len(hist_data)}
 
 
-@router.post("/api/indices/bulk-upload")
+@router.post(
+    "/api/indices/bulk-upload",
+    tags=["Market Data"],
+    summary="Bulk upload index data",
+    description="Accepts bulk historical index price data in JSON format. Used by the local backfill script running on an Indian IP to bypass NSE geoblocking.",
+)
 async def bulk_upload_indices(request: Request, db: Session = Depends(get_db)):
     """Accept bulk historical index data (from local backfill script running on India IP)."""
     body = await request.json()
@@ -92,7 +107,12 @@ async def bulk_upload_indices(request: Request, db: Session = Depends(get_db)):
     return {"success": True, "stored": stored, "indices": indices_count}
 
 
-@router.post("/api/stocks/fetch-history")
+@router.post(
+    "/api/stocks/fetch-history",
+    tags=["Market Data"],
+    summary="Fetch stock price history",
+    description="Fetches 12-month price history via yfinance for all approved alert tickers and stores in the database.",
+)
 async def fetch_stock_history_endpoint(db: Session = Depends(get_db)):
     """Fetch 12M history for all stocks in the alert database."""
     from price_service import fetch_stock_history
@@ -115,7 +135,12 @@ async def fetch_stock_history_endpoint(db: Session = Depends(get_db)):
     return {"success": True, "stored": stored, "tickers": len(tickers)}
 
 
-@router.get("/api/indices/latest")
+@router.get(
+    "/api/indices/latest",
+    tags=["Market Data"],
+    summary="Latest index prices with period returns",
+    description="Returns the most recent EOD index prices with ratio vs base index, recommendation signals, day change, and period returns (1d, 1w, 1m, 3m, 6m, 12m). Uses batch queries for performance.",
+)
 async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
     """Return latest index prices with ratio vs base, recommendations, and period returns.
     Optimized: uses batch queries for period returns instead of per-index per-period queries."""
@@ -248,7 +273,12 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
     return {"date": latest_date, "base": base, "indices": results}
 
 
-@router.get("/api/indices/live")
+@router.get(
+    "/api/indices/live",
+    tags=["Market Data"],
+    summary="Live index data with ratio returns",
+    description="Returns real-time live index data from nsetools with ratio-based and absolute period returns. Includes non-nsetools instruments (BSE SENSEX, USDINR, GOLD) from DB. Use tracked_only=false to see all 135+ NSE indices.",
+)
 async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Session = Depends(get_db)):
     """Return real-time live index data from NSE with ratio-based period returns.
     tracked_only=True (default) filters to only indices with yfinance historical data.

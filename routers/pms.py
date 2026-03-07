@@ -25,7 +25,7 @@ from services.pms_service import (
 )
 
 logger = logging.getLogger("fie_v3.pms")
-router = APIRouter(prefix="/api/pms", tags=["pms"])
+router = APIRouter(prefix="/api/pms", tags=["PMS"])
 
 MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -34,7 +34,11 @@ MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
 #  UPLOAD
 # ═══════════════════════════════════════════════════════════
 
-@router.post("/upload")
+@router.post(
+    "/upload",
+    summary="Upload PMS Excel files",
+    description="Upload PMS NAV report and (optionally) transaction log Excel files (.xlsx). Parses the UCC-specific data, upserts NAV records, replaces transaction history, and recalculates metrics and drawdowns.",
+)
 async def upload_pms_files(
     portfolio_id: int = Form(...),
     nav_file: UploadFile = File(...),
@@ -170,7 +174,11 @@ async def upload_pms_files(
 #  NAV HISTORY (with NIFTY 50 benchmark)
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/nav")
+@router.get(
+    "/{portfolio_id}/nav",
+    summary="PMS NAV history",
+    description="Returns daily NAV time series with normalized NIFTY 50 benchmark overlay (base 100). Supports period filtering: 1M, 3M, 6M, 1Y, 3Y, 5Y, or all.",
+)
 def get_nav_history(
     portfolio_id: int,
     period: str = "all",
@@ -320,7 +328,11 @@ def _benchmark_metrics_for_period(
     }
 
 
-@router.get("/{portfolio_id}/metrics")
+@router.get(
+    "/{portfolio_id}/metrics",
+    summary="PMS risk/return metrics",
+    description="Returns risk and return metrics for all computed periods (1M, 3M, 6M, 1Y, 2Y, 3Y, 4Y, 5Y, SI) with NIFTY 50 benchmark comparison. Includes CAGR, volatility, max drawdown, Sharpe ratio, Sortino ratio, and Calmar ratio.",
+)
 def get_metrics(portfolio_id: int, db: Session = Depends(get_db)):
     """Return risk/return metrics for all computed periods, with NIFTY benchmark."""
     rows = (
@@ -391,7 +403,11 @@ def get_metrics(portfolio_id: int, db: Session = Depends(get_db)):
 #  DRAWDOWNS
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/drawdowns")
+@router.get(
+    "/{portfolio_id}/drawdowns",
+    summary="PMS drawdown events",
+    description="Returns all drawdown events sorted by severity. Includes peak/trough dates and NAV values, drawdown percentage, duration, recovery date, and current status (recovered/active).",
+)
 def get_drawdowns(portfolio_id: int, db: Session = Depends(get_db)):
     """Return drawdown events sorted by severity."""
     rows = (
@@ -424,7 +440,11 @@ def get_drawdowns(portfolio_id: int, db: Session = Depends(get_db)):
 #  TRANSACTIONS
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/transactions")
+@router.get(
+    "/{portfolio_id}/transactions",
+    summary="PMS transactions",
+    description="Returns PMS buy/sell transactions, optionally filtered by script name. Supports pagination via offset and limit.",
+)
 def get_transactions(
     portfolio_id: int,
     script: str = None,
@@ -468,7 +488,11 @@ def get_transactions(
 #  WIN/LOSS ANALYSIS
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/win-loss")
+@router.get(
+    "/{portfolio_id}/win-loss",
+    summary="PMS win/loss analysis",
+    description="Analyzes PMS transaction history to compute win/loss trading statistics. Groups trades by script, calculates P&L for scripts with sells, and returns win rate, profit factor, average win/loss, and best/worst trades.",
+)
 def get_win_loss(portfolio_id: int, db: Session = Depends(get_db)):
     """Analyze PMS transactions to compute win/loss trading statistics by script.
 
@@ -566,7 +590,11 @@ def get_win_loss(portfolio_id: int, db: Session = Depends(get_db)):
 #  MONTHLY RETURNS
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/monthly-returns")
+@router.get(
+    "/{portfolio_id}/monthly-returns",
+    summary="PMS monthly returns",
+    description="Returns month-by-month NAV returns for calendar heatmap visualization. Each entry includes year, month, and return percentage.",
+)
 def get_monthly_returns(portfolio_id: int, db: Session = Depends(get_db)):
     """Return monthly NAV returns for calendar heatmap."""
     returns = compute_monthly_returns(portfolio_id, db)
@@ -599,7 +627,11 @@ SCRIPT_SECTOR_MAP: dict[str, str] = {
 }
 
 
-@router.get("/{portfolio_id}/holdings")
+@router.get(
+    "/{portfolio_id}/holdings",
+    summary="PMS current holdings with allocation",
+    description="Computes current holdings from net buy-sell transactions, fetches live prices, and returns stock-wise and sector-wise allocation with P&L. Includes cash and liquid positions from the latest NAV.",
+)
 def get_pms_holdings(portfolio_id: int, db: Session = Depends(get_db)):
     """Compute current holdings from net buy-sell transactions, fetch live prices,
     and return stock-wise and sector-wise allocation."""
@@ -751,7 +783,11 @@ def get_pms_holdings(portfolio_id: int, db: Session = Depends(get_db)):
 #  SECTOR ALLOCATION HISTORY
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/sector-history")
+@router.get(
+    "/{portfolio_id}/sector-history",
+    summary="PMS sector allocation history",
+    description="Computes sector allocation at multiple historical points (today, 1M, 3M, 6M, 12M) using transaction replay and closest available prices. Returns allocation percentages per sector at each snapshot date.",
+)
 def get_sector_history(portfolio_id: int, db: Session = Depends(get_db)):
     """Compute sector allocation at multiple historical points (today, 1M, 3M, 6M, 12M).
     Uses transaction replay + closest available prices from IndexPrice table."""
@@ -901,7 +937,11 @@ def get_sector_history(portfolio_id: int, db: Session = Depends(get_db)):
 #  RISK ANALYTICS (enhanced risk management metrics)
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/risk-analytics")
+@router.get(
+    "/{portfolio_id}/risk-analytics",
+    summary="PMS enhanced risk analytics",
+    description="Enhanced risk management metrics including Ulcer Index, up/down capture ratios, beta, information ratio, monthly win/loss stats, and cash allocation analysis. Supports period filtering.",
+)
 def get_risk_analytics(portfolio_id: int, period: str = "all", db: Session = Depends(get_db)):
     """Enhanced risk management metrics: Ulcer Index, capture ratios, beta,
     information ratio, monthly stats, cash allocation analysis."""
@@ -915,7 +955,11 @@ def get_risk_analytics(portfolio_id: int, period: str = "all", db: Session = Dep
 #  SUMMARY
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/{portfolio_id}/summary")
+@router.get(
+    "/{portfolio_id}/summary",
+    summary="PMS quick summary",
+    description="Returns a quick summary of the PMS portfolio including latest NAV, corpus, key return metrics, and inception date.",
+)
 def get_summary(portfolio_id: int, db: Session = Depends(get_db)):
     """Quick summary: latest NAV, corpus, key metrics."""
     summary = get_pms_summary(portfolio_id, db)

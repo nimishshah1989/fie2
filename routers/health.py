@@ -27,7 +27,12 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 _SERVER_START_TIME = datetime.utcnow()
 
 
-@router.get("/api/status")
+@router.get(
+    "/api/status",
+    tags=["Health"],
+    summary="Server status",
+    description="Returns server version and feature flags (e.g. whether Claude analysis is enabled).",
+)
 async def server_status():
     return {
         "analysis_enabled": bool(ANTHROPIC_API_KEY),
@@ -35,7 +40,12 @@ async def server_status():
     }
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    tags=["Health"],
+    summary="Health check",
+    description="Returns system health including DB connectivity, data freshness, row counts, and uptime.",
+)
 async def health(db: Session = Depends(get_db)):
     """Health check with DB connectivity, data freshness, and system info."""
     from models import DATABASE_URL
@@ -123,12 +133,22 @@ async def health(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/api")
+@router.get(
+    "/api",
+    tags=["Health"],
+    summary="API root",
+    description="Returns service name and running status. Useful as a quick ping.",
+)
 async def root():
     return {"service": "JHAVERI FIE v3", "status": "running"}
 
 
-@router.get("/api/market/indices")
+@router.get(
+    "/api/market/indices",
+    tags=["Health"],
+    summary="Quick market indices summary",
+    description="Returns live prices for key market indices (NIFTY, SENSEX, BANKNIFTY, NIFTYIT, NIFTYPHARMA, NIFTYFMCG).",
+)
 async def market_indices():
     """Quick summary of key market indices."""
     from price_service import get_live_price

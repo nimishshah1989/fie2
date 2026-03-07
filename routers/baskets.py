@@ -94,7 +94,12 @@ def _background_basket_build(basket_id: int):
 
 # ─── CRUD Endpoints ──────────────────────────────────────
 
-@router.post("/api/baskets")
+@router.post(
+    "/api/baskets",
+    tags=["Microbaskets"],
+    summary="Create microbasket",
+    description="Creates a new microbasket with weighted constituents. Validates that weights sum to ~100%. Triggers background NAV computation after creation.",
+)
 async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db)):
     """Create a new microbasket with constituents."""
     slug = basket_slug(req.name)
@@ -114,7 +119,7 @@ async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db))
             detail=f"Constituent weights sum to {total_weight:.1f}%, must be ~100%"
         )
 
-    # Auto-compute portfolio_size from price × quantity if not explicitly set
+    # Auto-compute portfolio_size from price x quantity if not explicitly set
     effective_size = req.portfolio_size
     if not effective_size:
         computed = sum(
@@ -161,7 +166,12 @@ async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db))
     }
 
 
-@router.get("/api/baskets")
+@router.get(
+    "/api/baskets",
+    tags=["Microbaskets"],
+    summary="List all baskets",
+    description="Returns all active microbaskets with summary data including constituent count, latest NAV value, and creation date.",
+)
 async def list_baskets(db: Session = Depends(get_db)):
     """List all active baskets with summary data."""
     baskets = (
@@ -197,7 +207,12 @@ async def list_baskets(db: Session = Depends(get_db)):
     return {"success": True, "baskets": results}
 
 
-@router.get("/api/baskets/live")
+@router.get(
+    "/api/baskets/live",
+    tags=["Microbaskets"],
+    summary="All baskets with live data and ratio returns",
+    description="Returns all active baskets with live NAV values, day change, ratio returns vs base index, and absolute period returns. Mirrors the shape of /api/indices/live.",
+)
 async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
     """All baskets with live values + ratio returns (mirrors /api/indices/live shape)."""
     baskets = (
@@ -351,7 +366,12 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
     }
 
 
-@router.get("/api/baskets/{basket_id}")
+@router.get(
+    "/api/baskets/{basket_id}",
+    tags=["Microbaskets"],
+    summary="Get basket detail",
+    description="Returns full basket detail with constituents, live prices, and computed units (if portfolio_size is set). Includes price availability warnings per constituent.",
+)
 async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
     """Get basket detail with constituents and live prices."""
     basket = db.get(Microbasket, basket_id)
@@ -405,7 +425,12 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
     return result
 
 
-@router.put("/api/baskets/{basket_id}")
+@router.put(
+    "/api/baskets/{basket_id}",
+    tags=["Microbaskets"],
+    summary="Update basket",
+    description="Update basket name, description, benchmark, portfolio size, or replace constituents. If constituents are changed, triggers background NAV recomputation.",
+)
 async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = Depends(get_db)):
     """Update basket name, description, benchmark, or constituents."""
     basket = db.get(Microbasket, basket_id)
@@ -469,7 +494,12 @@ async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = 
     return {"success": True, "message": f"Basket '{basket.name}' updated"}
 
 
-@router.delete("/api/baskets/{basket_id}")
+@router.delete(
+    "/api/baskets/{basket_id}",
+    tags=["Microbaskets"],
+    summary="Archive basket",
+    description="Soft-delete (archive) a basket. Historical NAV data is preserved.",
+)
 async def archive_basket(basket_id: int, db: Session = Depends(get_db)):
     """Soft-delete (archive) a basket."""
     basket = db.get(Microbasket, basket_id)
@@ -481,12 +511,17 @@ async def archive_basket(basket_id: int, db: Session = Depends(get_db)):
     return {"success": True, "message": f"Basket '{basket.name}' archived"}
 
 
-@router.post("/api/baskets/csv-upload")
+@router.post(
+    "/api/baskets/csv-upload",
+    tags=["Microbaskets"],
+    summary="Upload baskets via CSV",
+    description="Parse a CSV file and create multiple baskets. CSV format: basket_name, ticker, company_name, weight(%), price, quantity. Groups rows by basket_name, validates each basket, and reports per-basket results.",
+)
 async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Parse CSV and create multiple baskets.
     CSV format: basket_name, ticker, company_name, weight(%), price, quantity
     Groups rows by basket_name, validates each basket, reports per-basket results.
-    Price × Quantity per stock = starting reference NAV (auto-computed as portfolio_size).
+    Price x Quantity per stock = starting reference NAV (auto-computed as portfolio_size).
     """
     if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file")
@@ -565,7 +600,7 @@ async def upload_baskets_csv(file: UploadFile = File(...), db: Session = Depends
             })
             continue
 
-        # Auto-compute portfolio_size from price × quantity
+        # Auto-compute portfolio_size from price x quantity
         computed_size = sum(
             (c.get("buy_price") or 0) * (c.get("quantity") or 0)
             for c in constituents

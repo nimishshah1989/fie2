@@ -125,7 +125,12 @@ def _get_pms_list_data(portfolio_id: int, db: Session) -> dict:
 
 # ─── Portfolio CRUD ──────────────────────────────────────
 
-@router.post("/api/portfolios")
+@router.post(
+    "/api/portfolios",
+    tags=["Portfolios"],
+    summary="Create portfolio",
+    description="Creates a new model portfolio with a name, optional description, benchmark index, and inception date.",
+)
 async def create_portfolio(req: CreatePortfolioRequest, db: Session = Depends(get_db)):
     portfolio = ModelPortfolio(
         name=req.name, description=req.description, benchmark=req.benchmark or "NIFTY",
@@ -137,7 +142,12 @@ async def create_portfolio(req: CreatePortfolioRequest, db: Session = Depends(ge
     return {"success": True, "id": portfolio.id, "name": portfolio.name}
 
 
-@router.get("/api/portfolios")
+@router.get(
+    "/api/portfolios",
+    tags=["Portfolios"],
+    summary="List all portfolios",
+    description="Returns all active portfolios with summary data including holdings count, invested value, current value, realized P&L, and total return. Supports both manual and PMS portfolio types.",
+)
 async def list_portfolios(db: Session = Depends(get_db)):
     portfolios = (
         db.query(ModelPortfolio)
@@ -214,7 +224,12 @@ async def list_portfolios(db: Session = Depends(get_db)):
     return {"success": True, "portfolios": results}
 
 
-@router.get("/api/portfolios/{portfolio_id}")
+@router.get(
+    "/api/portfolios/{portfolio_id}",
+    tags=["Portfolios"],
+    summary="Get portfolio details",
+    description="Returns metadata for a single portfolio by ID.",
+)
 async def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
     p = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not p:
@@ -228,7 +243,12 @@ async def get_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.put("/api/portfolios/{portfolio_id}")
+@router.put(
+    "/api/portfolios/{portfolio_id}",
+    tags=["Portfolios"],
+    summary="Update portfolio",
+    description="Update portfolio name, description, or benchmark index.",
+)
 async def update_portfolio(
     portfolio_id: int, req: UpdatePortfolioRequest, db: Session = Depends(get_db)
 ):
@@ -245,7 +265,12 @@ async def update_portfolio(
     return {"success": True, "id": p.id}
 
 
-@router.delete("/api/portfolios/{portfolio_id}")
+@router.delete(
+    "/api/portfolios/{portfolio_id}",
+    tags=["Portfolios"],
+    summary="Archive portfolio",
+    description="Soft-delete a portfolio by setting its status to ARCHIVED. Holdings and transactions are preserved.",
+)
 async def archive_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
     p = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not p:
@@ -280,7 +305,12 @@ def _background_fetch_stock_history(ticker: str):
     thread.start()
 
 
-@router.post("/api/portfolios/{portfolio_id}/transactions")
+@router.post(
+    "/api/portfolios/{portfolio_id}/transactions",
+    tags=["Portfolios"],
+    summary="Create transaction",
+    description="Record a BUY or SELL transaction for a portfolio. Automatically updates holdings, calculates realized P&L for sells, and triggers background price history fetch for new tickers.",
+)
 async def create_transaction(
     portfolio_id: int, req: CreateTransactionRequest, db: Session = Depends(get_db)
 ):
@@ -365,7 +395,12 @@ async def create_transaction(
     return result
 
 
-@router.get("/api/portfolios/{portfolio_id}/transactions")
+@router.get(
+    "/api/portfolios/{portfolio_id}/transactions",
+    tags=["Portfolios"],
+    summary="List transactions",
+    description="Returns transaction history for a portfolio, optionally filtered by type (BUY/SELL). Ordered by date descending.",
+)
 async def list_transactions(
     portfolio_id: int, txn_type: Optional[str] = None, limit: int = 200,
     db: Session = Depends(get_db),
@@ -390,7 +425,12 @@ async def list_transactions(
 
 # ─── Holdings (with Live Prices) ────────────────────────
 
-@router.get("/api/portfolios/{portfolio_id}/holdings")
+@router.get(
+    "/api/portfolios/{portfolio_id}/holdings",
+    tags=["Portfolios"],
+    summary="List holdings with live prices",
+    description="Returns all current holdings for a portfolio enriched with live market prices, unrealized P&L, day change, and portfolio weight. Includes warnings for tickers without available prices.",
+)
 async def list_holdings(portfolio_id: int, db: Session = Depends(get_db)):
     portfolio = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not portfolio:
@@ -473,7 +513,12 @@ class UpdateSymbolRequest(BaseModel):
     yf_symbol: Optional[str] = None
 
 
-@router.put("/api/portfolios/{portfolio_id}/holdings/{holding_id}/symbol")
+@router.put(
+    "/api/portfolios/{portfolio_id}/holdings/{holding_id}/symbol",
+    tags=["Portfolios"],
+    summary="Update Yahoo Finance symbol override",
+    description="Set or clear a custom Yahoo Finance symbol for a holding. Useful when the default ticker-to-yfinance mapping fails.",
+)
 async def update_holding_symbol(
     portfolio_id: int, holding_id: int, req: UpdateSymbolRequest, db: Session = Depends(get_db)
 ):
@@ -498,7 +543,12 @@ async def update_holding_symbol(
 
 # ─── NAV Computation ────────────────────────────────────
 
-@router.post("/api/portfolios/{portfolio_id}/compute-nav")
+@router.post(
+    "/api/portfolios/{portfolio_id}/compute-nav",
+    tags=["Portfolios"],
+    summary="Compute NAV for portfolio",
+    description="Computes today's NAV (total value, total cost, unrealized P&L) for a specific portfolio based on current holdings and live prices.",
+)
 async def compute_nav(portfolio_id: int, db: Session = Depends(get_db)):
     portfolio = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not portfolio:
@@ -511,7 +561,12 @@ async def compute_nav(portfolio_id: int, db: Session = Depends(get_db)):
     return {"success": True, "message": "No holdings to compute NAV for"}
 
 
-@router.post("/api/portfolios/compute-nav")
+@router.post(
+    "/api/portfolios/compute-nav",
+    tags=["Portfolios"],
+    summary="Compute NAV for all portfolios",
+    description="Computes today's NAV for all active portfolios. Useful as a daily batch operation.",
+)
 async def compute_nav_all(db: Session = Depends(get_db)):
     portfolios = db.query(ModelPortfolio).filter(ModelPortfolio.status == PortfolioStatus.ACTIVE).all()
     today_str = date_type.today().strftime("%Y-%m-%d")
@@ -528,7 +583,12 @@ async def compute_nav_all(db: Session = Depends(get_db)):
 _PERIOD_DAYS = {"1m": 30, "3m": 90, "6m": 180, "1y": 365, "ytd": None, "all": None}
 
 
-@router.get("/api/portfolios/{portfolio_id}/nav-history")
+@router.get(
+    "/api/portfolios/{portfolio_id}/nav-history",
+    tags=["Portfolios"],
+    summary="NAV history for charts",
+    description="Returns daily NAV time series for a portfolio with normalized benchmark overlay. Supports period filtering (1m, 3m, 6m, 1y, ytd, all).",
+)
 async def get_nav_history(portfolio_id: int, period: str = "all", db: Session = Depends(get_db)):
     portfolio = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not portfolio:
@@ -583,7 +643,12 @@ async def get_nav_history(portfolio_id: int, period: str = "all", db: Session = 
 
 # ─── Performance Metrics ────────────────────────────────
 
-@router.get("/api/portfolios/{portfolio_id}/performance")
+@router.get(
+    "/api/portfolios/{portfolio_id}/performance",
+    tags=["Portfolios"],
+    summary="Portfolio performance metrics",
+    description="Returns comprehensive performance metrics including total return, XIRR, CAGR, max drawdown, benchmark return, and alpha. Computes from transaction history and live prices.",
+)
 async def get_performance(portfolio_id: int, db: Session = Depends(get_db)):
     portfolio = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not portfolio:
@@ -688,7 +753,12 @@ async def get_performance(portfolio_id: int, db: Session = Depends(get_db)):
 
 # ─── Allocation ─────────────────────────────────────────
 
-@router.get("/api/portfolios/{portfolio_id}/allocation")
+@router.get(
+    "/api/portfolios/{portfolio_id}/allocation",
+    tags=["Portfolios"],
+    summary="Portfolio allocation breakdown",
+    description="Returns portfolio allocation by stock and by sector, with current market values and percentage weights.",
+)
 async def get_allocation(portfolio_id: int, db: Session = Depends(get_db)):
     portfolio = db.query(ModelPortfolio).filter(ModelPortfolio.id == portfolio_id).first()
     if not portfolio:
@@ -726,7 +796,12 @@ async def get_allocation(portfolio_id: int, db: Session = Depends(get_db)):
 
 # ─── CSV Export ──────────────────────────────────────────
 
-@router.get("/api/portfolios/{portfolio_id}/export/holdings")
+@router.get(
+    "/api/portfolios/{portfolio_id}/export/holdings",
+    tags=["Portfolios"],
+    summary="Export holdings as CSV",
+    description="Downloads current portfolio holdings as a CSV file with ticker, exchange, sector, quantity, average cost, and total cost.",
+)
 async def export_holdings_csv(portfolio_id: int, db: Session = Depends(get_db)):
     holdings = (
         db.query(PortfolioHolding)
@@ -745,7 +820,12 @@ async def export_holdings_csv(portfolio_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/api/portfolios/{portfolio_id}/export/transactions")
+@router.get(
+    "/api/portfolios/{portfolio_id}/export/transactions",
+    tags=["Portfolios"],
+    summary="Export transactions as CSV",
+    description="Downloads transaction history as a CSV file with date, type, ticker, quantity, price, total value, realized P&L, and notes.",
+)
 async def export_transactions_csv(portfolio_id: int, db: Session = Depends(get_db)):
     txns = (
         db.query(PortfolioTransaction).filter(PortfolioTransaction.portfolio_id == portfolio_id)
@@ -766,7 +846,12 @@ async def export_transactions_csv(portfolio_id: int, db: Session = Depends(get_d
 
 # ─── Bulk Import ────────────────────────────────────────
 
-@router.post("/api/portfolios/bulk-import")
+@router.post(
+    "/api/portfolios/bulk-import",
+    tags=["Portfolios"],
+    summary="Bulk import portfolio",
+    description="Bulk import a complete portfolio with holdings, transactions, NAV history, and index prices in a single JSON payload. Used for data migration.",
+)
 async def bulk_import_portfolio(request: Request, db: Session = Depends(get_db)):
     """Bulk import portfolio data: portfolio + holdings + transactions + NAV + index prices."""
     data = await request.json()

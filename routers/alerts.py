@@ -218,7 +218,12 @@ class UpdateActionRequest(BaseModel):
 
 # ─── Webhook Endpoint ─────────────────────────────────────────────
 
-@router.post("/webhook/tradingview")
+@router.post(
+    "/webhook/tradingview",
+    tags=["Alerts"],
+    summary="Receive TradingView webhook",
+    description="Ingests a TradingView alert webhook payload, parses ticker/price/signal data, and stores the alert. Supports both standard and custom TradingView payload formats.",
+)
 @router.post("/webhook/tradingview/")
 async def receive_webhook(request: Request, db: Session = Depends(get_db)):
     try:
@@ -286,7 +291,12 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
 
 # ─── Alert CRUD ───────────────────────────────────────────────────
 
-@router.get("/api/alerts")
+@router.get(
+    "/api/alerts",
+    tags=["Alerts"],
+    summary="List alerts",
+    description="Returns all alerts, optionally filtered by status (PENDING, APPROVED, DENIED). Ordered by most recent first.",
+)
 async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db)):
     q = db.query(TradingViewAlert).order_by(desc(TradingViewAlert.received_at))
     if status and status != "All":
@@ -297,7 +307,12 @@ async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session
     return {"alerts": [_serialize(a) for a in q.limit(limit).all()]}
 
 
-@router.get("/api/alerts/{alert_id}")
+@router.get(
+    "/api/alerts/{alert_id}",
+    tags=["Alerts"],
+    summary="Get alert by ID",
+    description="Returns full details of a single alert including action data and chart analysis.",
+)
 async def get_alert(alert_id: int, db: Session = Depends(get_db)):
     a = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
     if not a:
@@ -369,7 +384,12 @@ def _background_telegram_notify(alert_id: int, alert_snapshot: dict, action_snap
         logger.warning("Telegram notify failed for alert #%d: %s", alert_id, exc)
 
 
-@router.post("/api/alerts/{alert_id}/action")
+@router.post(
+    "/api/alerts/{alert_id}/action",
+    tags=["Alerts"],
+    summary="Take action on alert",
+    description="Approve or deny an alert with optional trade parameters (entry price range, stop loss, target). On approval, triggers background Claude chart analysis and Telegram notification.",
+)
 async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
     if not alert:
@@ -449,7 +469,12 @@ async def take_action(alert_id: int, req: ActionRequest, db: Session = Depends(g
     return {"success": True, "alert_id": alert_id}
 
 
-@router.put("/api/alerts/{alert_id}/action")
+@router.put(
+    "/api/alerts/{alert_id}/action",
+    tags=["Alerts"],
+    summary="Update alert action",
+    description="Update action fields (action call, priority, FM notes, entry/SL/TP prices) for an already-actioned alert.",
+)
 async def update_action(alert_id: int, req: UpdateActionRequest, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
     if not alert:
@@ -482,7 +507,12 @@ async def update_action(alert_id: int, req: UpdateActionRequest, db: Session = D
     return {"success": True, "alert_id": alert_id}
 
 
-@router.delete("/api/alerts/all")
+@router.delete(
+    "/api/alerts/all",
+    tags=["Alerts"],
+    summary="Delete all alerts",
+    description="Batch delete ALL alerts and their associated actions. Use with extreme caution -- this is irreversible.",
+)
 async def delete_all_alerts(db: Session = Depends(get_db)):
     """Batch delete ALL alerts and their actions. Use with caution."""
     actions_deleted = db.query(AlertAction).delete()
@@ -492,7 +522,12 @@ async def delete_all_alerts(db: Session = Depends(get_db)):
     return {"success": True, "deleted_count": alerts_deleted}
 
 
-@router.delete("/api/alerts/{alert_id}")
+@router.delete(
+    "/api/alerts/{alert_id}",
+    tags=["Alerts"],
+    summary="Delete single alert",
+    description="Delete a specific alert and its associated action by alert ID.",
+)
 async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     alert = db.query(TradingViewAlert).filter(TradingViewAlert.id == alert_id).first()
     if not alert:
@@ -503,7 +538,12 @@ async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
-@router.get("/api/alerts/{alert_id}/chart")
+@router.get(
+    "/api/alerts/{alert_id}/chart",
+    tags=["Alerts"],
+    summary="Get alert chart image",
+    description="Returns the base64-encoded chart image attached to an alert's action, if one exists.",
+)
 async def get_chart(alert_id: int, db: Session = Depends(get_db)):
     action = db.query(AlertAction).filter_by(alert_id=alert_id).first()
     if not action or not action.chart_image_b64:
@@ -513,7 +553,12 @@ async def get_chart(alert_id: int, db: Session = Depends(get_db)):
 
 # ─── Performance Tracking ────────────────────────────────────────
 
-@router.get("/api/performance")
+@router.get(
+    "/api/performance",
+    tags=["Alerts"],
+    summary="Alert performance tracker",
+    description="Returns all approved alerts with current market prices, P&L calculations, and days since approval. Supports both direct and ratio trades.",
+)
 async def performance(db: Session = Depends(get_db)):
     from price_service import get_live_price
 
@@ -581,7 +626,12 @@ async def performance(db: Session = Depends(get_db)):
 
 # ─── Actionables (SL/TP triggered alerts) ────────────────────────
 
-@router.get("/api/actionables")
+@router.get(
+    "/api/actionables",
+    tags=["Alerts"],
+    summary="Actionable alerts (SL/TP triggered)",
+    description="Returns approved alerts where the current price has hit the stop loss or target price. Includes P&L calculation at the trigger level.",
+)
 async def actionables(db: Session = Depends(get_db)):
     """Return approved alerts where current price has hit stop_loss or target_price."""
     from price_service import get_live_price

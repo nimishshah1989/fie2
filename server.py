@@ -63,7 +63,19 @@ from routers import health, alerts, indices, portfolios, baskets, recommendation
 #  APP SETUP
 # ═══════════════════════════════════════════════════════════
 
-app = FastAPI(title="JHAVERI FIE v3", version="3.1")
+app = FastAPI(
+    title="JHAVERI FIE v3",
+    version="3.1",
+    description="Jhaveri Intelligence Platform — Indian market intelligence, portfolio tracking, and trading alert management API",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+)
+
+# ─── Environment Validation ─────────────────────────────
+_env = os.getenv("FIE_ENVIRONMENT", "production")
+logger.info("FIE v3 starting in %s mode", _env)
+if _env == "production" and not os.getenv("FIE_API_KEY", ""):
+    logger.warning("PRODUCTION mode without FIE_API_KEY — API endpoints are unprotected")
 
 # ─── Rate Limiting ───────────────────────────────────────
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])

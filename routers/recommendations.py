@@ -181,7 +181,12 @@ def _fetch_fundamentals(tickers: List[str]) -> Dict[str, Dict]:
 
 # ─── Endpoints ────────────────────────────────────────────
 
-@router.get("/api/recommendations/sectors")
+@router.get(
+    "/api/recommendations/sectors",
+    tags=["Recommendations"],
+    summary="List available sectors",
+    description="Returns the list of NSE sector indices available for recommendation analysis, along with associated ETFs and supported time periods.",
+)
 async def get_sectors(db: Session = Depends(get_db)):
     """Return sector list + period labels for the threshold input grid."""
     sectors = []
@@ -201,7 +206,12 @@ async def get_sectors(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/api/recommendations/generate")
+@router.post(
+    "/api/recommendations/generate",
+    tags=["Recommendations"],
+    summary="Generate sector recommendations",
+    description="Generates stock and ETF recommendations based on sector ratio performance vs the base index. Sectors exceeding the threshold get top-N stock picks ranked by ratio return. Includes fundamental data (P/E, EPS, 52W range, market cap) fetched in parallel.",
+)
 async def generate_recommendations(req: GenerateRequest, db: Session = Depends(get_db)):
     """Generate stock/ETF recommendations based on sector ratio thresholds.
 
