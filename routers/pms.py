@@ -1,9 +1,11 @@
 """
 FIE v3 — PMS Router
-Upload PMS Excel files, query NAV history, metrics, drawdowns, transactions.
+Upload PMS Excel files, query NAV history, metrics, drawdowns, transactions,
+win/loss analysis.
 """
 
 import logging
+from collections import defaultdict
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -12,7 +14,7 @@ from sqlalchemy import desc
 
 from models import (
     get_db, ModelPortfolio, PmsNavDaily, PmsTransaction,
-    PortfolioMetric, DrawdownEvent,
+    PortfolioMetric, DrawdownEvent, IndexPrice,
 )
 from services.pms_service import (
     parse_nav_excel, parse_transaction_excel,
@@ -163,7 +165,7 @@ async def upload_pms_files(
 
 
 # ═══════════════════════════════════════════════════════════
-#  NAV HISTORY
+#  NAV HISTORY (with NIFTY 50 benchmark)
 # ═══════════════════════════════════════════════════════════
 
 @router.get("/{portfolio_id}/nav")
@@ -172,7 +174,7 @@ def get_nav_history(
     period: str = "all",
     db: Session = Depends(get_db),
 ):
-    """Return NAV time series, optionally filtered by period."""
+    """Return NAV time series with normalized NIFTY 50 benchmark, optionally filtered by period."""
     query = db.query(PmsNavDaily).filter(PmsNavDaily.portfolio_id == portfolio_id)
 
     if period != "all":
@@ -183,24 +185,68 @@ def get_nav_history(
             query = query.filter(PmsNavDaily.date >= cutoff)
 
     rows = query.order_by(PmsNavDaily.date).all()
+
+    # Build NIFTY 50 benchmark lookup over the same date range
+    nifty_map = {}
+    if rows:
+        start_date = rows[0].date
+        end_date = rows[-1].date
+        nifty_rows = (
+            db.query(IndexPrice)
+            .filter(
+                IndexPrice.index_name == "NIFTY 50",
+                IndexPrice.date >= str(start_date),
+                IndexPrice.date <= str(end_date),
+            )
+            .order_by(IndexPrice.date)
+            .all()
+        )
+        for nr in nifty_rows:
+            nifty_map[nr.date] = nr.close_price
+
+    # Find NIFTY 50 close price on the portfolio's first data point date
+    # Use the earliest available NIFTY data at or after the start date as fallback
+    nifty_start_close = None
+    if rows and nifty_map:
+        first_date_str = str(rows[0].date)
+        # Try exact date match first, then find closest available
+        if first_date_str in nifty_map:
+            nifty_start_close = nifty_map[first_date_str]
+        else:
+            # Find the first available NIFTY date from our fetched data
+            for nr_date in sorted(nifty_map.keys()):
+                if nr_date >= first_date_str:
+                    nifty_start_close = nifty_map[nr_date]
+                    break
+
+    nav_history = []
+    for r in rows:
+        # Normalize NIFTY 50 to base 100 from portfolio start date
+        date_str = str(r.date)
+        benchmark_nav = None
+        if nifty_start_close and nifty_start_close > 0:
+            nifty_close = nifty_map.get(date_str)
+            if nifty_close is not None:
+                benchmark_nav = round((nifty_close / nifty_start_close) * 100, 2)
+
+        nav_history.append({
+            "date": date_str,
+            "nav": r.nav,
+            "unit_nav": r.unit_nav,
+            "corpus": r.corpus,
+            "equity_holding": r.equity_holding,
+            "etf_investment": r.etf_investment,
+            "cash_equivalent": r.cash_equivalent,
+            "bank_balance": r.bank_balance,
+            "liquidity_pct": r.liquidity_pct,
+            "high_water_mark": r.high_water_mark,
+            "benchmark_nav": benchmark_nav,
+        })
+
     return {
         "portfolio_id": portfolio_id,
         "count": len(rows),
-        "nav_history": [
-            {
-                "date": str(r.date),
-                "nav": r.nav,
-                "unit_nav": r.unit_nav,
-                "corpus": r.corpus,
-                "equity_holding": r.equity_holding,
-                "etf_investment": r.etf_investment,
-                "cash_equivalent": r.cash_equivalent,
-                "bank_balance": r.bank_balance,
-                "liquidity_pct": r.liquidity_pct,
-                "high_water_mark": r.high_water_mark,
-            }
-            for r in rows
-        ],
+        "nav_history": nav_history,
     }
 
 
@@ -326,6 +372,104 @@ def get_transactions(
             }
             for r in rows
         ],
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+#  WIN/LOSS ANALYSIS
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/{portfolio_id}/win-loss")
+def get_win_loss(portfolio_id: int, db: Session = Depends(get_db)):
+    """Analyze PMS transactions to compute win/loss trading statistics by script.
+
+    Groups all buy and sell transactions by script. For scripts with any sells,
+    computes P&L. A trade is a 'win' if total sell amount exceeds total buy amount.
+    """
+    txns = (
+        db.query(PmsTransaction)
+        .filter(PmsTransaction.portfolio_id == portfolio_id)
+        .order_by(PmsTransaction.date)
+        .all()
+    )
+    if not txns:
+        raise HTTPException(status_code=404, detail="No transactions found for this portfolio")
+
+    # Aggregate buy and sell amounts per script
+    script_data = defaultdict(lambda: {"buy_amount": 0.0, "sell_amount": 0.0})
+
+    for txn in txns:
+        script = txn.script
+        # Accumulate buy amounts — prefer buy_amt_with_cost (includes brokerage/costs)
+        if txn.buy_qty and txn.buy_qty > 0:
+            if txn.buy_amt_with_cost and txn.buy_amt_with_cost > 0:
+                script_data[script]["buy_amount"] += txn.buy_amt_with_cost
+            elif txn.buy_rate and txn.buy_rate > 0:
+                script_data[script]["buy_amount"] += txn.buy_qty * txn.buy_rate
+
+        # Accumulate sell amounts — prefer sale_amt_with_cost (net of costs)
+        if txn.sale_qty and txn.sale_qty > 0:
+            if txn.sale_amt_with_cost and txn.sale_amt_with_cost > 0:
+                script_data[script]["sell_amount"] += txn.sale_amt_with_cost
+            elif txn.sale_rate and txn.sale_rate > 0:
+                script_data[script]["sell_amount"] += txn.sale_qty * txn.sale_rate
+
+    # Only analyze scripts that have both buys and sells (completed or partial exits)
+    trades = []
+    for script, data in script_data.items():
+        buy_amt = data["buy_amount"]
+        sell_amt = data["sell_amount"]
+        # Skip scripts with no sells (still open, no realized P&L)
+        if sell_amt <= 0:
+            continue
+        pnl = sell_amt - buy_amt
+        pnl_pct = ((sell_amt / buy_amt) - 1) * 100 if buy_amt > 0 else 0.0
+        trades.append({
+            "script": script,
+            "buy_amount": round(buy_amt, 2),
+            "sell_amount": round(sell_amt, 2),
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl_pct, 2),
+        })
+
+    # Sort by P&L descending (best trades first)
+    trades.sort(key=lambda t: t["pnl"], reverse=True)
+
+    winning = [t for t in trades if t["pnl"] > 0]
+    losing = [t for t in trades if t["pnl"] <= 0]
+
+    total_profit = sum(t["pnl"] for t in winning)
+    total_loss = sum(t["pnl"] for t in losing)  # negative or zero values
+    total_scripts_traded = len(trades)
+    win_count = len(winning)
+    loss_count = len(losing)
+    win_rate = (win_count / total_scripts_traded * 100) if total_scripts_traded > 0 else 0.0
+
+    # Profit factor = total_profit / |total_loss|. If no losses, return None.
+    profit_factor = None
+    if total_loss < 0:
+        profit_factor = round(total_profit / abs(total_loss), 2)
+
+    avg_win = round(total_profit / win_count, 2) if win_count > 0 else 0.0
+    avg_loss = round(total_loss / loss_count, 2) if loss_count > 0 else 0.0
+
+    best_trade = trades[0] if trades else None
+    worst_trade = trades[-1] if trades else None
+
+    return {
+        "portfolio_id": portfolio_id,
+        "total_scripts_traded": total_scripts_traded,
+        "winning_trades": win_count,
+        "losing_trades": loss_count,
+        "win_rate_pct": round(win_rate, 2),
+        "total_profit": round(total_profit, 2),
+        "total_loss": round(total_loss, 2),
+        "profit_factor": profit_factor,
+        "avg_win": avg_win,
+        "avg_loss": avg_loss,
+        "best_trade": {"script": best_trade["script"], "pnl": best_trade["pnl"]} if best_trade else None,
+        "worst_trade": {"script": worst_trade["script"], "pnl": worst_trade["pnl"]} if worst_trade else None,
+        "trades": trades,
     }
 
 

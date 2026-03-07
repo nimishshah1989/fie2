@@ -23,11 +23,14 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
     return <Skeleton className="h-64 rounded-xl" />;
   }
 
-  // Compute drawdown series from NAV data
+  // Use TWR unit_nav for drawdown computation (adjusts for capital flows)
+  const hasUnitNav = navHistory.some((d) => d.unit_nav != null);
+
   let runningMax = 0;
   const drawdownData = navHistory.map((d) => {
-    runningMax = Math.max(runningMax, d.nav);
-    const dd = ((d.nav - runningMax) / runningMax) * 100;
+    const val = hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav;
+    runningMax = Math.max(runningMax, val);
+    const dd = ((val - runningMax) / runningMax) * 100;
     return { date: d.date, drawdown: Math.round(dd * 100) / 100 };
   });
 
@@ -81,6 +84,17 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
           />
         </AreaChart>
       </ResponsiveContainer>
+
+      {/* Explanation */}
+      <div className="mt-3 pt-3 border-t border-slate-100">
+        <p className="text-[11px] text-slate-500 leading-relaxed">
+          <span className="font-semibold text-slate-600">What this shows:</span> The underwater chart tracks how far the portfolio has fallen from its all-time high at any point in time.
+          A value of 0% means the portfolio is at or above its peak. A value of {minDD.toFixed(1)}% (the deepest red)
+          represents the worst peak-to-trough decline.
+          Shallower dips that recover quickly indicate resilience; deep, prolonged underwater periods signal sustained losses.
+          {hasUnitNav && " This chart uses TWR-adjusted values, so drawdowns reflect true investment performance excluding capital flows."}
+        </p>
+      </div>
     </div>
   );
 }

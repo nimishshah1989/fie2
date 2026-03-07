@@ -14,6 +14,22 @@ export interface PmsNavRecord {
   bank_balance: number | null;
   liquidity_pct: number | null;
   high_water_mark: number | null;
+  benchmark_nav: number | null;
+}
+
+export interface WinLossStats {
+  total_scripts_traded: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate_pct: number;
+  total_profit: number;
+  total_loss: number;
+  profit_factor: number | null;
+  avg_win: number;
+  avg_loss: number;
+  best_trade: { script: string; pnl: number } | null;
+  worst_trade: { script: string; pnl: number } | null;
+  trades: { script: string; buy_amount: number; sell_amount: number; pnl: number; pnl_pct: number }[];
 }
 
 export interface PmsMetric {

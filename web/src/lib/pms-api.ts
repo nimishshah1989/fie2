@@ -10,6 +10,7 @@ import type {
   PmsTransactionRow,
   MonthlyReturn,
   PmsSummary,
+  WinLossStats,
 } from "@/lib/pms-types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
@@ -69,6 +70,14 @@ export async function fetchPmsSummary(
   portfolioId: number
 ): Promise<PmsSummary | null> {
   const res = await fetch(`${API}/api/pms/${portfolioId}/summary`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function fetchPmsWinLoss(
+  portfolioId: number
+): Promise<WinLossStats | null> {
+  const res = await fetch(`${API}/api/pms/${portfolioId}/win-loss`);
   if (!res.ok) return null;
   return res.json();
 }

@@ -14,6 +14,7 @@ interface PortfolioSummaryCardProps {
 }
 
 export function PortfolioSummaryCard({ portfolio, onClick, onEdit, onArchive }: PortfolioSummaryCardProps) {
+  const isPms = portfolio.portfolio_type === "pms";
   const isPositive = portfolio.total_return_pct >= 0;
 
   return (
@@ -61,11 +62,11 @@ export function PortfolioSummaryCard({ portfolio, onClick, onEdit, onArchive }: 
                 )}
               </div>
             )}
-            {portfolio.portfolio_type === "pms" && (
+            {isPms && (
               <Badge className="bg-teal-100 text-teal-700 text-[10px]">PMS</Badge>
             )}
             <Badge variant="outline" className="text-[10px]">
-              {portfolio.portfolio_type === "pms" ? "Analytics" : `${portfolio.num_holdings} holdings`}
+              {isPms ? "Analytics" : `${portfolio.num_holdings} holdings`}
             </Badge>
           </div>
         </div>
@@ -81,17 +82,17 @@ export function PortfolioSummaryCard({ portfolio, onClick, onEdit, onArchive }: 
         <div className="grid grid-cols-2 gap-3 pt-1">
           <div>
             <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              Invested
+              {isPms ? "Corpus" : "Invested"}
             </div>
-            <div className="text-sm font-semibold">
+            <div className="text-sm font-semibold font-mono tabular-nums">
               {formatPrice(portfolio.total_invested)}
             </div>
           </div>
           <div>
             <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
-              Current
+              {isPms ? "Current NAV" : "Current"}
             </div>
-            <div className="text-sm font-semibold">
+            <div className="text-sm font-semibold font-mono tabular-nums">
               {formatPrice(portfolio.current_value)}
             </div>
           </div>
@@ -99,8 +100,10 @@ export function PortfolioSummaryCard({ portfolio, onClick, onEdit, onArchive }: 
 
         {/* Return */}
         <div className="flex items-center justify-between pt-1 border-t border-border">
-          <span className="text-xs text-muted-foreground">Total Return</span>
-          <div className={`flex items-center gap-1 text-sm font-bold ${
+          <span className="text-xs text-muted-foreground">
+            {isPms ? "CAGR (SI)" : "Total Return"}
+          </span>
+          <div className={`flex items-center gap-1 text-sm font-bold font-mono tabular-nums ${
             isPositive ? "text-emerald-600" : "text-red-600"
           }`}>
             {isPositive ? (

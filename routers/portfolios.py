@@ -21,6 +21,7 @@ from models import (
     get_db, SessionLocal, IndexPrice,
     ModelPortfolio, PortfolioHolding, PortfolioTransaction, PortfolioNAV,
     PortfolioStatus, TransactionType,
+    PmsNavDaily, PortfolioMetric,
 )
 from services.portfolio_service import (
     get_live_prices, compute_xirr, compute_max_drawdown,
@@ -57,6 +58,63 @@ class CreateTransactionRequest(BaseModel):
     sector: Optional[str] = None
 
 
+# ─── PMS Summary Helper ─────────────────────────────────
+
+def _get_pms_list_data(portfolio_id: int, db: Session) -> dict:
+    """Fetch PMS summary data for the portfolio list view.
+
+    Returns total_invested (first corpus), current_value (latest NAV),
+    and total_return_pct (CAGR from SI metric or simple return).
+    """
+    # Latest NAV row for current value
+    latest_nav = (
+        db.query(PmsNavDaily)
+        .filter(PmsNavDaily.portfolio_id == portfolio_id)
+        .order_by(desc(PmsNavDaily.date))
+        .first()
+    )
+    if not latest_nav:
+        return {"total_invested": 0.0, "current_value": 0.0, "total_return_pct": 0.0}
+
+    current_value = latest_nav.nav or 0.0
+
+    # First corpus as total_invested (the initial capital deployed)
+    first_nav = (
+        db.query(PmsNavDaily)
+        .filter(
+            PmsNavDaily.portfolio_id == portfolio_id,
+            PmsNavDaily.corpus.isnot(None),
+        )
+        .order_by(PmsNavDaily.date)
+        .first()
+    )
+    total_invested = first_nav.corpus if first_nav and first_nav.corpus else current_value
+
+    # Try to get CAGR from SI (Since Inception) metric
+    total_return_pct = 0.0
+    si_metric = (
+        db.query(PortfolioMetric)
+        .filter(
+            PortfolioMetric.portfolio_id == portfolio_id,
+            PortfolioMetric.period == "SI",
+        )
+        .order_by(desc(PortfolioMetric.as_of_date))
+        .first()
+    )
+    if si_metric:
+        # Prefer CAGR, fall back to simple return
+        total_return_pct = si_metric.cagr_pct if si_metric.cagr_pct is not None else (si_metric.return_pct or 0.0)
+    elif total_invested and total_invested > 0:
+        # Fallback: simple return from corpus vs latest NAV
+        total_return_pct = ((current_value - total_invested) / total_invested) * 100
+
+    return {
+        "total_invested": round(total_invested, 2),
+        "current_value": round(current_value, 2),
+        "total_return_pct": round(total_return_pct, 2),
+    }
+
+
 # ─── Portfolio CRUD ──────────────────────────────────────
 
 @router.post("/api/portfolios")
@@ -81,6 +139,28 @@ async def list_portfolios(db: Session = Depends(get_db)):
     )
     results = []
     for p in portfolios:
+        p_type = getattr(p, 'portfolio_type', 'manual') or 'manual'
+
+        # PMS portfolios: fetch summary from PmsNavDaily / PortfolioMetric
+        if p_type == 'pms':
+            pms_data = _get_pms_list_data(p.id, db)
+            results.append({
+                "id": p.id, "name": p.name, "description": p.description,
+                "benchmark": p.benchmark,
+                "status": p.status.value if p.status else "ACTIVE",
+                "portfolio_type": p_type,
+                "ucc_code": getattr(p, 'ucc_code', None),
+                "created_at": (p.created_at.isoformat() + "Z") if p.created_at else None,
+                "updated_at": (p.updated_at.isoformat() + "Z") if p.updated_at else None,
+                "num_holdings": 0,
+                "total_invested": pms_data["total_invested"],
+                "current_value": pms_data["current_value"],
+                "realized_pnl": 0.0,
+                "total_return_pct": pms_data["total_return_pct"],
+            })
+            continue
+
+        # Manual portfolios: compute from holdings + live prices
         holdings = (
             db.query(PortfolioHolding)
             .filter(PortfolioHolding.portfolio_id == p.id, PortfolioHolding.quantity > 0)
@@ -113,7 +193,7 @@ async def list_portfolios(db: Session = Depends(get_db)):
             "id": p.id, "name": p.name, "description": p.description,
             "benchmark": p.benchmark,
             "status": p.status.value if p.status else "ACTIVE",
-            "portfolio_type": getattr(p, 'portfolio_type', 'manual') or 'manual',
+            "portfolio_type": p_type,
             "ucc_code": getattr(p, 'ucc_code', None),
             "created_at": (p.created_at.isoformat() + "Z") if p.created_at else None,
             "updated_at": (p.updated_at.isoformat() + "Z") if p.updated_at else None,
