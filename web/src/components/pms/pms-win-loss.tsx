@@ -7,12 +7,14 @@ import { formatPrice } from "@/lib/utils";
 
 interface PmsWinLossProps {
   portfolioId: number;
+  period?: string;
 }
 
-export function PmsWinLoss({ portfolioId }: PmsWinLossProps) {
+export function PmsWinLoss({ portfolioId, period }: PmsWinLossProps) {
+  const periodParam = period && period !== "ALL" ? period : undefined;
   const { data: stats, isLoading } = useSWR(
-    `pms-winloss-${portfolioId}`,
-    () => fetchPmsWinLoss(portfolioId),
+    `pms-winloss-${portfolioId}-${period || "ALL"}`,
+    () => fetchPmsWinLoss(portfolioId, periodParam),
     { refreshInterval: 300_000 }
   );
 

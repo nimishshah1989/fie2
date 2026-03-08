@@ -12,10 +12,14 @@ function formatRs(value: number | null): string {
   return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
-function formatCrores(value: number | null): string {
+function formatCorpus(value: number | null): string {
   if (value == null) return "—";
-  const cr = value / 1e7;
-  return `₹${cr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
+  if (value >= 1e7) {
+    const cr = value / 1e7;
+    return `₹${cr.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
+  }
+  const lakhs = value / 1e5;
+  return `₹${lakhs.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} L`;
 }
 
 export function PmsKpiStrip({ summary }: PmsKpiStripProps) {
@@ -30,7 +34,7 @@ export function PmsKpiStrip({ summary }: PmsKpiStripProps) {
     },
     {
       label: "Corpus",
-      value: formatCrores(summary.latest_corpus),
+      value: formatCorpus(summary.latest_corpus),
       sub: summary.latest_liquidity_pct != null
         ? `${summary.latest_liquidity_pct.toFixed(2)}% liquidity`
         : undefined,

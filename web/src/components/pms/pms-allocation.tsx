@@ -174,7 +174,7 @@ function SectorHeatmapTable({
               {snapshots.map((s) => (
                 <th
                   key={s.label}
-                  className="text-right py-2 px-2 font-semibold text-slate-400 uppercase tracking-wider"
+                  className="text-center py-2 px-2 font-semibold text-slate-400 uppercase tracking-wider"
                 >
                   {s.label}
                 </th>
@@ -206,7 +206,7 @@ function SectorHeatmapTable({
                     return (
                       <td
                         key={snap.label}
-                        className="py-1.5 px-2 text-right font-mono tabular-nums text-slate-700 rounded"
+                        className="py-1.5 px-2 text-center font-mono tabular-nums text-slate-700 rounded"
                         style={{ backgroundColor: bgColor }}
                       >
                         {pct != null ? `${pct.toFixed(1)}%` : "—"}
@@ -233,10 +233,14 @@ function AllocationShiftChart({
   sectors: string[];
 }) {
   // Reverse so bars go from oldest (12M) on left to Today on right
+  // Normalize each snapshot to sum exactly 100% to avoid rounding errors (100.1%)
   const chartData = [...snapshots].reverse().map((snap) => {
     const entry: Record<string, string | number> = { period: snap.label };
+    const rawTotal = sectors.reduce((sum, s) => sum + (snap.sectors[s] ?? 0), 0);
+    const scale = rawTotal > 0 ? 100 / rawTotal : 1;
     for (const sector of sectors) {
-      entry[sector] = snap.sectors[sector] ?? 0;
+      const raw = snap.sectors[sector] ?? 0;
+      entry[sector] = Math.round(raw * scale * 10) / 10;
     }
     return entry;
   });

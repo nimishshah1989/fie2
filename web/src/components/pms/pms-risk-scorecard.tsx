@@ -10,10 +10,17 @@ const PERIODS = ["1M", "3M", "6M", "1Y", "2Y", "3Y", "ALL"] as const;
 
 interface PmsRiskScorecardProps {
   portfolioId: number;
+  period?: string;
+  onPeriodChange?: (period: string) => void;
 }
 
-export function PmsRiskScorecard({ portfolioId }: PmsRiskScorecardProps) {
-  const [period, setPeriod] = useState<string>("ALL");
+export function PmsRiskScorecard({ portfolioId, period: externalPeriod, onPeriodChange }: PmsRiskScorecardProps) {
+  const [internalPeriod, setInternalPeriod] = useState<string>("ALL");
+  const period = externalPeriod ?? internalPeriod;
+  const setPeriod = (p: string) => {
+    setInternalPeriod(p);
+    onPeriodChange?.(p);
+  };
   const { data: risk, isLoading } = useSWR(
     `pms-risk-${portfolioId}-${period}`,
     () => fetchPmsRiskAnalytics(portfolioId, period === "ALL" ? "all" : period),

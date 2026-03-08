@@ -21,10 +21,8 @@ function formatDate(dateStr: string): string {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
 }
 
-function formatLakhs(value: number): string {
-  if (value >= 1e7) return `₹${(value / 1e7).toFixed(1)}Cr`;
-  if (value >= 1e5) return `₹${(value / 1e5).toFixed(1)}L`;
-  return `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+function formatCashPct(value: number): string {
+  return `${value.toFixed(1)}%`;
 }
 
 export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
@@ -39,7 +37,8 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
   const hasBenchmark = navHistory.some((d) => d.benchmark_nav != null);
   const hasCash = navHistory.some(
     (d) => (d.cash_equivalent != null && d.cash_equivalent > 0) ||
-           (d.bank_balance != null && d.bank_balance > 0)
+           (d.bank_balance != null && d.bank_balance > 0) ||
+           (d.liquidity_pct != null && d.liquidity_pct > 0)
   );
 
   // Get first-day values for rebasing both lines to 100
@@ -53,11 +52,21 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
     const rebasedBench = d.benchmark_nav != null && firstBenchmark != null
       ? (d.benchmark_nav / firstBenchmark) * 100
       : undefined;
+    // Cash as % of NAV — use liquidity_pct if available, else compute from raw values
+    let cashPct: number | undefined;
+    if (hasCash) {
+      if (d.liquidity_pct != null) {
+        cashPct = Math.max(0, d.liquidity_pct);
+      } else {
+        const cashAbs = (d.cash_equivalent || 0) + (d.bank_balance || 0);
+        cashPct = d.nav > 0 ? Math.max(0, (cashAbs / d.nav) * 100) : 0;
+      }
+    }
     return {
       date: d.date,
       portfolio: Math.round(rebasedPort * 100) / 100,
       benchmark: rebasedBench != null ? Math.round(rebasedBench * 100) / 100 : undefined,
-      cash: hasCash ? ((d.cash_equivalent || 0) + (d.bank_balance || 0)) : undefined,
+      cash: cashPct,
     };
   });
 
@@ -71,9 +80,9 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
   const maxNav = Math.max(...navValues);
   const navPadding = (maxNav - minNav) * 0.05;
 
-  // Y-axis domain for cash (secondary)
+  // Y-axis domain for cash % (secondary)
   const cashValues = chartData.map((d) => d.cash || 0).filter((v) => v > 0);
-  const maxCash = cashValues.length > 0 ? Math.max(...cashValues) : 0;
+  const maxCashPct = cashValues.length > 0 ? Math.min(Math.max(...cashValues) * 1.2, 100) : 50;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
@@ -81,7 +90,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
         <h3 className="text-sm font-semibold text-slate-700">
           Relative Performance (Base 100)
           {hasBenchmark && <span className="text-slate-400 font-normal"> vs NIFTY 50</span>}
-          {hasCash && <span className="text-slate-400 font-normal"> | Cash Position</span>}
+          {hasCash && <span className="text-slate-400 font-normal"> | Cash % of NAV</span>}
         </h3>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
@@ -125,22 +134,22 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
             domain={[minNav - navPadding, maxNav + navPadding]}
             width={55}
           />
-          {/* Secondary Y-axis: Cash position */}
+          {/* Secondary Y-axis: Cash as % of NAV */}
           {hasCash && (
             <YAxis
               yAxisId="cash"
               orientation="right"
-              tickFormatter={formatLakhs}
-              tick={{ fontSize: 10, fill: "#f59e0b" }}
+              tickFormatter={formatCashPct}
+              tick={{ fontSize: 10, fill: "#94a3b8" }}
               tickLine={false}
               axisLine={false}
-              domain={[0, maxCash * 1.2]}
-              width={65}
+              domain={[0, maxCashPct]}
+              width={50}
             />
           )}
           <Tooltip
             formatter={(value: number, name: string) => {
-              if (name === "cash") return [formatLakhs(value), "Cash Position"];
+              if (name === "cash") return [`${value.toFixed(1)}% of NAV`, "Cash Position"];
               const label = name === "portfolio" ? "Portfolio" : "NIFTY 50";
               const pctChange = value - 100;
               const sign = pctChange >= 0 ? "+" : "";
@@ -163,7 +172,7 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
               const labels: Record<string, string> = {
                 portfolio: "Portfolio",
                 benchmark: "NIFTY 50",
-                cash: "Cash Position",
+                cash: "Cash % of NAV",
               };
               return (
                 <span className="text-xs text-slate-500">{labels[value] || value}</span>
@@ -213,8 +222,8 @@ export function PmsNavChart({ portfolioId }: PmsNavChartProps) {
 
       {hasCash && (
         <p className="text-[11px] text-slate-400 mt-2 text-center italic">
-          Amber bars = Cash Equivalents (PMS Fund Manager account) + Bank Balance on each day.
-          This is uninvested capital held as a tactical risk management position — &quot;Cash is a position.&quot;
+          Amber bars = Cash (liquid funds + bank balance) as % of total NAV on each day.
+          Uninvested capital held as a tactical risk management position — &quot;Cash is a position.&quot;
         </p>
       )}
     </div>

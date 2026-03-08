@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { usePmsDetail } from "@/hooks/use-pms-detail";
 import { PmsKpiStrip } from "./pms-kpi-strip";
 import { PmsNavChart } from "./pms-nav-chart";
@@ -26,6 +27,7 @@ interface PmsDetailViewProps {
 
 export function PmsDetailView({ id, name, description, benchmark, onBack }: PmsDetailViewProps) {
   const { summary, summaryLoading, metrics, metricsAsOf, refresh } = usePmsDetail(id);
+  const [riskPeriod, setRiskPeriod] = useState<string>("ALL");
 
   // Loading state
   if (summaryLoading) {
@@ -89,10 +91,10 @@ export function PmsDetailView({ id, name, description, benchmark, onBack }: PmsD
       <PmsDrawdownChart portfolioId={id} />
 
       {/* Risk Management Scorecard */}
-      <PmsRiskScorecard portfolioId={id} />
+      <PmsRiskScorecard portfolioId={id} period={riskPeriod} onPeriodChange={setRiskPeriod} />
 
-      {/* Win/Loss Analysis */}
-      <PmsWinLoss portfolioId={id} />
+      {/* Win/Loss Analysis — shares period selection with Risk Scorecard */}
+      <PmsWinLoss portfolioId={id} period={riskPeriod} />
 
       {/* Methodology */}
       <PmsMethodology />

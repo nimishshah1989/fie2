@@ -502,18 +502,25 @@ def get_transactions(
     summary="PMS win/loss analysis",
     description="Analyzes PMS transaction history to compute win/loss trading statistics. Groups trades by script, calculates P&L for scripts with sells, and returns win rate, profit factor, average win/loss, and best/worst trades.",
 )
-def get_win_loss(portfolio_id: int, db: Session = Depends(get_db)):
+def get_win_loss(portfolio_id: int, period: str = "all", db: Session = Depends(get_db)):
     """Analyze PMS transactions to compute win/loss trading statistics by script.
 
     Groups all buy and sell transactions by script. For scripts with any sells,
     computes P&L. A trade is a 'win' if total sell amount exceeds total buy amount.
+    Supports period filtering: 1M, 3M, 6M, 1Y, 2Y, 3Y, or 'all'.
     """
-    txns = (
-        db.query(PmsTransaction)
-        .filter(PmsTransaction.portfolio_id == portfolio_id)
-        .order_by(PmsTransaction.date)
-        .all()
-    )
+    query = db.query(PmsTransaction).filter(PmsTransaction.portfolio_id == portfolio_id)
+
+    # Apply period filter if not 'all'
+    if period and period.lower() != "all":
+        from datetime import datetime, timedelta
+        period_days = {"1M": 30, "3M": 91, "6M": 182, "1Y": 365, "2Y": 730, "3Y": 1095}
+        days = period_days.get(period.upper(), None)
+        if days:
+            cutoff = datetime.now().date() - timedelta(days=days)
+            query = query.filter(PmsTransaction.date >= cutoff)
+
+    txns = query.order_by(PmsTransaction.date).all()
     if not txns:
         raise HTTPException(status_code=404, detail="No transactions found for this portfolio")
 

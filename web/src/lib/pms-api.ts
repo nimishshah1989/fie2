@@ -76,9 +76,11 @@ export async function fetchPmsSummary(
 }
 
 export async function fetchPmsWinLoss(
-  portfolioId: number
+  portfolioId: number,
+  period?: string,
 ): Promise<WinLossStats | null> {
-  const res = await fetch(`${API}/api/pms/${portfolioId}/win-loss`);
+  const params = period ? `?period=${period}` : "";
+  const res = await fetch(`${API}/api/pms/${portfolioId}/win-loss${params}`);
   if (!res.ok) return null;
   return res.json();
 }
