@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer, ReferenceLine, Legend,
 } from "recharts";
 import { usePmsNav } from "@/hooks/use-pms-detail";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,21 +30,42 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
 
   // Use TWR unit_nav for drawdown computation (adjusts for capital flows)
   const hasUnitNav = navHistory.some((d) => d.unit_nav != null);
+  const hasBenchmark = navHistory.some((d) => d.benchmark_nav != null);
 
-  let runningMax = 0;
+  let portMax = 0;
+  let benchMax = 0;
   const drawdownData = navHistory.map((d) => {
-    const val = hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav;
-    runningMax = Math.max(runningMax, val);
-    const dd = ((val - runningMax) / runningMax) * 100;
-    return { date: d.date, drawdown: Math.round(dd * 100) / 100 };
+    const portVal = hasUnitNav && d.unit_nav != null ? d.unit_nav : d.nav;
+    portMax = Math.max(portMax, portVal);
+    const portDD = ((portVal - portMax) / portMax) * 100;
+
+    let benchDD: number | undefined;
+    if (hasBenchmark && d.benchmark_nav != null) {
+      benchMax = Math.max(benchMax, d.benchmark_nav);
+      benchDD = ((d.benchmark_nav - benchMax) / benchMax) * 100;
+    }
+
+    return {
+      date: d.date,
+      drawdown: Math.round(portDD * 100) / 100,
+      benchmark: benchDD != null ? Math.round(benchDD * 100) / 100 : undefined,
+    };
   });
 
-  const minDD = Math.min(...drawdownData.map((d) => d.drawdown));
+  const allDDs = drawdownData.flatMap((d) => {
+    const vals = [d.drawdown];
+    if (d.benchmark != null) vals.push(d.benchmark);
+    return vals;
+  });
+  const minDD = Math.min(...allDDs);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-slate-700">Underwater Chart (Drawdown %)</h3>
+        <h3 className="text-sm font-semibold text-slate-700">
+          Underwater Chart (Drawdown %)
+          {hasBenchmark && <span className="text-slate-400 font-normal"> vs NIFTY 50</span>}
+        </h3>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
             <Button
@@ -66,6 +87,10 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
               <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
               <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05} />
             </linearGradient>
+            <linearGradient id="ddBenchGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.15} />
+              <stop offset="95%" stopColor="#94a3b8" stopOpacity={0.02} />
+            </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis
@@ -86,7 +111,10 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
           />
           <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" />
           <Tooltip
-            formatter={(value: number) => [`${value.toFixed(2)}%`, "Drawdown"]}
+            formatter={(value: number, name: string) => {
+              const label = name === "benchmark" ? "NIFTY 50" : "Portfolio";
+              return [`${value.toFixed(2)}%`, label];
+            }}
             labelFormatter={formatDate}
             contentStyle={{
               borderRadius: "8px",
@@ -94,6 +122,37 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
               fontSize: "12px",
             }}
           />
+          {hasBenchmark && (
+            <Legend
+              verticalAlign="top"
+              align="center"
+              height={24}
+              iconSize={10}
+              formatter={(value: string) => {
+                const labels: Record<string, string> = {
+                  drawdown: "Portfolio",
+                  benchmark: "NIFTY 50",
+                };
+                return (
+                  <span className="text-xs text-slate-500">{labels[value] || value}</span>
+                );
+              }}
+            />
+          )}
+          {/* Benchmark drawdown behind portfolio */}
+          {hasBenchmark && (
+            <Area
+              type="monotone"
+              dataKey="benchmark"
+              stroke="#94a3b8"
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              fill="url(#ddBenchGradient)"
+              dot={false}
+              connectNulls
+            />
+          )}
+          {/* Portfolio drawdown */}
           <Area
             type="monotone"
             dataKey="drawdown"
@@ -109,8 +168,9 @@ export function PmsDrawdownChart({ portfolioId }: PmsDrawdownChartProps) {
       <div className="mt-3 pt-3 border-t border-slate-100">
         <p className="text-[11px] text-slate-500 leading-relaxed">
           <span className="font-semibold text-slate-600">What this shows:</span> The underwater chart tracks how far the portfolio has fallen from its peak at any point in time.
-          A value of 0% means the portfolio is at or above its peak. A value of {minDD.toFixed(1)}% (the deepest red)
+          A value of 0% means the portfolio is at or above its peak. A value of {drawdownData.reduce((min, d) => Math.min(min, d.drawdown), 0).toFixed(1)}% (the deepest red)
           represents the worst peak-to-trough decline in this period.
+          {hasBenchmark && " The grey dashed line shows NIFTY 50 drawdowns — shallower portfolio drawdowns indicate effective risk management."}
           {hasUnitNav && " Uses TWR-adjusted values, so drawdowns reflect true investment performance excluding capital flows."}
         </p>
       </div>

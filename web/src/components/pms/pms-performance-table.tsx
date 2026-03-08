@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import type { PmsMetric } from "@/lib/pms-types";
 import { Info } from "lucide-react";
 
@@ -52,18 +53,30 @@ const METRIC_TOOLTIPS: Record<string, string> = {
 };
 
 function InfoTooltip({ text }: { text: string }) {
-  const [show, setShow] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const iconRef = useRef<HTMLSpanElement>(null);
+
+  const handleEnter = useCallback(() => {
+    if (!iconRef.current) return;
+    const rect = iconRef.current.getBoundingClientRect();
+    setPos({ top: rect.bottom + 6, left: rect.left + rect.width / 2 });
+  }, []);
+
   return (
-    <span className="relative inline-block ml-1">
+    <span className="inline-block ml-1" ref={iconRef}>
       <Info
         className="h-3 w-3 text-slate-300 hover:text-slate-500 cursor-help inline"
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
+        onMouseEnter={handleEnter}
+        onMouseLeave={() => setPos(null)}
       />
-      {show && (
-        <span className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 px-3 py-2 text-[10px] leading-relaxed text-slate-600 bg-white border border-slate-200 rounded-lg shadow-lg normal-case tracking-normal font-normal text-left">
+      {pos && typeof document !== "undefined" && createPortal(
+        <span
+          className="fixed z-[9999] w-56 px-3 py-2 text-[10px] leading-relaxed text-slate-600 bg-white border border-slate-200 rounded-lg shadow-lg normal-case tracking-normal font-normal text-left pointer-events-none"
+          style={{ top: pos.top, left: pos.left, transform: "translateX(-50%)" }}
+        >
           {text}
-        </span>
+        </span>,
+        document.body,
       )}
     </span>
   );
