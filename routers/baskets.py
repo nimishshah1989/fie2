@@ -64,9 +64,11 @@ class UpdateBasketRequest(BaseModel):
 # ─── Background NAV Builder ──────────────────────────────
 
 def _background_basket_build(basket_id: int):
-    """Background thread: fetch constituent history + compute basket NAV series."""
+    """Background thread: fetch constituent history + compute basket NAV series.
+    Also auto-captures buy_price for constituents where it's NULL."""
     from models import SessionLocal
     from price_service import fetch_yfinance_bulk_stock_history
+    from services.basket_service import compute_basket_value_from_db
 
     try:
         db = SessionLocal()
@@ -87,9 +89,50 @@ def _background_basket_build(basket_id: int):
         db.commit()
         logger.info("Basket build: stored %d constituent price records", stored)
 
-        # Compute basket NAV series
+        # Auto-capture buy_price for constituents where it's NULL
+        null_buy = [c for c in basket.constituents if c.buy_price is None]
+        if null_buy:
+            # Batch-fetch latest price for each constituent from IndexPrice
+            from sqlalchemy import func as sqlfunc
+            null_tickers = [c.ticker for c in null_buy]
+            subq = (
+                db.query(
+                    IndexPrice.index_name,
+                    sqlfunc.max(IndexPrice.date).label("max_date"),
+                )
+                .filter(IndexPrice.index_name.in_(null_tickers))
+                .group_by(IndexPrice.index_name)
+                .subquery()
+            )
+            price_rows = (
+                db.query(IndexPrice.index_name, IndexPrice.close_price)
+                .join(subq, (IndexPrice.index_name == subq.c.index_name) & (IndexPrice.date == subq.c.max_date))
+                .all()
+            )
+            price_map = {r[0]: r[1] for r in price_rows if r[1]}
+
+            filled = 0
+            for c in null_buy:
+                latest_price = price_map.get(c.ticker)
+                if latest_price:
+                    c.buy_price = latest_price
+                    filled += 1
+            if filled:
+                db.commit()
+                logger.info("Basket build: auto-captured buy_price for %d/%d constituents", filled, len(null_buy))
+
+        # Compute basket NAV series (1Y history)
         nav_count = backfill_basket_nav(basket, db, days=365)
         logger.info("Basket build: %s — %d NAV records computed", basket.slug, nav_count)
+
+        # Compute today's NAV explicitly (creation day may not be in 1Y backfill range)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_value = compute_basket_value_from_db(basket.constituents, today_str, db)
+        if today_value is not None:
+            row = {"date": today_str, "close": today_value, "open": None, "high": None, "low": None, "volume": None}
+            if upsert_price_row(db, basket.slug, row):
+                db.commit()
+                logger.info("Basket build: stored today's NAV %.4f for %s", today_value, basket.slug)
 
         db.close()
     except Exception as e:
