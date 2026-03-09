@@ -378,12 +378,23 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
                     index_returns[pk] = round(((close / old_idx) - 1) * 100, 2)
 
         # Enrich constituents with current_price, computed_units, allocated_amount
+        portfolio_worth = None
+        portfolio_cost = None
         if b.portfolio_size and b.portfolio_size > 0:
             constituents_data = compute_constituent_units(b.constituents, b.portfolio_size, db)
-            # Also include buy_price from the model
+            # Also include buy_price and compute per-constituent P&L
+            worth_total = 0.0
+            cost_total = 0.0
             for cd, c in zip(constituents_data, b.constituents):
                 cd["buy_price"] = c.buy_price
                 cd["quantity"] = c.quantity
+                units = cd.get("computed_units") or 0
+                cur_price = cd.get("current_price") or 0
+                buy = c.buy_price or 0
+                cd["current_worth"] = round(units * cur_price, 2) if units and cur_price else None
+                cd["cost_value"] = round(units * buy, 2) if units and buy else None
+            portfolio_worth = round(sum((cd.get("current_worth") or 0) for cd in constituents_data), 2) or None
+            portfolio_cost = round(sum((cd.get("cost_value") or 0) for cd in constituents_data), 2) or None
         else:
             constituents_data = [
                 {
@@ -403,6 +414,8 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
             "description": b.description,
             "benchmark": b.benchmark,
             "portfolio_size": b.portfolio_size,
+            "portfolio_worth": portfolio_worth,
+            "portfolio_cost": portfolio_cost,
             "num_constituents": len(b.constituents),
             "current_value": close,
             "value_date": latest_nav.date if latest_nav else None,

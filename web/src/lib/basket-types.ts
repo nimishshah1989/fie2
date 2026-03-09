@@ -13,6 +13,8 @@ export interface BasketConstituent {
   weighted_value?: number | null;
   computed_units?: number | null;
   allocated_amount?: number | null;
+  current_worth?: number | null;
+  cost_value?: number | null;
 }
 
 export interface BasketSummary {
@@ -35,6 +37,8 @@ export interface BasketLiveItem {
   description: string | null;
   benchmark: string;
   portfolio_size?: number | null;
+  portfolio_worth?: number | null;
+  portfolio_cost?: number | null;
   num_constituents: number;
   current_value: number | null;
   value_date: string | null;
