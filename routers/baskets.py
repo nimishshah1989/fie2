@@ -377,16 +377,24 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
                 if old_idx and old_idx > 0:
                     index_returns[pk] = round(((close / old_idx) - 1) * 100, 2)
 
-        constituents_data = [
-            {
-                "ticker": c.ticker,
-                "company_name": c.company_name,
-                "weight_pct": c.weight_pct,
-                "buy_price": c.buy_price,
-                "quantity": c.quantity,
-            }
-            for c in b.constituents
-        ]
+        # Enrich constituents with current_price, computed_units, allocated_amount
+        if b.portfolio_size and b.portfolio_size > 0:
+            constituents_data = compute_constituent_units(b.constituents, b.portfolio_size, db)
+            # Also include buy_price from the model
+            for cd, c in zip(constituents_data, b.constituents):
+                cd["buy_price"] = c.buy_price
+                cd["quantity"] = c.quantity
+        else:
+            constituents_data = [
+                {
+                    "ticker": c.ticker,
+                    "company_name": c.company_name,
+                    "weight_pct": c.weight_pct,
+                    "buy_price": c.buy_price,
+                    "quantity": c.quantity,
+                }
+                for c in b.constituents
+            ]
 
         results.append({
             "id": b.id,
