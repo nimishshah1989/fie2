@@ -7,7 +7,7 @@ export function usePerformance() {
   const { data, error, isLoading } = useSWR<PerformanceAlert[]>(
     "performance",
     fetchPerformance,
-    { refreshInterval: 30000 }
+    { refreshInterval: 900_000 }
   );
   return { performance: data ?? [], error, isLoading };
 }

@@ -24,7 +24,7 @@ export function PmsRiskScorecard({ portfolioId, period: externalPeriod, onPeriod
   const { data: risk, isLoading } = useSWR(
     `pms-risk-${portfolioId}-${period}`,
     () => fetchPmsRiskAnalytics(portfolioId, period === "ALL" ? "all" : period),
-    { refreshInterval: 300_000 }
+    { refreshInterval: 900_000 }
   );
 
   if (isLoading) return <Skeleton className="h-64 rounded-xl" />;

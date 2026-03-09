@@ -8,7 +8,7 @@ export function usePortfolios() {
   const { data, error, isLoading, mutate } = useSWR<Portfolio[]>(
     "portfolios",
     fetchPortfolios,
-    { refreshInterval: 30_000 }
+    { refreshInterval: 900_000 }
   );
 
   return {

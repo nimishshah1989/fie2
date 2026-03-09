@@ -15,7 +15,7 @@ export function PmsWinLoss({ portfolioId, period }: PmsWinLossProps) {
   const { data: stats, isLoading } = useSWR(
     `pms-winloss-${portfolioId}-${period || "ALL"}`,
     () => fetchPmsWinLoss(portfolioId, periodParam),
-    { refreshInterval: 300_000 }
+    { refreshInterval: 900_000 }
   );
 
   if (isLoading) return <Skeleton className="h-48 rounded-xl" />;

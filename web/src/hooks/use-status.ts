@@ -4,6 +4,6 @@ import { fetchStatus } from "@/lib/api";
 import type { StatusResponse } from "@/lib/types";
 
 export function useStatus() {
-  const { data } = useSWR<StatusResponse>("status", fetchStatus, { refreshInterval: 60000 });
+  const { data } = useSWR<StatusResponse>("status", fetchStatus, { refreshInterval: 900_000 });
   return { analysisEnabled: data?.analysis_enabled ?? true };
 }

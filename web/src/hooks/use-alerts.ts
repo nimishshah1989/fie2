@@ -7,7 +7,7 @@ export function useAlerts() {
   const { data, error, isLoading, mutate } = useSWR<Alert[]>(
     "alerts",
     () => fetchAlerts(300),
-    { refreshInterval: 30000 }
+    { refreshInterval: 900_000 }
   );
   const alerts = data ?? [];
   const pending = alerts.filter((a) => a.status === "PENDING");

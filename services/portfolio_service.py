@@ -53,9 +53,8 @@ def get_yahoo_symbol(ticker: str) -> Optional[str]:
 
 _http_client: Optional[httpx.Client] = None
 
-# TTLCache automatically evicts entries after 60s and caps at 500 entries,
-# replacing the previous unbounded dict + manual timestamp tracking
-_price_cache: TTLCache = TTLCache(maxsize=500, ttl=60)
+# TTLCache automatically evicts entries after 15 min and caps at 500 entries
+_price_cache: TTLCache = TTLCache(maxsize=500, ttl=900)
 
 
 def _get_http_client() -> httpx.Client:
@@ -70,7 +69,7 @@ def _get_http_client() -> httpx.Client:
 
 
 def fetch_live_price(yf_symbol: str) -> Optional[Dict]:
-    """Fetch live price from Yahoo Finance with 60s TTL cache."""
+    """Fetch live price from Yahoo Finance with 15-min TTL cache."""
     # TTLCache handles expiry automatically — no manual timestamp check needed
     cached = _price_cache.get(yf_symbol)
     if cached is not None:

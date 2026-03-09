@@ -25,12 +25,12 @@ export function PmsAllocation({ portfolioId }: PmsAllocationProps) {
   const { data: holdings, isLoading: holdingsLoading } = useSWR(
     `pms-holdings-${portfolioId}`,
     () => fetchPmsHoldings(portfolioId),
-    { refreshInterval: 300_000 }
+    { refreshInterval: 900_000 }
   );
   const { data: sectorHistory, isLoading: sectorLoading } = useSWR(
     `pms-sector-history-${portfolioId}`,
     () => fetchPmsSectorHistory(portfolioId),
-    { refreshInterval: 300_000 }
+    { refreshInterval: 900_000 }
   );
 
   if (holdingsLoading || sectorLoading) return <Skeleton className="h-64 rounded-xl" />;

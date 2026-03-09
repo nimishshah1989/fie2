@@ -7,7 +7,7 @@ export function useActionables() {
   const { data, error, isLoading } = useSWR<ActionableAlert[]>(
     "actionables",
     fetchActionables,
-    { refreshInterval: 30000 }
+    { refreshInterval: 900_000 }
   );
   return { actionables: data ?? [], error, isLoading };
 }

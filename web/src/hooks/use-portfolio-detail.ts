@@ -11,39 +11,39 @@ import {
 } from "@/lib/portfolio-api";
 
 export function usePortfolioDetail(id: number | null) {
-  // Detail is lightweight DB call — can refresh frequently
+  // Detail is lightweight DB call
   const { data: detail, mutate: mutateDetail } = useSWR(
     id ? `portfolio-${id}` : null,
     () => fetchPortfolioDetail(id!),
-    { refreshInterval: 120_000 }
+    { refreshInterval: 900_000 }
   );
 
-  // Holdings triggers Yahoo Finance calls — refresh every 2 min (cache on backend is 60s)
+  // Holdings triggers Yahoo Finance calls — refresh every 15 min
   const { data: holdingsData, mutate: mutateHoldings } = useSWR(
     id ? `portfolio-holdings-${id}` : null,
     () => fetchPortfolioHoldings(id!),
-    { refreshInterval: 120_000 }
+    { refreshInterval: 900_000 }
   );
 
   // Transactions are DB-only, rarely change
   const { data: transactions, mutate: mutateTransactions } = useSWR(
     id ? `portfolio-txns-${id}` : null,
     () => fetchPortfolioTransactions(id!),
-    { refreshInterval: 120_000 }
+    { refreshInterval: 900_000 }
   );
 
-  // Performance also triggers Yahoo calls — 2 min refresh (backend cache will serve)
+  // Performance also triggers Yahoo calls — refresh every 15 min
   const { data: performance } = useSWR(
     id ? `portfolio-perf-${id}` : null,
     () => fetchPortfolioPerformance(id!),
-    { refreshInterval: 120_000 }
+    { refreshInterval: 900_000 }
   );
 
-  // Allocation also uses live prices — 2 min refresh
+  // Allocation also uses live prices — refresh every 15 min
   const { data: allocation } = useSWR(
     id ? `portfolio-alloc-${id}` : null,
     () => fetchAllocation(id!),
-    { refreshInterval: 120_000 }
+    { refreshInterval: 900_000 }
   );
 
   return {
@@ -67,7 +67,7 @@ export function useNAVHistory(id: number | null, period: string) {
   const { data } = useSWR(
     id ? `portfolio-nav-${id}-${period}` : null,
     () => fetchNAVHistory(id!, period),
-    { refreshInterval: 300_000 }  // 5 min — NAV data doesn't change intraday
+    { refreshInterval: 900_000 }  // 15 min
   );
 
   return { navHistory: data ?? [] };
