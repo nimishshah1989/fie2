@@ -44,16 +44,24 @@ function ReturnCell({ value }: { value: number | null | undefined }) {
   );
 }
 
+function formatINR(val: number): string {
+  return `₹${val.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
 export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketDetailPanelProps) {
   const [archiving, setArchiving] = useState(false);
   const hasPortfolioSize = basket.portfolio_size != null && basket.portfolio_size > 0;
 
-  const portfolioPnl = (basket.portfolio_worth != null && basket.portfolio_cost != null && basket.portfolio_cost > 0)
-    ? basket.portfolio_worth - basket.portfolio_cost
-    : null;
-  const portfolioPnlPct = (portfolioPnl != null && basket.portfolio_cost != null && basket.portfolio_cost > 0)
-    ? (portfolioPnl / basket.portfolio_cost) * 100
-    : null;
+  const portfolioSize = basket.portfolio_size ?? 0;
+  const deployed = basket.portfolio_cost ?? 0;
+  const stockWorth = basket.constituents.reduce((s, c) => s + (c.current_worth ?? 0), 0);
+  const unallocatedCash = portfolioSize > 0 && deployed > 0 ? portfolioSize - deployed : 0;
+  const stockPnl = deployed > 0 && stockWorth > 0 ? stockWorth - deployed : null;
+  const stockPnlPct = (stockPnl != null && deployed > 0) ? (stockPnl / deployed) * 100 : null;
+
+  // Table totals
+  const totalUnits = basket.constituents.reduce((s, c) => s + (c.computed_units ?? 0), 0);
+  const totalCost = basket.constituents.reduce((s, c) => s + (c.cost_value ?? 0), 0);
 
   async function handleArchive() {
     if (!confirm(`Archive basket "${basket.name}"? It will be hidden from the dashboard.`)) return;
@@ -86,7 +94,7 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
               </span>
               {hasPortfolioSize && (
                 <Badge variant="secondary" className="text-[10px] font-mono">
-                  ₹{basket.portfolio_size!.toLocaleString("en-IN")}
+                  {formatINR(portfolioSize)}
                 </Badge>
               )}
             </div>
@@ -131,39 +139,44 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
           </div>
         )}
 
-        {/* Portfolio Worth Card */}
-        {hasPortfolioSize && basket.portfolio_worth != null && (
-          <div className="grid grid-cols-3 gap-3">
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Invested</p>
-              <p className="text-sm font-bold font-mono mt-0.5">
-                ₹{basket.portfolio_cost != null
-                  ? basket.portfolio_cost.toLocaleString("en-IN", { maximumFractionDigits: 0 })
-                  : basket.portfolio_size!.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">Current Worth</p>
-              <p className="text-sm font-bold font-mono mt-0.5">
-                ₹{basket.portfolio_worth.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-              </p>
-            </div>
-            <div className="bg-slate-50 rounded-lg p-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wider">P&L</p>
-              {portfolioPnl != null && portfolioPnlPct != null ? (
-                <p className={cn(
-                  "text-sm font-bold font-mono mt-0.5",
-                  portfolioPnl >= 0 ? "text-emerald-600" : "text-red-600"
-                )}>
-                  {portfolioPnl >= 0 ? "+" : ""}₹{Math.abs(portfolioPnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                  <span className="text-[10px] ml-1">
-                    ({portfolioPnlPct >= 0 ? "+" : ""}{portfolioPnlPct.toFixed(2)}%)
-                  </span>
+        {/* Portfolio Worth Cards */}
+        {hasPortfolioSize && deployed > 0 && (
+          <div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Deployed</p>
+                <p className="text-sm font-bold font-mono mt-0.5">
+                  {formatINR(deployed)}
                 </p>
-              ) : (
-                <p className="text-sm font-mono text-muted-foreground mt-0.5">—</p>
-              )}
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Current Value</p>
+                <p className="text-sm font-bold font-mono mt-0.5">
+                  {stockWorth > 0 ? formatINR(stockWorth) : "—"}
+                </p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Returns</p>
+                {stockPnl != null && stockPnlPct != null ? (
+                  <p className={cn(
+                    "text-sm font-bold font-mono mt-0.5",
+                    stockPnl >= 0 ? "text-emerald-600" : "text-red-600"
+                  )}>
+                    {stockPnl >= 0 ? "+" : ""}₹{Math.abs(stockPnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    <span className="text-[10px] ml-1">
+                      ({stockPnlPct >= 0 ? "+" : ""}{stockPnlPct.toFixed(2)}%)
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-sm font-mono text-muted-foreground mt-0.5">—</p>
+                )}
+              </div>
             </div>
+            {unallocatedCash > 0 && (
+              <p className="text-[10px] text-slate-400 mt-1.5">
+                {formatINR(unallocatedCash)} unallocated cash (whole-unit rounding)
+              </p>
+            )}
           </div>
         )}
 
@@ -175,7 +188,6 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
               <div key={p.key} className="font-semibold text-muted-foreground">{p.label}</div>
             ))}
           </div>
-          {/* Index returns */}
           <div className="grid grid-cols-7 gap-1 text-center">
             <div className="text-[10px] text-muted-foreground text-left">Index</div>
             {PERIOD_LABELS.map((p) => (
@@ -184,7 +196,6 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
               </div>
             ))}
           </div>
-          {/* Ratio returns */}
           <div className="grid grid-cols-7 gap-1 text-center">
             <div className="text-[10px] text-muted-foreground text-left">Ratio</div>
             {PERIOD_LABELS.map((p) => (
@@ -244,9 +255,7 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
                             {c.computed_units != null ? c.computed_units.toFixed(0) : "—"}
                           </TableCell>
                           <TableCell className="text-xs text-right font-mono">
-                            {c.current_worth != null
-                              ? `₹${c.current_worth.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
-                              : "—"}
+                            {c.current_worth != null ? formatINR(c.current_worth) : "—"}
                           </TableCell>
                           <TableCell className={cn(
                             "text-xs text-right font-mono",
@@ -261,6 +270,29 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
                     </TableRow>
                   );
                 })}
+                {/* Totals row */}
+                {hasPortfolioSize && (
+                  <TableRow className="bg-muted/30 border-t-2">
+                    <TableCell className="text-xs font-bold" colSpan={3}>
+                      Total
+                    </TableCell>
+                    <TableCell className="text-xs text-right font-mono">—</TableCell>
+                    <TableCell className="text-xs text-right font-mono font-bold">
+                      {totalUnits}
+                    </TableCell>
+                    <TableCell className="text-xs text-right font-mono font-bold">
+                      {stockWorth > 0 ? formatINR(stockWorth) : "—"}
+                    </TableCell>
+                    <TableCell className={cn(
+                      "text-xs text-right font-mono font-bold",
+                      stockPnl != null && stockPnl >= 0 ? "text-emerald-600" : "text-red-600"
+                    )}>
+                      {stockPnl != null
+                        ? `${stockPnl >= 0 ? "+" : ""}₹${Math.abs(stockPnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

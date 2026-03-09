@@ -383,8 +383,6 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
         if b.portfolio_size and b.portfolio_size > 0:
             constituents_data = compute_constituent_units(b.constituents, b.portfolio_size, db)
             # Also include buy_price and compute per-constituent P&L
-            worth_total = 0.0
-            cost_total = 0.0
             for cd, c in zip(constituents_data, b.constituents):
                 cd["buy_price"] = c.buy_price
                 cd["quantity"] = c.quantity
@@ -393,8 +391,13 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
                 buy = c.buy_price or 0
                 cd["current_worth"] = round(units * cur_price, 2) if units and cur_price else None
                 cd["cost_value"] = round(units * buy, 2) if units and buy else None
-            portfolio_worth = round(sum((cd.get("current_worth") or 0) for cd in constituents_data), 2) or None
-            portfolio_cost = round(sum((cd.get("cost_value") or 0) for cd in constituents_data), 2) or None
+            stock_worth = sum((cd.get("current_worth") or 0) for cd in constituents_data)
+            stock_cost = sum((cd.get("cost_value") or 0) for cd in constituents_data)
+            # Unallocated cash = portfolio_size - stock_cost (from floor rounding of units)
+            unallocated_cash = b.portfolio_size - stock_cost
+            portfolio_cost = round(stock_cost, 2)
+            # Total worth = stock value + idle cash
+            portfolio_worth = round(stock_worth + unallocated_cash, 2) if stock_worth > 0 else None
         else:
             constituents_data = [
                 {
