@@ -177,46 +177,29 @@ async def indices_latest(base: str = "NIFTY", db: Session = Depends(get_db)):
     period_map = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "6m": 180, "12m": 365}
     tolerance = {"1d": 5, "1w": 5, "1m": 10, "3m": 15, "6m": 15, "12m": 15}
 
-    historical_dates: dict = {}
+    # Per-index closest-date within tolerance range (handles different trading calendars)
+    historical_prices: dict = {}
     latest_dt = datetime.strptime(latest_date, "%Y-%m-%d")
     for pk, days in period_map.items():
-        target = (latest_dt - timedelta(days=days)).strftime("%Y-%m-%d")
+        target_dt = latest_dt - timedelta(days=days)
         tol = tolerance.get(pk, 15)
+        range_start = (target_dt - timedelta(days=tol)).strftime("%Y-%m-%d")
+        range_end = (target_dt + timedelta(days=tol)).strftime("%Y-%m-%d")
 
-        before = db.query(sqlfunc.max(IndexPrice.date)).filter(IndexPrice.date <= target).scalar()
-        after = db.query(sqlfunc.min(IndexPrice.date)).filter(IndexPrice.date >= target).scalar()
+        rows = db.query(IndexPrice).filter(
+            IndexPrice.date >= range_start,
+            IndexPrice.date <= range_end,
+            IndexPrice.close_price.isnot(None),
+        ).all()
 
-        best = None
-        if before:
-            gap_before = (datetime.strptime(target, "%Y-%m-%d") - datetime.strptime(before, "%Y-%m-%d")).days
-            if gap_before <= tol:
-                best = before
-        if after:
-            gap_after = (datetime.strptime(after, "%Y-%m-%d") - datetime.strptime(target, "%Y-%m-%d")).days
-            if gap_after <= tol:
-                if best is None:
-                    best = after
-                else:
-                    gap_best = abs((datetime.strptime(target, "%Y-%m-%d") - datetime.strptime(best, "%Y-%m-%d")).days)
-                    if gap_after < gap_best:
-                        best = after
-        if best:
-            historical_dates[pk] = best
+        best_per_index: dict[str, tuple[float, int]] = {}
+        for r in rows:
+            gap = abs((datetime.strptime(r.date, "%Y-%m-%d") - target_dt).days)
+            existing = best_per_index.get(r.index_name)
+            if existing is None or gap < existing[1]:
+                best_per_index[r.index_name] = (r.close_price, gap)
 
-    # Load all prices at historical dates in one query
-    unique_dates = list(set(historical_dates.values()))
-    date_price_map: dict = {}
-    if unique_dates:
-        hist_rows = db.query(IndexPrice).filter(IndexPrice.date.in_(unique_dates)).all()
-        for r in hist_rows:
-            if r.date not in date_price_map:
-                date_price_map[r.date] = {}
-            if r.close_price:
-                date_price_map[r.date][r.index_name] = r.close_price
-
-    historical_prices: dict = {}
-    for pk, d in historical_dates.items():
-        historical_prices[pk] = date_price_map.get(d, {})
+        historical_prices[pk] = {name: price for name, (price, _) in best_per_index.items()}
 
     results = []
     for row in all_rows:
@@ -344,50 +327,35 @@ async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Sessi
                 base_close = item.get("last")
                 break
 
-        # Pre-load historical prices — bidirectional closest-date lookup
+        # Pre-load historical prices — per-index closest-date within tolerance range
+        # Uses range queries so indices on different trading calendars (Indian vs global)
+        # each find their own closest available date.
         period_map = {"1d": 1, "1w": 7, "1m": 30, "3m": 90, "6m": 180, "12m": 365}
         tolerance = {"1d": 5, "1w": 5, "1m": 10, "3m": 15, "6m": 15, "12m": 15}
 
-        historical_dates = {}
-        for pk, days in period_map.items():
-            target = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-            tol = tolerance.get(pk, 15)
-
-            before = db.query(sqlfunc.max(IndexPrice.date)).filter(IndexPrice.date <= target).scalar()
-            after = db.query(sqlfunc.min(IndexPrice.date)).filter(IndexPrice.date >= target).scalar()
-
-            best = None
-            if before:
-                gap_before = (datetime.strptime(target, "%Y-%m-%d") - datetime.strptime(before, "%Y-%m-%d")).days
-                if gap_before <= tol:
-                    best = before
-            if after:
-                gap_after = (datetime.strptime(after, "%Y-%m-%d") - datetime.strptime(target, "%Y-%m-%d")).days
-                if gap_after <= tol:
-                    if best is None:
-                        best = after
-                    else:
-                        gap_best = abs((datetime.strptime(target, "%Y-%m-%d") - datetime.strptime(best, "%Y-%m-%d")).days)
-                        if gap_after < gap_best:
-                            best = after
-
-            if best:
-                historical_dates[pk] = best
-
-        # Load all prices at those dates in one query
-        unique_dates = list(set(historical_dates.values()))
-        date_price_map = {}
-        if unique_dates:
-            all_rows = db.query(IndexPrice).filter(IndexPrice.date.in_(unique_dates)).all()
-            for r in all_rows:
-                if r.date not in date_price_map:
-                    date_price_map[r.date] = {}
-                if r.close_price:
-                    date_price_map[r.date][r.index_name] = r.close_price
-
         historical_prices = {}
-        for pk, d in historical_dates.items():
-            historical_prices[pk] = date_price_map.get(d, {})
+        for pk, days in period_map.items():
+            target_dt = datetime.now() - timedelta(days=days)
+            tol = tolerance.get(pk, 15)
+            range_start = (target_dt - timedelta(days=tol)).strftime("%Y-%m-%d")
+            range_end = (target_dt + timedelta(days=tol)).strftime("%Y-%m-%d")
+
+            rows = db.query(IndexPrice).filter(
+                IndexPrice.date >= range_start,
+                IndexPrice.date <= range_end,
+                IndexPrice.close_price.isnot(None),
+            ).all()
+
+            # For each index, pick the date closest to target
+            target_str = target_dt.strftime("%Y-%m-%d")
+            best_per_index: dict[str, tuple[float, int]] = {}
+            for r in rows:
+                gap = abs((datetime.strptime(r.date, "%Y-%m-%d") - target_dt).days)
+                existing = best_per_index.get(r.index_name)
+                if existing is None or gap < existing[1]:
+                    best_per_index[r.index_name] = (r.close_price, gap)
+
+            historical_prices[pk] = {name: price for name, (price, _) in best_per_index.items()}
 
         # Enrich each item
         for item in data:
