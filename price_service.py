@@ -48,7 +48,6 @@ NSE_TICKER_MAP = {
     "NIFTYSERVICE":     "^CNXSERVICE",
     "NIFTYCONSUMPTION": "^CNXCONSUM",
     "NIFTYCOMMODITIES": "^CNXCMDT",
-    "NIFTYDIVOPPS50":   "^CNXDIVOP",
     # ─── NSE Thematic (live price, limited history) ───
     "NIFTYCPSE":        "NIFTY_CPSE.NS",
     "NIFTYHEALTHCARE":  "NIFTY_HEALTHCARE.NS",
@@ -98,7 +97,7 @@ NSE_INDEX_KEYS = [
     # Thematic
     "NIFTYHEALTHCARE", "NIFTYCONSUMPTION", "NIFTYCOMMODITIES",
     "NIFTYINDIAMFG", "NIFTYINDIADEFENCE", "NIFTYINDIGITAL",
-    "NIFTYCPSE", "NIFTY100QUALITY30", "NIFTYDIVOPPS50",
+    "NIFTYCPSE",
     # BSE
     "SENSEX", "BSE500",
     # Commodities & Currency
@@ -128,7 +127,7 @@ NSE_INDEX_CATEGORIES: dict = {
     "NIFTYHEALTHCARE": "thematic", "NIFTYCONSUMPTION": "thematic",
     "NIFTYCOMMODITIES": "thematic", "NIFTYINDIAMFG": "thematic",
     "NIFTYINDIADEFENCE": "thematic", "NIFTYINDIGITAL": "thematic",
-    "NIFTYCPSE": "thematic", "NIFTY100QUALITY30": "thematic", "NIFTYDIVOPPS50": "thematic",
+    "NIFTYCPSE": "thematic",
     # BSE & Global
     "SENSEX": "global", "BSE500": "global",
     "GOLD": "global", "SILVER": "global", "CRUDEOIL": "global",
@@ -213,8 +212,6 @@ NSE_DISPLAY_MAP = {
     "NIFTYINDIADEFENCE":    "NIFTY INDIA DEFENCE",
     "NIFTYINDIGITAL":       "NIFTY INDIA DIGITAL",
     "NIFTYCPSE":            "NIFTY CPSE",
-    "NIFTY100QUALITY30":    "NIFTY100 QUALITY 30",
-    "NIFTYDIVOPPS50":       "NIFTY DIVIDEND OPPORTUNITIES 50",
     "INDIAVIX":             "INDIA VIX",
     # ── BSE & Global ──
     "SENSEX":               "SENSEX",
