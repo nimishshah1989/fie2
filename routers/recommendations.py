@@ -1,5 +1,5 @@
 """
-FIE v3 — Sector Recommendation Engine Routes
+FIE v3 -- Sector Recommendation Engine Routes
 Generates stock/ETF recommendations based on sector ratio performance vs base index.
 
 Performance: All price lookups use batch queries. A full generate call
@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from models import IndexConstituent, IndexPrice, get_db
 from price_service import (
+    NSE_INDEX_CATEGORIES,
     SECTOR_ETF_MAP,
     SECTOR_INDICES_FOR_RECO,
     fetch_nse_index_constituents,
@@ -30,7 +31,7 @@ logger = logging.getLogger("fie_v3.recommendations")
 router = APIRouter()
 
 
-# ─── Pydantic Models ─────────────────────────────────────
+# --- Pydantic Models ---------------------------------------------------------
 
 class GenerateRequest(BaseModel):
     base: str = "NIFTY"
@@ -40,16 +41,16 @@ class GenerateRequest(BaseModel):
     top_n: int = 5                       # Top N stocks per qualifying sector (max 10)
 
 
-# ─── Constants ────────────────────────────────────────────
+# --- Constants ----------------------------------------------------------------
 
 PERIOD_MAP = {"1w": 7, "1m": 30, "3m": 90, "6m": 180, "12m": 365}
 PERIOD_TOLERANCE = {"1w": 5, "1m": 10, "3m": 15, "6m": 15, "12m": 15}
 
 
-# ─── Batch Helpers (no N+1) ───────────────────────────────
+# --- Batch Helpers (no N+1) ---------------------------------------------------
 
 def _resolve_period_dates(db: Session) -> Dict[str, Optional[str]]:
-    """Resolve all 5 period target dates to actual DB dates — 10 queries total, done once."""
+    """Resolve all 5 period target dates to actual DB dates -- 10 queries total, done once."""
     resolved = {}
     for pk, days in PERIOD_MAP.items():
         target_str = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
@@ -141,14 +142,14 @@ def _compute_ratio_returns_from_cache(
     return returns
 
 
-# ─── Fundamentals Fetcher ─────────────────────────────────
+# --- Fundamentals Fetcher -----------------------------------------------------
 
 def _fetch_fundamentals(tickers: List[str]) -> Dict[str, Dict]:
     """Fetch fundamental data for a list of NSE tickers via yfinance.
 
     Uses ThreadPoolExecutor(max_workers=8) for parallel fetching.
     Returns {ticker: {trailingPE, trailingEps, fiftyTwoWeekHigh, fiftyTwoWeekLow, marketCap}}.
-    Graceful per-ticker failure — missing data returns None values.
+    Graceful per-ticker failure -- missing data returns None values.
     """
     if not tickers:
         return {}
@@ -179,22 +180,24 @@ def _fetch_fundamentals(tickers: List[str]) -> Dict[str, Dict]:
     return fundamentals
 
 
-# ─── Endpoints ────────────────────────────────────────────
+# --- Endpoints ----------------------------------------------------------------
 
 @router.get(
     "/api/recommendations/sectors",
     tags=["Recommendations"],
     summary="List available sectors",
-    description="Returns the list of NSE sector indices available for recommendation analysis, along with associated ETFs and supported time periods.",
+    description="Returns the list of NSE sector indices available for recommendation analysis, "
+                "along with associated ETFs, category (sectoral/thematic), and supported time periods.",
 )
 async def get_sectors(db: Session = Depends(get_db)):
-    """Return sector list + period labels for the threshold input grid."""
+    """Return sector list with category + period labels for the selection panel."""
     sectors = []
     for key, display_name in SECTOR_INDICES_FOR_RECO:
         etfs = SECTOR_ETF_MAP.get(key, [])
         sectors.append({
             "key": key,
             "display_name": display_name,
+            "category": NSE_INDEX_CATEGORIES.get(key, "other"),
             "etfs": etfs,
         })
 
@@ -210,7 +213,9 @@ async def get_sectors(db: Session = Depends(get_db)):
     "/api/recommendations/generate",
     tags=["Recommendations"],
     summary="Generate sector recommendations",
-    description="Generates stock and ETF recommendations based on sector ratio performance vs the base index. Sectors exceeding the threshold get top-N stock picks ranked by ratio return. Includes fundamental data (P/E, EPS, 52W range, market cap) fetched in parallel.",
+    description="Generates stock and ETF recommendations based on sector ratio performance vs the "
+                "base index. Sectors exceeding the threshold get top-N stock picks ranked by ratio "
+                "return. Includes fundamental data (P/E, EPS, 52W range, market cap) fetched in parallel.",
 )
 async def generate_recommendations(req: GenerateRequest, db: Session = Depends(get_db)):
     """Generate stock/ETF recommendations based on sector ratio thresholds.
@@ -241,11 +246,11 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
                 detail="No valid sectors selected. Check sector keys against /api/recommendations/sectors.",
             )
 
-        # ── Step 1: Resolve period dates (10 queries, done once) ──
+        # Step 1: Resolve period dates (10 queries, done once)
         period_dates = _resolve_period_dates(db)
         hist_dates = [d for d in period_dates.values() if d]
 
-        # ── Step 2: Collect ALL tickers we'll need prices for ──
+        # Step 2: Collect ALL tickers we'll need prices for
         all_tickers: Set[str] = {base}
 
         # Sector index keys
@@ -273,18 +278,18 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
             for etf in SECTOR_ETF_MAP.get(sector_key, []):
                 all_tickers.add(etf)
 
-        # ── Step 3: Batch-fetch all prices (2 queries) ──
+        # Step 3: Batch-fetch all prices (2 queries)
         latest_prices = _batch_latest_prices(db, all_tickers)
         hist_prices = _batch_historical_prices(db, hist_dates, all_tickers)
 
-        # ── Step 4: Compute sector ratio returns (in-memory) ──
+        # Step 4: Compute sector ratio returns (in-memory)
         sector_ratios: Dict[str, Dict[str, float]] = {}
         for sector_key in valid_sectors:
             sector_ratios[sector_key] = _compute_ratio_returns_from_cache(
                 sector_key, base, latest_prices, period_dates, hist_prices,
             )
 
-        # ── Step 5: Assemble qualifying and non-qualifying sectors ──
+        # Step 5: Assemble qualifying and non-qualifying sectors
         qualifying_sectors = []
         non_qualifying_sectors = []
         # Collect all stock tickers across qualifying sectors for fundamentals
@@ -316,7 +321,7 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
                         "ratio_return_vs_sector": stock_ratio.get(period),
                         "last_price": c.last_price,
                         "weight_pct": c.weight_pct,
-                        # Fundamental placeholders — filled after batch fetch
+                        # Fundamental placeholders -- filled after batch fetch
                         "pe_ratio": None,
                         "eps": None,
                         "week_52_high": None,
@@ -356,7 +361,7 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
             reverse=True,
         )
 
-        # ── Step 6: Batch-fetch fundamentals for all stock tickers ──
+        # Step 6: Batch-fetch fundamentals for all stock tickers
         if all_stock_tickers:
             # Deduplicate tickers
             unique_tickers = list(set(all_stock_tickers))
@@ -392,7 +397,7 @@ async def generate_recommendations(req: GenerateRequest, db: Session = Depends(g
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ─── Constituent Refresh ─────────────────────────────────
+# --- Constituent Refresh ------------------------------------------------------
 
 def refresh_sector_constituents(db: Session) -> int:
     """Fetch and store index constituents for all sector indices.
@@ -435,7 +440,7 @@ def refresh_sector_constituents(db: Session) -> int:
                 total_stored += 1
 
             db.commit()
-            time.sleep(0.5)  # Rate limit between NSE API calls
+            time.sleep(1.0)  # Rate limit between NSE API calls (increased for 48 sectors)
 
         except Exception as e:
             logger.warning("Constituent refresh failed for %s: %s", display_name, e)

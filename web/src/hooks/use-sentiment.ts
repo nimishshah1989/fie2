@@ -1,5 +1,6 @@
 "use client";
 import useSWR from "swr";
+import { REFRESH_MARKET } from "@/lib/constants";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -13,7 +14,7 @@ export function useSentiment() {
   const { data, error, isLoading, mutate } = useSWR(
     "sentiment",
     fetchSentiment,
-    { refreshInterval: 900_000 }   // 15-minute refresh
+    { refreshInterval: REFRESH_MARKET }
   );
   return { data, error, isLoading, mutate };
 }

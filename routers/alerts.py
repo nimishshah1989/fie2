@@ -129,6 +129,53 @@ def _serialize(a: TradingViewAlert) -> dict:
     }
 
 
+# ─── Shared Helpers for Price & Entry Resolution ─────────────────
+
+def _resolve_entry_price(action_obj: AlertAction, alert: TradingViewAlert) -> Optional[float]:
+    """Compute the effective entry price from action entry range or alert trigger price."""
+    entry_low = action_obj.entry_price_low
+    entry_high = action_obj.entry_price_high
+    if entry_low is not None and entry_high is not None:
+        return (entry_low + entry_high) / 2.0
+    if entry_low is not None:
+        return entry_low
+    if entry_high is not None:
+        return entry_high
+    return alert.price_at_alert or alert.price_close
+
+
+def _fetch_current_price(alert: TradingViewAlert, action_obj: AlertAction) -> tuple:
+    """Fetch live price for an alert, handling ratio trades.
+
+    Returns (current_price, ratio_data) where ratio_data is a dict for
+    ratio trades or None for direct trades.
+    """
+    from price_service import get_live_price
+
+    is_ratio = action_obj.is_ratio if action_obj else False
+    ratio_num = action_obj.ratio_numerator_ticker if action_obj else None
+    ratio_den = action_obj.ratio_denominator_ticker if action_obj else None
+
+    if is_ratio and ratio_num and ratio_den:
+        num_live = get_live_price(ratio_num)
+        den_live = get_live_price(ratio_den)
+        num_price = num_live.get("current_price")
+        den_price = den_live.get("current_price")
+        curr_price = None
+        if num_price and den_price and den_price > 0:
+            curr_price = round(num_price / den_price, 4)
+        ratio_data = {
+            "numerator_ticker": ratio_num,
+            "denominator_ticker": ratio_den,
+            "numerator_price": num_price,
+            "denominator_price": den_price,
+        }
+        return curr_price, ratio_data
+
+    live = get_live_price(alert.ticker or "")
+    return live.get("current_price"), None
+
+
 # ─── Pydantic Models ─────────────────────────────────────────────
 
 class WebhookPayload(BaseModel):
@@ -312,6 +359,160 @@ async def get_alerts(status: Optional[str] = None, limit: int = 100, db: Session
             pass
     return {"alerts": [_serialize(a) for a in q.limit(limit).all()]}
 
+
+# ─── Unified Actioned Alerts ─────────────────────────────────────
+
+@router.get(
+    "/api/alerts/actioned",
+    tags=["Alerts"],
+    summary="All FM-actioned alerts with live data",
+    description=(
+        "Returns all APPROVED alerts enriched with live prices, threshold hit "
+        "status (entry/target/SL), return calculations, and closed trade info. "
+        "Unified endpoint replacing separate performance/actionables/closed views."
+    ),
+)
+async def actioned_alerts(db: Session = Depends(get_db)):
+    """Unified view of all FM-actioned (APPROVED) alerts with live enrichment."""
+    approved = (
+        db.query(TradingViewAlert)
+        .filter(TradingViewAlert.status == AlertStatus.APPROVED)
+        .order_by(desc(TradingViewAlert.received_at))
+        .all()
+    )
+
+    results = []
+    count_active = 0
+    count_triggered = 0
+    count_closed = 0
+
+    for a in approved:
+        action_obj = a.action
+        if not action_obj:
+            continue
+
+        # --- Core fields from alert + action ---
+        direction = (a.signal_direction or "BULLISH").upper()
+        is_bullish = direction != "BEARISH"
+        is_closed = action_obj.closed_at is not None
+
+        entry_price = _resolve_entry_price(action_obj, a)
+        sl = action_obj.stop_loss
+        tp = action_obj.target_price
+
+        # --- Live price (skip fetch for closed trades) ---
+        if is_closed:
+            curr_price = action_obj.closed_price
+        else:
+            curr_price, _ = _fetch_current_price(a, action_obj)
+
+        # --- Threshold hit checks ---
+        entry_hit = False
+        target_hit = False
+        sl_hit = False
+
+        if curr_price is not None:
+            entry_low = action_obj.entry_price_low
+            entry_high = action_obj.entry_price_high
+            if entry_low is not None and entry_high is not None:
+                entry_hit = entry_low <= curr_price <= entry_high
+            elif entry_low is not None:
+                entry_hit = curr_price >= entry_low
+            elif entry_high is not None:
+                entry_hit = curr_price <= entry_high
+
+            if is_bullish:
+                if tp is not None:
+                    target_hit = curr_price >= tp
+                if sl is not None:
+                    sl_hit = curr_price <= sl
+            else:
+                if tp is not None:
+                    target_hit = curr_price <= tp
+                if sl is not None:
+                    sl_hit = curr_price >= sl
+
+        # --- Return calculations ---
+        return_pct = None
+        return_abs = None
+        if entry_price and entry_price > 0 and curr_price is not None:
+            mult = -1.0 if not is_bullish else 1.0
+            return_abs = round(mult * (curr_price - entry_price), 2)
+            return_pct = round(mult * ((curr_price / entry_price) - 1) * 100, 2)
+
+        # --- Days since ---
+        days_since = 0
+        if a.received_at:
+            days_since = (datetime.now() - a.received_at).days
+
+        # --- Counting ---
+        if is_closed:
+            count_closed += 1
+        elif target_hit or sl_hit:
+            count_triggered += 1
+        else:
+            count_active += 1
+
+        # --- Build flat response object ---
+        results.append({
+            "id":               a.id,
+            "ticker":           a.ticker or "",
+            "exchange":         a.exchange or "",
+            "interval":         a.interval or "",
+            "time_utc":         a.time_utc,
+            "price_open":       a.price_open,
+            "price_high":       a.price_high,
+            "price_low":        a.price_low,
+            "price_close":      a.price_close,
+            "price_at_alert":   a.price_at_alert,
+            "volume":           a.volume,
+            "alert_data":       a.alert_data,
+            "alert_name":       a.alert_name or a.ticker,
+            "signal_direction": a.signal_direction or "NEUTRAL",
+            "status":           a.status.value,
+            "received_at":      (a.received_at.isoformat() + "Z") if a.received_at else None,
+            # FM Action fields (flattened)
+            "decision":         action_obj.decision.value,
+            "action_call":      action_obj.action_call,
+            "is_ratio":         action_obj.is_ratio or False,
+            "ratio_long":       action_obj.ratio_long,
+            "ratio_short":      action_obj.ratio_short,
+            "ratio_numerator_ticker":   action_obj.ratio_numerator_ticker,
+            "ratio_denominator_ticker": action_obj.ratio_denominator_ticker,
+            "priority":         action_obj.priority.value if action_obj.priority else None,
+            "has_chart":        bool(action_obj.chart_image_b64),
+            "chart_analysis":   json.loads(action_obj.chart_analysis) if action_obj.chart_analysis else None,
+            "fm_notes":         action_obj.fm_notes,
+            "entry_price_low":  action_obj.entry_price_low,
+            "entry_price_high": action_obj.entry_price_high,
+            "stop_loss":        sl,
+            "target_price":     tp,
+            "decision_at":      (action_obj.decision_at.isoformat() + "Z") if action_obj.decision_at else None,
+            # Computed live fields
+            "current_price":    curr_price,
+            "entry_hit":        entry_hit,
+            "target_hit":       target_hit,
+            "sl_hit":           sl_hit,
+            "return_pct":       return_pct,
+            "return_abs":       return_abs,
+            "days_since":       days_since,
+            # Closed trade fields
+            "is_closed":        is_closed,
+            "closed_price":     action_obj.closed_price,
+            "closed_pnl_pct":   action_obj.closed_pnl_pct,
+            "closed_at":        (action_obj.closed_at.isoformat() + "Z") if action_obj.closed_at else None,
+        })
+
+    return {
+        "success": True,
+        "alerts": results,
+        "counts": {
+            "total": len(results),
+            "active": count_active,
+            "triggered": count_triggered,
+            "closed": count_closed,
+        },
+    }
 
 @router.get(
     "/api/alerts/{alert_id}",
@@ -557,6 +758,8 @@ async def get_chart(alert_id: int, db: Session = Depends(get_db)):
     return {"chart_image_b64": action.chart_image_b64}
 
 
+
+
 # ─── Performance Tracking ────────────────────────────────────────
 
 @router.get(
@@ -763,16 +966,7 @@ async def close_actionable(alert_id: int, req: CloseTradeRequest, db: Session = 
         raise HTTPException(status_code=400, detail="Trade already closed")
 
     # Compute final P&L
-    entry_low = action_obj.entry_price_low
-    entry_high = action_obj.entry_price_high
-    if entry_low is not None and entry_high is not None:
-        entry_price = (entry_low + entry_high) / 2.0
-    elif entry_low is not None:
-        entry_price = entry_low
-    elif entry_high is not None:
-        entry_price = entry_high
-    else:
-        entry_price = a.price_at_alert or a.price_close
+    entry_price = _resolve_entry_price(action_obj, a)
 
     if not entry_price or entry_price <= 0:
         raise HTTPException(status_code=400, detail="Cannot compute P&L: entry price unavailable")
@@ -814,16 +1008,7 @@ async def closed_actionables(db: Session = Depends(get_db)):
         if not action_obj or not action_obj.closed_at:
             continue
 
-        entry_low = action_obj.entry_price_low
-        entry_high = action_obj.entry_price_high
-        if entry_low is not None and entry_high is not None:
-            entry_price = (entry_low + entry_high) / 2.0
-        elif entry_low is not None:
-            entry_price = entry_low
-        elif entry_high is not None:
-            entry_price = entry_high
-        else:
-            entry_price = a.price_at_alert or a.price_close
+        entry_price = _resolve_entry_price(action_obj, a)
 
         days_since = (datetime.now() - a.received_at).days if a.received_at else None
         results.append({

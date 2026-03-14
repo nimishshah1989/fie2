@@ -16,6 +16,7 @@ import {
 import { BASE_INDEX_OPTIONS, PERIOD_OPTIONS } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/utils";
 import { Activity } from "lucide-react";
+import { PageInfo } from "@/components/page-info";
 import { cn } from "@/lib/utils";
 import type { LiveIndex } from "@/lib/types";
 
@@ -72,6 +73,12 @@ export default function PulsePage() {
           Live index signals, sector analysis, and global benchmarks
         </p>
       </div>
+
+      <PageInfo>
+        Live NSE index data with ratio analysis versus a benchmark index. Covers 79 indices across broad market, sectoral,
+        thematic, BSE/global, and fixed income categories. Ratio returns show relative outperformance —
+        positive means the index outperformed the benchmark over that period.
+      </PageInfo>
 
       {/* Tab Bar */}
       <div className="flex items-center gap-1 border-b border-border overflow-x-auto">

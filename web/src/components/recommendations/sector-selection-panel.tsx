@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,15 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { BASE_INDEX_OPTIONS, SECTOR_COLORS, SECTOR_CATEGORY } from "@/lib/constants";
+import { BASE_INDEX_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Zap, Loader2 } from "lucide-react";
-
-interface SectorInfo {
-  key: string;
-  display_name: string;
-  etfs: string[];
-}
+import { SectorGroupSection } from "./sector-group-section";
+import type { SectorInfo } from "@/app/recommendations/page";
 
 interface SectorSelectionPanelProps {
   sectors: SectorInfo[];
@@ -44,6 +41,11 @@ const PERIOD_TABS = [
   { key: "12m", label: "12M" },
 ];
 
+const CATEGORY_LABELS: Record<string, string> = {
+  sectoral: "Sectoral Indices",
+  thematic: "Thematic Indices",
+};
+
 export function SectorSelectionPanel({
   sectors,
   selectedSectors,
@@ -60,6 +62,29 @@ export function SectorSelectionPanel({
   loading,
 }: SectorSelectionPanelProps) {
   const allKeys = sectors.map((s) => s.key);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  const grouped = useMemo(() => {
+    const groups: Record<string, SectorInfo[]> = {};
+    for (const s of sectors) {
+      const cat = s.category || "other";
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(s);
+    }
+    const order = ["sectoral", "thematic"];
+    const result: { category: string; label: string; items: SectorInfo[] }[] = [];
+    for (const cat of order) {
+      if (groups[cat]) {
+        result.push({ category: cat, label: CATEGORY_LABELS[cat] || cat, items: groups[cat] });
+      }
+    }
+    for (const cat of Object.keys(groups)) {
+      if (!order.includes(cat)) {
+        result.push({ category: cat, label: CATEGORY_LABELS[cat] || cat, items: groups[cat] });
+      }
+    }
+    return result;
+  }, [sectors]);
 
   function toggleSector(key: string) {
     if (selectedSectors.includes(key)) {
@@ -70,21 +95,40 @@ export function SectorSelectionPanel({
   }
 
   function toggleAll() {
-    if (selectedSectors.length === allKeys.length) {
-      onSelectedChange([]);
-    } else {
-      onSelectedChange([...allKeys]);
-    }
+    onSelectedChange(selectedSectors.length === allKeys.length ? [] : [...allKeys]);
+  }
+
+  function selectAllInGroup(groupKeys: string[]) {
+    onSelectedChange([...new Set([...selectedSectors, ...groupKeys])]);
+  }
+
+  function deselectAllInGroup(groupKeys: string[]) {
+    const removeSet = new Set(groupKeys);
+    onSelectedChange(selectedSectors.filter((k) => !removeSet.has(k)));
+  }
+
+  function toggleCollapse(cat: string) {
+    setCollapsed((prev) => ({ ...prev, [cat]: !prev[cat] }));
   }
 
   const allSelected = selectedSectors.length === allKeys.length;
   const someSelected = selectedSectors.length > 0 && !allSelected;
 
+  // Compute start index for each group (running numbering across groups)
+  const groupStartIndices = useMemo(() => {
+    const indices: number[] = [];
+    let total = 0;
+    for (const g of grouped) {
+      indices.push(total);
+      total += g.items.length;
+    }
+    return indices;
+  }, [grouped]);
+
   return (
     <div className="border rounded-lg bg-white">
       {/* Controls Bar */}
       <div className="flex flex-wrap items-center gap-3 p-3 border-b bg-gray-50/50">
-        {/* Base Selector */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">Base:</span>
           <Select value={base} onValueChange={onBaseChange}>
@@ -99,7 +143,6 @@ export function SectorSelectionPanel({
           </Select>
         </div>
 
-        {/* Period Tabs */}
         <div className="flex items-center gap-0.5 bg-muted rounded-md p-0.5">
           {PERIOD_TABS.map((tab) => (
             <button
@@ -117,7 +160,6 @@ export function SectorSelectionPanel({
           ))}
         </div>
 
-        {/* Top N stocks */}
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">Top</span>
           <Input
@@ -136,12 +178,7 @@ export function SectorSelectionPanel({
 
         <div className="flex-1" />
 
-        {/* Generate Button */}
-        <Button
-          onClick={onGenerate}
-          disabled={loading || selectedSectors.length === 0}
-          size="sm"
-        >
+        <Button onClick={onGenerate} disabled={loading || selectedSectors.length === 0} size="sm">
           {loading ? (
             <>
               <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -156,91 +193,51 @@ export function SectorSelectionPanel({
         </Button>
       </div>
 
-      {/* Sector Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/40 border-b">
-              <th className="py-2 px-3 text-left w-10">
-                <Checkbox
-                  checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                  onCheckedChange={toggleAll}
-                />
-              </th>
-              <th className="py-2 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase w-8">#</th>
-              <th className="py-2 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase">Index</th>
-              <th className="py-2 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase">Sector</th>
-              <th className="py-2 px-2 text-left text-[10px] font-semibold text-muted-foreground uppercase">ETF</th>
-              <th className="py-2 px-2 text-center text-[10px] font-semibold text-muted-foreground uppercase w-[100px]">
-                <div className="flex flex-col items-center gap-0.5">
-                  <span>Threshold %</span>
-                  <button
-                    onClick={() => {
-                      // Apply current threshold to all is implicit — single threshold
-                    }}
-                    className="text-[9px] text-teal-600 hover:underline font-normal normal-case"
-                  >
-                    (applies to all)
-                  </button>
-                </div>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sectors.map((sector, idx) => {
-              const isSelected = selectedSectors.includes(sector.key);
-              const colors = SECTOR_COLORS[sector.key];
-              const category = SECTOR_CATEGORY[sector.key] || "—";
+      {/* Global select all / threshold */}
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+        <div className="flex items-center gap-3">
+          <Checkbox
+            checked={allSelected ? true : someSelected ? "indeterminate" : false}
+            onCheckedChange={toggleAll}
+          />
+          <span className="text-xs font-medium text-muted-foreground">
+            {selectedSectors.length} of {allKeys.length} selected
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">Threshold:</span>
+          <Input
+            type="number"
+            value={threshold}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value);
+              if (!isNaN(val)) onThresholdChange(val);
+            }}
+            className="w-16 h-7 text-xs text-center font-mono"
+            step={0.5}
+            min={0}
+          />
+          <span className="text-xs text-muted-foreground">%</span>
+        </div>
+      </div>
 
-              return (
-                <tr
-                  key={sector.key}
-                  onClick={() => toggleSector(sector.key)}
-                  className={cn(
-                    "cursor-pointer transition-colors border-b border-border/50",
-                    isSelected && colors ? colors.bg : idx % 2 === 0 ? "" : "bg-muted/20",
-                    "hover:bg-muted/30"
-                  )}
-                >
-                  <td className="py-1.5 px-3" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => toggleSector(sector.key)}
-                    />
-                  </td>
-                  <td className="py-1.5 px-2 text-xs text-muted-foreground">{idx + 1}</td>
-                  <td className="py-1.5 px-2">
-                    <div className="flex items-center gap-2">
-                      {colors && (
-                        <div className={cn("w-1 h-4 rounded-full", colors.border.replace("border-", "bg-"))} />
-                      )}
-                      <span className={cn("text-xs font-medium", isSelected && colors ? colors.text : "text-foreground")}>
-                        {sector.display_name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-1.5 px-2 text-xs text-muted-foreground">{category}</td>
-                  <td className="py-1.5 px-2 text-xs font-mono text-muted-foreground">
-                    {sector.etfs.length > 0 ? sector.etfs.join(", ") : "—"}
-                  </td>
-                  <td className="py-1.5 px-2 text-center" onClick={(e) => e.stopPropagation()}>
-                    <Input
-                      type="number"
-                      value={threshold}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val)) onThresholdChange(val);
-                      }}
-                      className="w-16 h-7 text-xs text-center font-mono mx-auto"
-                      step={0.5}
-                      min={0}
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      {/* Grouped Sector Tables */}
+      <div className="overflow-x-auto">
+        {grouped.map((group, groupIdx) => (
+          <SectorGroupSection
+            key={group.category}
+            category={group.category}
+            label={group.label}
+            items={group.items}
+            isCollapsed={collapsed[group.category] ?? false}
+            selectedSectors={selectedSectors}
+            startIndex={groupStartIndices[groupIdx]}
+            onToggleCollapse={() => toggleCollapse(group.category)}
+            onSelectAllInGroup={selectAllInGroup}
+            onDeselectAllInGroup={deselectAllInGroup}
+            onToggleSector={toggleSector}
+          />
+        ))}
       </div>
 
       <p className="text-[10px] text-muted-foreground px-3 py-2 border-t">

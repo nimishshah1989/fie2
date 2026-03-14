@@ -372,6 +372,14 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Nifty 500 constituent backfill step failed (non-fatal): %s", e)
 
+        # 8. Per-stock sentiment scoring
+        try:
+            from services.stock_sentiment import compute_and_store_stock_sentiment
+            stock_count = compute_and_store_stock_sentiment(db)
+            logger.info("Per-stock sentiment: computed for %d stocks", stock_count)
+        except Exception as e:
+            logger.warning("Per-stock sentiment failed (non-fatal): %s", e)
+
         logger.info("Background yfinance backfill complete")
     except Exception as e:
         logger.warning("Background yfinance backfill failed (non-fatal): %s", e)
@@ -573,6 +581,15 @@ def _scheduled_eod_fetch():
             "Scheduled EOD: %d nsetools + %d yf-fallback + %d nse-api index, %d ETF, %d stock, %d alert, %d basket NAV, %d constituent records",
             idx_stored, yf_idx_stored, nse_eod_stored, etf_stored, stk_stored, alert_stored, basket_nav_count, constituent_count,
         )
+
+        # 8. Per-stock sentiment scoring (after all prices committed)
+        try:
+            from services.stock_sentiment import compute_and_store_stock_sentiment
+            stock_count = compute_and_store_stock_sentiment(db)
+            logger.info("Per-stock sentiment: computed for %d stocks", stock_count)
+        except Exception as e:
+            logger.warning("Per-stock sentiment failed (non-fatal): %s", e)
+
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)
         db.rollback()

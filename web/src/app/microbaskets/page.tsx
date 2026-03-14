@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useBasketsLive } from "@/hooks/use-baskets";
-import { BasketCardGrid } from "@/components/basket/basket-card-grid";
+import { BasketRichCard } from "@/components/basket/basket-rich-card";
 import { BasketDetailPanel } from "@/components/basket/basket-detail-panel";
 import { CreateBasketDialog } from "@/components/basket/create-basket-dialog";
 import { CsvUploadDialog } from "@/components/basket/csv-upload-dialog";
@@ -19,6 +19,7 @@ import { BASE_INDEX_OPTIONS, PERIOD_OPTIONS } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/utils";
 import { Layers, Plus, Upload } from "lucide-react";
 import type { BasketLiveItem } from "@/lib/basket-types";
+import { PageInfo } from "@/components/page-info";
 
 export default function MicrobasketsPage() {
   const [base, setBase] = useState("NIFTY");
@@ -58,6 +59,12 @@ export default function MicrobasketsPage() {
           Custom stock baskets with ratio analysis vs benchmark indices
         </p>
       </div>
+
+      <PageInfo>
+        Custom stock baskets with ratio analysis versus a benchmark index. Create baskets manually or upload via CSV.
+        Each basket tracks NAV history, constituent-level performance, and relative returns.
+        Set a portfolio size to calculate optimal unit allocation per constituent.
+      </PageInfo>
 
       {/* Action Bar */}
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap sm:items-center gap-2 sm:gap-3">
@@ -135,13 +142,18 @@ export default function MicrobasketsPage() {
       {/* Content */}
       {!isLoading && !error && data.baskets.length > 0 && (
         <>
-          {/* Basket Card Grid */}
-          <BasketCardGrid
-            baskets={data.baskets}
-            period={period}
-            selectedId={selectedBasketId}
-            onSelect={handleSelect}
-          />
+          {/* Basket Rich Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {data.baskets.map((basket) => (
+              <BasketRichCard
+                key={basket.id}
+                basket={basket}
+                period={period}
+                isSelected={selectedBasketId === basket.id}
+                onClick={() => handleSelect(basket.id)}
+              />
+            ))}
+          </div>
 
           {/* Detail Panel */}
           {selectedBasket && (

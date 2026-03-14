@@ -7,12 +7,14 @@ import { SectorSelectionPanel } from "@/components/recommendations/sector-select
 import { RecommendationResults } from "@/components/recommendations/recommendation-results";
 import { CreateBasketDialog, type BasketPrefill } from "@/components/basket/create-basket-dialog";
 import type { SectorResult } from "@/components/recommendations/sector-result-card";
+import { PageInfo } from "@/components/page-info";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
-interface SectorInfo {
+export interface SectorInfo {
   key: string;
   display_name: string;
+  category: string;
   etfs: string[];
 }
 
@@ -116,6 +118,12 @@ export default function RecommendationsPage() {
           Select sectors and set a threshold — outperforming sectors surface their top stocks and ETFs with fundamentals
         </p>
       </div>
+
+      <PageInfo>
+        Sector outperformance scanner. Select sectors, choose a benchmark and period, set a ratio return threshold,
+        and surface top stocks from qualifying sectors. Uses NSE index constituent data and historical price ratios.
+        Qualifying sectors can be converted into microbaskets.
+      </PageInfo>
 
       {/* Error */}
       {error && (

@@ -1,6 +1,7 @@
 """
 FIE v3 — Sentiment Indicator Routes
-Thin router — delegates computation to services/sentiment_engine.py.
+Thin router — delegates computation to services/sentiment_engine.py
+and services/stock_sentiment.py for per-stock scoring.
 """
 
 import copy
@@ -8,7 +9,7 @@ import logging
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from models import SentimentHistory, get_db
@@ -18,7 +19,7 @@ logger = logging.getLogger("fie_v3.sentiment")
 router = APIRouter()
 
 # In-memory cache: (result_dict, computed_at)
-_sentiment_cache: tuple[Optional[dict], Optional[datetime]] = (None, None)
+_sentiment_cache: tuple = (None, None)
 CACHE_TTL_SECONDS = 900
 
 
@@ -81,7 +82,7 @@ def _save_snapshot(db: Session, result: dict) -> None:
         db.rollback()
 
 
-# ─── Routes ─────────────────────────────────────────────
+# ─── Market-wide sentiment routes ────────────────────────
 
 @router.get(
     "/api/sentiment",
@@ -162,3 +163,57 @@ def get_sentiment_history(
             for r in reversed(rows)
         ],
     }
+
+
+# ─── Per-stock & sector sentiment routes ─────────────────
+
+@router.get(
+    "/api/sentiment/sectors",
+    tags=["Sentiment"],
+    summary="Sector-level sentiment scores",
+    description="Returns sentiment scores aggregated by sector from per-stock computations.",
+)
+def get_sector_sentiment_endpoint(db: Session = Depends(get_db)):
+    from services.stock_sentiment import get_sector_sentiment
+
+    sectors = get_sector_sentiment(db)
+    return {"success": True, "sectors": sectors}
+
+
+@router.get(
+    "/api/sentiment/sector/{sector_key}",
+    tags=["Sentiment"],
+    summary="Per-stock sentiment for a sector",
+    description="Returns per-stock sentiment scores for all stocks in a specific sector.",
+)
+def get_sector_detail(sector_key: str, db: Session = Depends(get_db)):
+    from index_constants import NSE_DISPLAY_MAP
+    from services.stock_sentiment import get_sector_stocks
+
+    display_name = NSE_DISPLAY_MAP.get(sector_key.upper())
+    if not display_name:
+        raise HTTPException(404, f"Unknown sector key: {sector_key}")
+
+    stocks = get_sector_stocks(db, sector_key)
+    return {
+        "success": True,
+        "sector": display_name,
+        "sector_key": sector_key.upper(),
+        "stock_count": len(stocks),
+        "stocks": stocks,
+    }
+
+
+@router.get(
+    "/api/sentiment/stock/{ticker}",
+    tags=["Sentiment"],
+    summary="Single stock sentiment",
+    description="Returns detailed sentiment metrics for a single stock.",
+)
+def get_stock_sentiment_endpoint(ticker: str, db: Session = Depends(get_db)):
+    from services.stock_sentiment import get_stock_sentiment
+
+    result = get_stock_sentiment(db, ticker.upper())
+    if not result:
+        raise HTTPException(404, f"No sentiment data for {ticker}")
+    return {"success": True, **result}

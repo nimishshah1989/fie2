@@ -563,3 +563,39 @@ class SentimentHistory(Base):
     layer_extremes  = Column(Float)
     stocks_computed = Column(Integer)
     created_at      = Column(DateTime, default=func.now())
+
+
+# ═══════════════════════════════════════════════════════════
+#  PER-STOCK SENTIMENT (daily per-stock technical scores)
+# ═══════════════════════════════════════════════════════════
+
+class StockSentiment(Base):
+    """Per-stock daily sentiment scores — computed from 22 technical metrics."""
+    __tablename__ = "stock_sentiment"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    ticker          = Column(String(50), nullable=False)
+    sector_index    = Column(String(100), nullable=True)
+    date            = Column(String(10), nullable=False)
+    composite_score = Column(Float, nullable=False)
+    zone            = Column(String(20), nullable=False)
+    # Key metric flags
+    above_10ema     = Column(Boolean, default=False)
+    above_21ema     = Column(Boolean, default=False)
+    above_50ema     = Column(Boolean, default=False)
+    above_200ema    = Column(Boolean, default=False)
+    golden_cross    = Column(Boolean, default=False)
+    rsi_daily       = Column(Float, nullable=True)
+    rsi_weekly      = Column(Float, nullable=True)
+    macd_bull_cross = Column(Boolean, default=False)
+    hit_52w_high    = Column(Boolean, default=False)
+    hit_52w_low     = Column(Boolean, default=False)
+    roc_positive    = Column(Boolean, default=False)
+    above_prev_month_high = Column(Boolean, default=False)
+    created_at      = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("idx_stock_sent_date_ticker", "date", "ticker", unique=True),
+        Index("idx_stock_sent_sector", "sector_index"),
+        Index("idx_stock_sent_date", "date"),
+    )

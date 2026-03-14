@@ -3,6 +3,10 @@
 // Ported from dashboard.py (lines 629–738)
 // ============================================================================
 
+// ─── SWR Refresh Intervals ─────────────────────────────────────────
+export const REFRESH_MARKET = 300_000;     // 5 min — market data, alerts, sentiment
+export const REFRESH_PORTFOLIO = 900_000;  // 15 min — portfolios, baskets, PMS
+
 // Tracked NSE indices — only those with reliable yfinance historical data for all periods
 // Names are exact nse_name values returned by nsetools or NSE_DISPLAY_MAP
 export const TOP_25_INDICES: string[] = [

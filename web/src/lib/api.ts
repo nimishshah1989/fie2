@@ -3,6 +3,8 @@ import type {
   ActionRequest,
   PerformanceAlert,
   ActionableAlert,
+  ActionedAlert,
+  ActionedResponse,
   ClosedTrade,
   IndicesResponse,
   StatusResponse,
@@ -38,6 +40,25 @@ export async function fetchPerformance(): Promise<PerformanceAlert[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.performance || [];
+}
+
+export async function fetchActionedAlerts(): Promise<ActionedAlert[]> {
+  const res = await fetch(`${API}/api/alerts/actioned`);
+  if (!res.ok) return [];
+  const json: ActionedResponse = await res.json();
+  return json.alerts || [];
+}
+
+export async function fetchActioned(): Promise<ActionedResponse> {
+  const res = await fetch(`${API}/api/alerts/actioned`);
+  if (!res.ok) {
+    return {
+      success: false,
+      alerts: [],
+      counts: { total: 0, active: 0, triggered: 0, closed: 0 },
+    };
+  }
+  return res.json();
 }
 
 export async function fetchIndicesLive(base = "NIFTY"): Promise<IndicesResponse> {

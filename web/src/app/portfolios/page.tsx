@@ -35,6 +35,7 @@ import {
 import { getHoldingsExportURL, updateHoldingSymbol, archivePortfolio } from "@/lib/portfolio-api";
 import { PmsDetailView } from "@/components/pms/pms-detail-view";
 import type { Portfolio } from "@/lib/portfolio-types";
+import { PageInfo } from "@/components/page-info";
 
 export default function PortfoliosPage() {
   return (
@@ -163,6 +164,12 @@ function PortfolioListView() {
         </div>
         <CreatePortfolioDialog onCreated={() => mutate()} />
       </div>
+
+      <PageInfo>
+        Model portfolio management with NAV-based performance tracking. Each portfolio tracks holdings, transactions,
+        XIRR, CAGR, max drawdown, and benchmark comparison. Daily NAV computed from EOD prices.
+        Supports bulk CSV import and allocation analysis by sector and stock.
+      </PageInfo>
 
       {/* Stats */}
       {!isLoading && portfolios.length > 0 && <StatsRow stats={stats} />}

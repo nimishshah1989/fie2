@@ -2,12 +2,13 @@
 import useSWR from "swr";
 import { fetchAlerts } from "@/lib/api";
 import type { Alert } from "@/lib/types";
+import { REFRESH_MARKET } from "@/lib/constants";
 
 export function useAlerts() {
   const { data, error, isLoading, mutate } = useSWR<Alert[]>(
     "alerts",
     () => fetchAlerts(300),
-    { refreshInterval: 900_000 }
+    { refreshInterval: REFRESH_MARKET }
   );
   const alerts = data ?? [];
   const pending = alerts.filter((a) => a.status === "PENDING");

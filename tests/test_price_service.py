@@ -352,9 +352,11 @@ class TestSectorIndicesForReco:
                     f"'{display_name}' vs '{NSE_DISPLAY_MAP[key]}'"
                 )
 
-    def test_should_have_15_sector_indices(self):
-        """There should be exactly 15 sector indices for the recommendation engine."""
-        assert len(SECTOR_INDICES_FOR_RECO) == 15
+    def test_should_have_expanded_sector_indices(self):
+        """Should have 40+ sector/thematic indices for expanded recommendation engine."""
+        assert len(SECTOR_INDICES_FOR_RECO) >= 40, (
+            f"Expected 40+ sector indices, got {len(SECTOR_INDICES_FOR_RECO)}"
+        )
 
 
 # ═══════════════════════════════════════════════════════════

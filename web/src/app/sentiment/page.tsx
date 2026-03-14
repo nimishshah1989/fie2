@@ -3,10 +3,15 @@
 import { useState } from "react";
 import { useSentiment } from "@/hooks/use-sentiment";
 import { useSentimentHistory } from "@/hooks/use-sentiment-history";
+import { useSectorSentiment, useSectorDetail } from "@/hooks/use-sector-sentiment";
 import { CompositeGauge } from "@/components/sentiment/CompositeGauge";
 import { IndicatorRow } from "@/components/sentiment/IndicatorRow";
 import { StockListDrawer } from "@/components/sentiment/StockListDrawer";
 import { SentimentHistoryChart } from "@/components/sentiment/SentimentHistoryChart";
+import { ZoneScoreBox } from "@/components/sentiment/ZoneScoreBox";
+import { SentimentMethodology } from "@/components/sentiment/SentimentMethodology";
+import { SectorSentimentGrid } from "@/components/sentiment/SectorSentimentGrid";
+import { SectorDetailDrawer } from "@/components/sentiment/SectorDetailDrawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { BarChart2, RefreshCw } from "lucide-react";
@@ -15,6 +20,7 @@ import type { SentimentMetric } from "@/lib/types";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
+type ViewTab = "breadth" | "sector";
 type LayerKey = "short_term_trend" | "broad_trend" | "advance_decline" | "momentum" | "extremes";
 
 const LAYER_TABS: { key: LayerKey; label: string }[] = [
@@ -42,8 +48,14 @@ function scoreColor(score: number): string {
 export default function SentimentPage() {
   const { data, error, isLoading, mutate } = useSentiment();
   const { data: historyData } = useSentimentHistory();
+  const { sectors, isLoading: sectorsLoading } = useSectorSentiment();
+
+  const [viewTab, setViewTab] = useState<ViewTab>("breadth");
   const [activeLayer, setActiveLayer] = useState<LayerKey>("short_term_trend");
   const [selectedMetric, setSelectedMetric] = useState<SentimentMetric | null>(null);
+  const [selectedSector, setSelectedSector] = useState<string | null>(null);
+
+  const { stocks: sectorStocks, isLoading: sectorDetailLoading } = useSectorDetail(selectedSector);
 
   async function handleRefresh() {
     try {
@@ -66,9 +78,9 @@ export default function SentimentPage() {
         <div>
           <div className="flex items-center gap-2">
             <BarChart2 className="size-5 sm:size-6 text-teal-600" />
-            <h1 className="text-xl sm:text-2xl font-bold text-foreground">Sentiment Dashboard</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-800">Sentiment Dashboard</h1>
           </div>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Market breadth across Nifty 500 — 26 indicators, 5 layers, composite score
           </p>
         </div>
@@ -78,8 +90,39 @@ export default function SentimentPage() {
         </Button>
       </div>
 
+      {/* View Toggle: Market Breadth | Sector Sentiment */}
+      <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+        <button
+          type="button"
+          onClick={() => setViewTab("breadth")}
+          className={cn(
+            "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
+            viewTab === "breadth"
+              ? "bg-white text-teal-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Market Breadth
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewTab("sector")}
+          className={cn(
+            "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
+            viewTab === "sector"
+              ? "bg-white text-teal-700 shadow-sm"
+              : "text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Sector Sentiment
+          {sectors.length > 0 && (
+            <span className="ml-1.5 text-xs text-slate-400">({sectors.length})</span>
+          )}
+        </button>
+      </div>
+
       {/* Universe badge */}
-      {data && (
+      {viewTab === "breadth" && data && (
         <div className="flex items-center gap-3 flex-wrap">
           <div className="text-sm text-slate-600">
             <span className="font-semibold">{data.universe}</span>
@@ -103,14 +146,14 @@ export default function SentimentPage() {
       )}
 
       {/* Error */}
-      {error && (
+      {error && viewTab === "breadth" && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
           Failed to load sentiment data. The backend may still be computing — try refreshing.
         </div>
       )}
 
       {/* Loading */}
-      {isLoading && (
+      {isLoading && viewTab === "breadth" && (
         <div className="space-y-4">
           <Skeleton className="h-40 rounded-xl" />
           <div className="grid grid-cols-5 gap-3">
@@ -120,20 +163,17 @@ export default function SentimentPage() {
         </div>
       )}
 
-      {/* Main content */}
-      {!isLoading && !error && data && (
+      {/* ═══ MARKET BREADTH VIEW ═══ */}
+      {viewTab === "breadth" && !isLoading && !error && data && (
         <>
           {/* Gauge + Layer Scores */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Composite Gauge */}
             <div className="bg-white rounded-xl border border-slate-200 p-5 flex items-center justify-center">
               <CompositeGauge
                 score={data.composite_score ?? 0}
                 zone={data.zone ?? "Neutral"}
               />
             </div>
-
-            {/* Layer Score Cards */}
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-5 gap-3">
               {LAYER_SCORE_KEYS.map(({ key, label }) => {
                 const val = layerScores[key] ?? 0;
@@ -149,24 +189,11 @@ export default function SentimentPage() {
             </div>
           </div>
 
-          {/* Signal Pills */}
-          {data.zone && (
-            <div className="flex gap-2 flex-wrap">
-              {data.zone === "Strong" || data.zone === "Bullish" ? (
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full px-3 py-1 text-xs font-medium">
-                  {data.zone} Market
-                </span>
-              ) : data.zone === "Weak" || data.zone === "Bear" ? (
-                <span className="bg-red-50 text-red-700 border border-red-200 rounded-full px-3 py-1 text-xs font-medium">
-                  {data.zone} Market
-                </span>
-              ) : (
-                <span className="bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-3 py-1 text-xs font-medium">
-                  Neutral Market
-                </span>
-              )}
-            </div>
-          )}
+          {/* Zone Score Box */}
+          <ZoneScoreBox score={data.composite_score ?? 0} zone={data.zone ?? "Neutral"} />
+
+          {/* Methodology */}
+          <SentimentMethodology />
 
           {/* History Chart */}
           <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -217,8 +244,26 @@ export default function SentimentPage() {
         </>
       )}
 
-      {/* Empty state */}
-      {!isLoading && !error && !data && (
+      {/* ═══ SECTOR SENTIMENT VIEW ═══ */}
+      {viewTab === "sector" && (
+        <>
+          {sectorsLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <SectorSentimentGrid
+              sectors={sectors}
+              onSelectSector={(key) => setSelectedSector(key)}
+            />
+          )}
+        </>
+      )}
+
+      {/* Empty state (breadth) */}
+      {viewTab === "breadth" && !isLoading && !error && !data && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <BarChart2 className="h-12 w-12 text-muted-foreground/40 mb-4" />
           <h3 className="text-lg font-semibold text-foreground">No sentiment data yet</h3>
@@ -228,11 +273,20 @@ export default function SentimentPage() {
         </div>
       )}
 
-      {/* Stock List Drawer */}
+      {/* Stock List Drawer (breadth view) */}
       <StockListDrawer
         metric={selectedMetric}
         open={!!selectedMetric}
         onClose={() => setSelectedMetric(null)}
+      />
+
+      {/* Sector Detail Drawer (sector view) */}
+      <SectorDetailDrawer
+        sectorKey={selectedSector}
+        stocks={sectorStocks}
+        isLoading={sectorDetailLoading}
+        open={!!selectedSector}
+        onClose={() => setSelectedSector(null)}
       />
     </div>
   );

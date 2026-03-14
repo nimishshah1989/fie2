@@ -6,13 +6,13 @@ Used by price_service.py, routers/indices.py, and other modules that need index 
 No imports required -- this file contains only pure data structures.
 """
 
-# ─── Yahoo Finance Ticker Map ──────────────────────────────────────────
+# --- Yahoo Finance Ticker Map ------------------------------------------------
 # Maps internal key -> yfinance symbol for historical price fetching.
 # Not all NSE indices have yfinance equivalents; those without entries
 # are fetched via NSE website API or nsetools instead.
 
 NSE_TICKER_MAP = {
-    # ── NSE Broad Market ──
+    # -- NSE Broad Market --
     "NIFTY":            "^NSEI",
     "NIFTY50":          "^NSEI",
     "NIFTY100":         "^CNX100",
@@ -23,7 +23,7 @@ NSE_TICKER_MAP = {
     "NIFTYMIDCAP50":    "^NSEMDCP50",
     "MIDCPNIFTY":       "^NSEMDCP50",
     "NIFTYSMALLCAP":    "^CNXSC",
-    # ── NSE Sectoral ──
+    # -- NSE Sectoral --
     "BANKNIFTY":        "^NSEBANK",
     "NIFTYBANK":        "^NSEBANK",
     "NIFTYIT":          "^CNXIT",
@@ -44,31 +44,31 @@ NSE_TICKER_MAP = {
     "NIFTYSERVICE":     "^CNXSERVICE",
     "NIFTYCONSUMPTION": "^CNXCONSUM",
     "NIFTYCOMMODITIES": "^CNXCMDT",
-    # ── NSE Thematic (live price, limited yfinance history) ──
+    # -- NSE Thematic (live price, limited yfinance history) --
     "NIFTYCPSE":        "NIFTY_CPSE.NS",
     "NIFTYHEALTHCARE":  "NIFTY_HEALTHCARE.NS",
     "NIFTYCONSUMER":    "NIFTY_CONSR_DURBL.NS",
-    # ── India VIX ──
+    # -- India VIX --
     "INDIAVIX":         "^INDIAVIX",
-    # ── BSE ──
+    # -- BSE --
     "SENSEX":           "^BSESN",
     "BSE500":           "BSE-500.BO",
     "BSEIT":            "BSE-IT.BO",
     "BSEBANK":          "BSE-BANKEX.BO",
-    # ── Commodities ──
+    # -- Commodities --
     "GOLD":             "GC=F",
     "SILVER":           "SI=F",
     "CRUDEOIL":         "CL=F",
     "CRUDE":            "CL=F",
     "NATURALGAS":       "NG=F",
     "COPPER":           "HG=F",
-    # ── Currency ──
+    # -- Currency --
     "USDINR":           "USDINR=X",
     "EURINR":           "EURINR=X",
     "GBPINR":           "GBPINR=X",
 }
 
-# ─── Yahoo Finance Fallback Symbols ───────────────────────────────────
+# --- Yahoo Finance Fallback Symbols ------------------------------------------
 # When primary yfinance symbol fails, try these alternatives.
 
 FALLBACK_MAP = {
@@ -78,7 +78,7 @@ FALLBACK_MAP = {
     "^BSESN":   ["^BSESN"],
 }
 
-# ─── NSE Index Keys for EOD Fetch ─────────────────────────────────────
+# --- NSE Index Keys for EOD Fetch --------------------------------------------
 # All tracked instruments for yfinance backfill + pulse page display.
 # Order: Broad Market -> Sectoral -> Thematic -> BSE/Global -> Fixed Income
 
@@ -121,7 +121,7 @@ NSE_INDEX_KEYS = [
     "NIFTYGSECCOMPOSITE",
 ]
 
-# ─── Category Map for Pulse Page Tab Grouping ─────────────────────────
+# --- Category Map for Pulse Page Tab Grouping --------------------------------
 # Maps internal key -> category string for frontend filtering.
 
 NSE_INDEX_CATEGORIES: dict = {
@@ -172,7 +172,7 @@ NSE_INDEX_CATEGORIES: dict = {
     "NIFTYGSECCOMPOSITE": "fixed_income",
 }
 
-# ─── Non-nsetools Instruments ─────────────────────────────────────────
+# --- Non-nsetools Instruments ------------------------------------------------
 # These do NOT have nsetools live quotes; served from DB prices on pulse page
 # (BSE & Global tab, Fixed Income tab).
 
@@ -183,7 +183,7 @@ NON_NSETOOLS_KEYS = [
     "NIFTYGSEC48", "NIFTYGSEC1115", "NIFTYGSEC15PLUS", "NIFTYGSECCOMPOSITE",
 ]
 
-# ─── Fixed Income Keys ────────────────────────────────────────────────
+# --- Fixed Income Keys -------------------------------------------------------
 
 FIXED_INCOME_KEYS = [
     "NIFTYLIQUID15",
@@ -195,7 +195,7 @@ FIXED_INCOME_KEYS = [
     "NIFTYGSECCOMPOSITE",
 ]
 
-# ─── ETF Universe for EOD Tracking ───────────────────────────────────
+# --- ETF Universe for EOD Tracking -------------------------------------------
 # Maps our internal ETF key -> yfinance symbol.
 
 NSE_ETF_UNIVERSE = {
@@ -222,12 +222,12 @@ NSE_ETF_UNIVERSE = {
     "METALIETF": "METALIETF.NS",
 }
 
-# ─── NSE Display Name Map ────────────────────────────────────────────
+# --- NSE Display Name Map ----------------------------------------------------
 # Maps our internal key -> NSE display name as returned by nsetools.
 # This is the canonical source of truth for display names across the platform.
 
 NSE_DISPLAY_MAP = {
-    # ── Broad Market ──
+    # -- Broad Market --
     "NIFTY":                "NIFTY 50",
     "NIFTY100":             "NIFTY 100",
     "NIFTY200":             "NIFTY 200",
@@ -246,7 +246,7 @@ NSE_DISPLAY_MAP = {
     "NIFTYTOTALMARKET":     "NIFTY TOTAL MARKET",
     "NIFTY500MULTICAP":     "NIFTY500 MULTICAP 50:25:25",
     "INDIAVIX":             "INDIA VIX",
-    # ── Sectoral ──
+    # -- Sectoral --
     "BANKNIFTY":            "NIFTY BANK",
     "NIFTYIT":              "NIFTY IT",
     "NIFTYPHARMA":          "NIFTY PHARMA",
@@ -274,7 +274,7 @@ NSE_DISPLAY_MAP = {
     "NIFTYMIDSMALLHC":      "NIFTY MIDSMALL HEALTHCARE",
     "NIFTYMIDSMALLITTEL":   "NIFTY MIDSMALL IT & TELECOM",
     "NIFTYMIDSMALLCONS":    "NIFTY MIDSMALL INDIA CONSUMPTION",
-    # ── Thematic ──
+    # -- Thematic --
     "NIFTYHEALTHCARE":      "NIFTY HEALTHCARE INDEX",
     "NIFTYCONSUMPTION":     "NIFTY INDIA CONSUMPTION",
     "NIFTYCOMMODITIES":     "NIFTY COMMODITIES",
@@ -298,7 +298,7 @@ NSE_DISPLAY_MAP = {
     "NIFTYINDIAFPI":        "NIFTY INDIA FPI 150",
     "NIFTYINDIAINFRALOG":   "NIFTY INDIA INFRASTRUCTURE & LOGISTICS",
     "NIFTYINDIAINTERNET":   "NIFTY INDIA INTERNET",
-    # ── Fixed Income ──
+    # -- Fixed Income --
     "NIFTYLIQUID15":        "NIFTY LIQUID 15",
     "NIFTYGSEC10YR":        "NIFTY 10 YR BENCHMARK G-SEC",
     "NIFTYGSEC813":         "NIFTY 8-13 YR G-SEC",
@@ -306,7 +306,7 @@ NSE_DISPLAY_MAP = {
     "NIFTYGSEC1115":        "NIFTY 11-15 YR G-SEC INDEX",
     "NIFTYGSEC15PLUS":      "NIFTY 15 YR AND ABOVE G-SEC INDEX",
     "NIFTYGSECCOMPOSITE":   "NIFTY COMPOSITE G-SEC INDEX",
-    # ── BSE & Global ──
+    # -- BSE & Global --
     "SENSEX":               "SENSEX",
     "BSE500":               "BSE 500",
     "GOLD":                 "Gold (USD)",
@@ -316,7 +316,7 @@ NSE_DISPLAY_MAP = {
     "USDINR":               "USD/INR",
 }
 
-# ─── Reverse Map: NSE Display Name -> Internal Key ────────────────────
+# --- Reverse Map: NSE Display Name -> Internal Key ---------------------------
 # Built from NSE_DISPLAY_MAP. Used by nsetools live fetch to convert
 # display names back to our internal keys.
 
@@ -324,29 +324,48 @@ _NSE_REVERSE_MAP = {}
 for _k, _v in NSE_DISPLAY_MAP.items():
     _NSE_REVERSE_MAP[_v.upper()] = _k
 
-# ─── Sector Indices for Recommendation Engine ────────────────────────
-# (internal_key, NSE display name for API calls)
-# Used by routers/recommendations.py to generate sector recommendations.
+# --- Sector Indices for Recommendation Engine --------------------------------
+# Auto-generated from NSE_INDEX_CATEGORIES: all sectoral + thematic indices.
+# Returns list of (internal_key, NSE display name) tuples.
+# Used by routers/recommendations.py + EOD constituent refresh.
+
+# Sectors/themes to SKIP (no constituent data or too broad)
+_RECO_SKIP: set = {
+    "NIFTY50",
+    "NIFTYNEXT50",
+    "NIFTY100",
+    "NIFTY200",
+    "NIFTY500",
+    "NIFTYMIDCAP50",
+    "NIFTYMIDCAP100",
+    "NIFTYMIDCAP150",
+    "NIFTYSMALLCAP50",
+    "NIFTYSMALLCAP100",
+    "NIFTYSMALLCAP250",
+    "NIFTYLARGEMIDCAP250",
+    "NIFTYMIDSML400",
+    "NIFTYTOTALMARKET",
+}
+
+# Old hardcoded list (15 sectors) — replaced by programmatic generation below:
+# SECTOR_INDICES_FOR_RECO = [
+#     ("BANKNIFTY", "NIFTY BANK"), ("NIFTYIT", "NIFTY IT"),
+#     ("NIFTYPHARMA", "NIFTY PHARMA"), ("NIFTYFMCG", "NIFTY FMCG"),
+#     ("NIFTYAUTO", "NIFTY AUTO"), ("NIFTYMETAL", "NIFTY METAL"),
+#     ("NIFTYREALTY", "NIFTY REALTY"), ("NIFTYENERGY", "NIFTY ENERGY"),
+#     ("NIFTYPSUBANK", "NIFTY PSU BANK"), ("NIFTYPVTBANK", "NIFTY PRIVATE BANK"),
+#     ("NIFTYINFRA", "NIFTY INFRASTRUCTURE"), ("NIFTYMEDIA", "NIFTY MEDIA"),
+#     ("FINNIFTY", "NIFTY FINANCIAL SERVICES"), ("NIFTYHEALTHCARE", "NIFTY HEALTHCARE INDEX"),
+#     ("NIFTYCPSE", "NIFTY CPSE"),
+# ]
 
 SECTOR_INDICES_FOR_RECO = [
-    ("BANKNIFTY", "NIFTY BANK"),
-    ("NIFTYIT", "NIFTY IT"),
-    ("NIFTYPHARMA", "NIFTY PHARMA"),
-    ("NIFTYFMCG", "NIFTY FMCG"),
-    ("NIFTYAUTO", "NIFTY AUTO"),
-    ("NIFTYMETAL", "NIFTY METAL"),
-    ("NIFTYREALTY", "NIFTY REALTY"),
-    ("NIFTYENERGY", "NIFTY ENERGY"),
-    ("NIFTYPSUBANK", "NIFTY PSU BANK"),
-    ("NIFTYPVTBANK", "NIFTY PRIVATE BANK"),
-    ("NIFTYINFRA", "NIFTY INFRASTRUCTURE"),
-    ("NIFTYMEDIA", "NIFTY MEDIA"),
-    ("FINNIFTY", "NIFTY FINANCIAL SERVICES"),
-    ("NIFTYHEALTHCARE", "NIFTY HEALTHCARE INDEX"),
-    ("NIFTYCONSUMER", "NIFTY CONSUMER DURABLES"),
+    (key, NSE_DISPLAY_MAP.get(key, key))
+    for key, cat in NSE_INDEX_CATEGORIES.items()
+    if cat in ("sectoral", "thematic") and key not in _RECO_SKIP
 ]
 
-# ─── Sector ETF Map ──────────────────────────────────────────────────
+# --- Sector ETF Map ----------------------------------------------------------
 # Maps sector index key -> list of ETFs tracking that sector.
 # Used by recommendation engine to suggest ETF alternatives.
 

@@ -77,6 +77,68 @@ export interface ClosedTrade extends Alert {
   is_ratio_trade: boolean;
 }
 
+/** Unified actioned alert — flat structure from GET /api/alerts/actioned */
+export interface ActionedAlert {
+  id: number;
+  ticker: string;
+  exchange: string;
+  interval: string;
+  time_utc: string | null;
+  price_open: number | null;
+  price_high: number | null;
+  price_low: number | null;
+  price_close: number | null;
+  price_at_alert: number | null;
+  volume: number | null;
+  alert_data: string | null;
+  alert_name: string | null;
+  signal_direction: string;
+  status: string;
+  received_at: string | null;
+  // FM Action fields (flattened, not nested)
+  decision: string;
+  action_call: string | null;
+  is_ratio: boolean;
+  ratio_long: string | null;
+  ratio_short: string | null;
+  ratio_numerator_ticker: string | null;
+  ratio_denominator_ticker: string | null;
+  priority: string | null;
+  has_chart: boolean;
+  chart_analysis: string[] | null;
+  fm_notes: string | null;
+  entry_price_low: number | null;
+  entry_price_high: number | null;
+  stop_loss: number | null;
+  target_price: number | null;
+  decision_at: string | null;
+  // Computed live fields
+  current_price: number | null;
+  entry_hit: boolean;
+  target_hit: boolean;
+  sl_hit: boolean;
+  return_pct: number | null;
+  return_abs: number | null;
+  days_since: number;
+  // Closed trade fields
+  is_closed: boolean;
+  closed_price: number | null;
+  closed_pnl_pct: number | null;
+  closed_at: string | null;
+}
+
+/** Response shape from GET /api/alerts/actioned */
+export interface ActionedResponse {
+  success: boolean;
+  alerts: ActionedAlert[];
+  counts: {
+    total: number;
+    active: number;
+    triggered: number;
+    closed: number;
+  };
+}
+
 export interface LiveIndex {
   index_name: string;
   nse_name?: string;

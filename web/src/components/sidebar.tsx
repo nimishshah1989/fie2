@@ -5,50 +5,43 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  ArrowLeftRight,
-  CheckCircle2,
-  TrendingUp,
+  ClipboardCheck,
   Activity,
-  AlertTriangle,
   Briefcase,
   Layers,
   Compass,
   BookOpen,
   BarChart2,
   Menu,
-  X,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAlerts } from "@/hooks/use-alerts";
-import { useActionables } from "@/hooks/use-actionables";
+import { useActioned } from "@/hooks/use-actioned";
 
 const navItems = [
   { href: "/", label: "Command Center", icon: LayoutDashboard },
-  { href: "/trade", label: "Trade Center", icon: ArrowLeftRight },
-  { href: "/approved", label: "Approved Cards", icon: CheckCircle2 },
-  { href: "/actionables", label: "Actionables", icon: AlertTriangle },
-  { href: "/performance", label: "Alert Performance", icon: TrendingUp },
+  { href: "/actioned", label: "Actioned Cards", icon: ClipboardCheck },
   { href: "/pulse", label: "Market Pulse", icon: Activity },
   { href: "/sentiment", label: "Sentiment", icon: BarChart2 },
-  { href: "/microbaskets", label: "Microbaskets", icon: Layers },
   { href: "/recommendations", label: "Recommendations", icon: Compass },
   { href: "/portfolios", label: "Model Portfolios", icon: Briefcase },
+  { href: "/microbaskets", label: "Microbaskets", icon: Layers },
   { href: "/docs", label: "Documentation", icon: BookOpen },
 ];
 
-// Shared sidebar content — used by both desktop aside and mobile sheet
+// Shared sidebar content -- used by both desktop aside and mobile sheet
 function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   const pathname = usePathname();
   const { alerts, pending, approved, isLoading } = useAlerts();
-  const { actionables } = useActionables();
+  const { triggered } = useActioned();
   const [istString, setIstString] = useState("");
 
   // Badge counts per route
   const badgeCounts: Record<string, number> = {
-    "/trade": pending.length,
-    "/actionables": actionables.length,
+    "/": pending.length,
+    "/actioned": triggered.length,
   };
 
   useEffect(() => {
@@ -159,7 +152,7 @@ function SidebarContent({ onNavClick }: { onNavClick?: () => void }) {
   );
 }
 
-// Desktop sidebar — hidden on mobile
+// Desktop sidebar -- hidden on mobile
 export function Sidebar() {
   return (
     <aside className="hidden lg:flex w-64 h-screen bg-card border-r border-border flex-col">
@@ -168,7 +161,7 @@ export function Sidebar() {
   );
 }
 
-// Mobile top bar with hamburger menu — visible only on mobile
+// Mobile top bar with hamburger menu -- visible only on mobile
 export function MobileHeader() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
