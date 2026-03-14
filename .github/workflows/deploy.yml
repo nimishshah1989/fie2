@@ -1,53 +1,29 @@
-name: Deploy to AWS EC2 Mumbai
+name: Deploy to JSL Wealth Server
 
 on:
   push:
     branches: [main]
 
 env:
-  AWS_REGION: ap-south-1
-  ECR_REPOSITORY: fie2
-  EC2_HOST: 13.206.50.251
+  EC2_HOST: 13.206.34.214
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build, tag, and push Docker image to ECR
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ env.EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}
+          username: ubuntu
+          key: ${{ secrets.JSL_EC2_SSH_KEY }}
+          script_stop: true
+          command_timeout: 15m
           script: |
-            PASSWORD=$(cat /tmp/ecr-pass.txt 2>/dev/null || aws ecr get-login-password --region ap-south-1)
-            sudo docker login --username AWS --password $PASSWORD 765425735663.dkr.ecr.ap-south-1.amazonaws.com
-            sudo docker pull 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
+            cd /home/ubuntu/fie2
+            git pull origin main
+            sudo docker build --platform linux/amd64 -t fie2:latest .
             sudo docker stop fie2 || true
             sudo docker rm fie2 || true
-            sudo docker run -d --name fie2 --restart always -p 8000:8000 --env-file /home/ec2-user/fie2.env 765425735663.dkr.ecr.ap-south-1.amazonaws.com/fie2:latest
+            sudo docker run -d --name fie2 --restart always -p 8004:8000 --env-file /home/ubuntu/fie2.env fie2:latest
             sudo docker image prune -f
