@@ -17,7 +17,6 @@ jobs:
           host: ${{ env.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.JSL_EC2_SSH_KEY }}
-          script_stop: true
           command_timeout: 15m
           script: |
             cd /home/ubuntu/fie2
