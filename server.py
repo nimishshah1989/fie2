@@ -297,6 +297,61 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Sector constituent backfill step failed (non-fatal): %s", e)
 
+        # 7. Nifty 500 constituents — for Sentiment Indicators breadth computation
+        # Fetches from NSE API (works on Mumbai EC2). Non-fatal if API is unavailable.
+        try:
+            from price_service import fetch_nse_index_constituents
+            nifty500_items = fetch_nse_index_constituents("NIFTY 500")
+            if nifty500_items:
+                nifty500_stored = 0
+                for item in nifty500_items:
+                    symbol = item.get("symbol", "").strip()
+                    if not symbol:
+                        continue
+                    existing = (
+                        db.query(IndexConstituent)
+                        .filter(
+                            IndexConstituent.index_name == "NIFTY 500",
+                            IndexConstituent.ticker == symbol,
+                        )
+                        .first()
+                    )
+                    if existing:
+                        existing.last_price = item.get("last_price")
+                        existing.fetched_at = datetime.now()
+                    else:
+                        db.add(IndexConstituent(
+                            index_name="NIFTY 500",
+                            ticker=symbol,
+                            company_name=item.get("company_name"),
+                            weight_pct=item.get("weight"),
+                            last_price=item.get("last_price"),
+                        ))
+                    nifty500_stored += 1
+                db.commit()
+                logger.info("Backfill: stored/updated %d Nifty 500 constituent records", nifty500_stored)
+
+                # Fetch 1Y price history for Nifty 500 stocks not already covered
+                nifty500_tickers = [item["symbol"] for item in nifty500_items if item.get("symbol")]
+                all_covered = set(t.upper() for t in all_constituent_tickers)
+                all_covered.update(t.upper() for t in (ticker_inception or {}).keys())
+                all_covered.update(t.upper() for t in etf_tickers)
+                new_nifty500_tickers = [t for t in nifty500_tickers if t.upper() not in all_covered]
+                if new_nifty500_tickers:
+                    logger.info("Backfill: fetching 1Y history for %d Nifty 500 stocks...", len(new_nifty500_tickers))
+                    n500_data = fetch_yfinance_bulk_stock_history(new_nifty500_tickers, period="1y")
+                    n500_stored = 0
+                    for ticker, rows in n500_data.items():
+                        for row in rows:
+                            if upsert_price_row(db, ticker, row):
+                                n500_stored += 1
+                    db.commit()
+                    logger.info("Backfill: stored %d Nifty 500 stock price records", n500_stored)
+            else:
+                logger.info("Backfill: Nifty 500 constituent fetch returned 0 items (NSE API may be unavailable)")
+        except Exception as e:
+            logger.warning("Nifty 500 constituent backfill step failed (non-fatal): %s", e)
+
         logger.info("Background yfinance backfill complete")
     except Exception as e:
         logger.warning("Background yfinance backfill failed (non-fatal): %s", e)
@@ -440,6 +495,41 @@ def _scheduled_eod_fetch():
                             constituent_price_count += 1
         except Exception as e:
             logger.warning("Constituent refresh step failed (non-fatal): %s", e)
+
+        # 7. Refresh Nifty 500 constituents + recent prices for Sentiment Indicators
+        try:
+            from price_service import fetch_nse_index_constituents
+            nifty500_items = fetch_nse_index_constituents("NIFTY 500")
+            if nifty500_items:
+                for item in nifty500_items:
+                    symbol = item.get("symbol", "").strip()
+                    if not symbol:
+                        continue
+                    existing = (
+                        db.query(IndexConstituent)
+                        .filter(IndexConstituent.index_name == "NIFTY 500",
+                                IndexConstituent.ticker == symbol)
+                        .first()
+                    )
+                    if existing:
+                        existing.last_price = item.get("last_price")
+                        existing.fetched_at = datetime.now()
+                    else:
+                        db.add(IndexConstituent(
+                            index_name="NIFTY 500", ticker=symbol,
+                            company_name=item.get("company_name"),
+                            weight_pct=item.get("weight"),
+                            last_price=item.get("last_price"),
+                        ))
+                nifty500_tickers = [i["symbol"] for i in nifty500_items if i.get("symbol")]
+                new_n500 = [t for t in nifty500_tickers if t.upper() not in covered]
+                if new_n500:
+                    n500_data = fetch_yfinance_bulk_stock_history(new_n500, period="5d")
+                    for ticker, rows in n500_data.items():
+                        for row in rows:
+                            upsert_price_row(db, ticker, row)
+        except Exception as e:
+            logger.warning("Nifty 500 EOD constituent refresh failed (non-fatal): %s", e)
 
         db.commit()
         logger.info(

@@ -98,7 +98,7 @@ NSE_INDEX_KEYS = [
     # Thematic
     "NIFTYHEALTHCARE", "NIFTYCONSUMPTION", "NIFTYCOMMODITIES",
     "NIFTYINDIAMFG", "NIFTYINDIADEFENCE", "NIFTYINDIGITAL",
-    "NIFTYCPSE", "NIFTY100QUALITY30",
+    "NIFTYCPSE", "NIFTY100QUALITY30", "NIFTYDIVOPPS50",
     # BSE
     "SENSEX", "BSE500",
     # Commodities & Currency
@@ -128,7 +128,7 @@ NSE_INDEX_CATEGORIES: dict = {
     "NIFTYHEALTHCARE": "thematic", "NIFTYCONSUMPTION": "thematic",
     "NIFTYCOMMODITIES": "thematic", "NIFTYINDIAMFG": "thematic",
     "NIFTYINDIADEFENCE": "thematic", "NIFTYINDIGITAL": "thematic",
-    "NIFTYCPSE": "thematic", "NIFTY100QUALITY30": "thematic",
+    "NIFTYCPSE": "thematic", "NIFTY100QUALITY30": "thematic", "NIFTYDIVOPPS50": "thematic",
     # BSE & Global
     "SENSEX": "global", "BSE500": "global",
     "GOLD": "global", "SILVER": "global", "CRUDEOIL": "global",
@@ -173,7 +173,6 @@ NSE_DISPLAY_MAP = {
     "NIFTY500":             "NIFTY 500",
     "NIFTYNEXT50":          "NIFTY NEXT 50",
     "MIDCPNIFTY":           "NIFTY MIDCAP 50",
-    "NIFTYMIDCAP50":        "NIFTY MIDCAP 50",
     "NIFTYMIDCAP100":       "NIFTY MIDCAP 100",
     "NIFTYMIDCAP150":       "NIFTY MIDCAP 150",
     "NIFTYSMALLCAP":        "NIFTY SMALLCAP 250",
@@ -216,7 +215,6 @@ NSE_DISPLAY_MAP = {
     "NIFTYCPSE":            "NIFTY CPSE",
     "NIFTY100QUALITY30":    "NIFTY100 QUALITY 30",
     "NIFTYDIVOPPS50":       "NIFTY DIVIDEND OPPORTUNITIES 50",
-    "NIFTYCONSUMER":        "NIFTY CONSUMER DURABLES",
     "INDIAVIX":             "INDIA VIX",
     # ── BSE & Global ──
     "SENSEX":               "SENSEX",

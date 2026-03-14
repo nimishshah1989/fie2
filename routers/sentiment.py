@@ -44,17 +44,33 @@ def compute_sentiment(db: Session) -> dict:
     today = date.today()
     today_str = today.isoformat()
 
-    # Load Nifty 500 constituents
-    constituents = (
+    # Load Nifty 500 constituents (preferred), falling back to all tracked sector stocks
+    nifty500_constituents = (
         db.query(IndexConstituent)
         .filter(IndexConstituent.index_name == "NIFTY 500")
         .all()
     )
+    if nifty500_constituents:
+        constituents = nifty500_constituents
+        universe_label = "NIFTY 500"
+    else:
+        # Fallback: use all sector-index stocks already in IndexConstituent from EOD backfill
+        # (NIFTY BANK, NIFTY IT, NIFTY PHARMA, etc. — populated at startup)
+        all_rows = db.query(IndexConstituent).all()
+        seen: set = set()
+        constituents = []
+        for c in all_rows:
+            if c.ticker not in seen:
+                seen.add(c.ticker)
+                constituents.append(c)
+        universe_label = "Sector Universe"
+        logger.info("Sentiment: NIFTY 500 not in DB, using %d sector stocks as universe", len(constituents))
+
     tickers = [c.ticker for c in constituents]
     universe_size = len(tickers)
 
     if universe_size == 0:
-        logger.warning("Sentiment: no Nifty 500 constituents found in DB")
+        logger.warning("Sentiment: no constituents found in DB at all")
         return _empty_result(0, today_str)
 
     logger.info("Sentiment: computing metrics for %d Nifty 500 stocks", universe_size)
@@ -199,7 +215,7 @@ def compute_sentiment(db: Session) -> dict:
         return round((count / stocks_computed) * 100, 1)
 
     return {
-        "universe": "NIFTY 500",
+        "universe": universe_label,
         "universe_size": universe_size,
         "stocks_computed": stocks_computed,
         "computed_at": datetime.now().isoformat() + "Z",
