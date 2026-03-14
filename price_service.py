@@ -102,6 +102,10 @@ NSE_INDEX_KEYS = [
     "SENSEX", "BSE500",
     # Commodities & Currency
     "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR",
+    # Fixed Income
+    "NIFTYLIQUID15", "NIFTYGSEC10YR", "NIFTYGSEC813",
+    "NIFTYGSEC48", "NIFTYGSEC1115", "NIFTYGSEC15PLUS",
+    "NIFTYGSECCOMPOSITE",
 ]
 
 # Category map for pulse page tab grouping
@@ -132,10 +136,31 @@ NSE_INDEX_CATEGORIES: dict = {
     "SENSEX": "global", "BSE500": "global",
     "GOLD": "global", "SILVER": "global", "CRUDEOIL": "global",
     "COPPER": "global", "USDINR": "global",
+    # Fixed Income
+    "NIFTYLIQUID15": "fixed_income", "NIFTYGSEC10YR": "fixed_income",
+    "NIFTYGSEC813": "fixed_income", "NIFTYGSEC48": "fixed_income",
+    "NIFTYGSEC1115": "fixed_income", "NIFTYGSEC15PLUS": "fixed_income",
+    "NIFTYGSECCOMPOSITE": "fixed_income",
 }
 
 # Non-nsetools instruments — served from DB prices on pulse page (BSE & Global tab)
-NON_NSETOOLS_KEYS = ["SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR"]
+NON_NSETOOLS_KEYS = [
+    "SENSEX", "BSE500", "GOLD", "SILVER", "CRUDEOIL", "COPPER", "USDINR",
+    # Fixed Income (no nsetools live quotes — served from DB)
+    "NIFTYLIQUID15", "NIFTYGSEC10YR", "NIFTYGSEC813",
+    "NIFTYGSEC48", "NIFTYGSEC1115", "NIFTYGSEC15PLUS", "NIFTYGSECCOMPOSITE",
+]
+
+# Fixed Income key list (for reference)
+FIXED_INCOME_KEYS = [
+    "NIFTYLIQUID15",
+    "NIFTYGSEC10YR",
+    "NIFTYGSEC813",
+    "NIFTYGSEC48",
+    "NIFTYGSEC1115",
+    "NIFTYGSEC15PLUS",
+    "NIFTYGSECCOMPOSITE",
+]
 
 # ─── ETF Universe for EOD Tracking ──────────────────────
 NSE_ETF_UNIVERSE = {
@@ -213,6 +238,14 @@ NSE_DISPLAY_MAP = {
     "NIFTYINDIGITAL":       "NIFTY INDIA DIGITAL",
     "NIFTYCPSE":            "NIFTY CPSE",
     "INDIAVIX":             "INDIA VIX",
+    # ── Fixed Income ──
+    "NIFTYLIQUID15":        "NIFTY LIQUID 15",
+    "NIFTYGSEC10YR":        "NIFTY 10 YR BENCHMARK G-SEC",
+    "NIFTYGSEC813":         "NIFTY 8-13 YR G-SEC",
+    "NIFTYGSEC48":          "NIFTY 4-8 YR G-SEC INDEX",
+    "NIFTYGSEC1115":        "NIFTY 11-15 YR G-SEC INDEX",
+    "NIFTYGSEC15PLUS":      "NIFTY 15 YR AND ABOVE G-SEC INDEX",
+    "NIFTYGSECCOMPOSITE":   "NIFTY COMPOSITE G-SEC INDEX",
     # ── BSE & Global ──
     "SENSEX":               "SENSEX",
     "BSE500":               "BSE 500",

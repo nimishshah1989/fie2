@@ -7,11 +7,14 @@
 # ── Stage 1: Node.js build ──────────────────────────
 FROM node:20-alpine AS frontend
 
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
 WORKDIR /app/web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
+COPY web/package.json web/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY web/ .
-RUN npx next build
+ENV NEXT_PUBLIC_API_URL=""
+RUN pnpm run build
 
 # ── Stage 2: Python runtime ─────────────────────────
 FROM python:3.11

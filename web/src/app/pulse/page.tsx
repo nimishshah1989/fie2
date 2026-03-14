@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useIndices } from "@/hooks/use-indices";
 import { IndexTable } from "@/components/index-table";
 import { SignalHeatmap } from "@/components/signal-heatmap";
+import { FixedIncomeTable } from "@/components/fixed-income-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { BASE_INDEX_OPTIONS, PERIOD_OPTIONS } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/utils";
-import { Activity, TrendingUp } from "lucide-react";
+import { Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LiveIndex } from "@/lib/types";
 
@@ -33,6 +34,7 @@ function getCategory(idx: LiveIndex): PulseTab {
   if (cat === "sectoral") return "sectoral";
   if (cat === "thematic") return "thematic";
   if (cat === "global") return "global";
+  if (cat === "fixed_income") return "fixed_income";
   return "broad";
 }
 
@@ -55,7 +57,7 @@ export default function PulsePage() {
     return map;
   }, [data.indices]);
 
-  const activeIndices = activeTab === "fixed_income" ? [] : grouped[activeTab];
+  const activeIndices = grouped[activeTab];
   const showHeatmap = activeTab === "broad" || activeTab === "sectoral" || activeTab === "thematic";
 
   return (
@@ -86,23 +88,16 @@ export default function PulsePage() {
             )}
           >
             {label}
-            {key !== "fixed_income" && grouped[key].length > 0 && (
+            {grouped[key].length > 0 && (
               <span className="ml-1.5 text-xs text-muted-foreground">({grouped[key].length})</span>
             )}
           </button>
         ))}
       </div>
 
-      {/* Fixed Income placeholder */}
+      {/* Fixed Income tab */}
       {activeTab === "fixed_income" && (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <TrendingUp className="h-12 w-12 text-muted-foreground/40 mb-4" />
-          <h3 className="text-lg font-semibold text-foreground">Fixed Income Indices</h3>
-          <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-            Government securities, bond, and fixed income index data coming soon.
-            This tab will track G-Sec indices and other debt market instruments.
-          </p>
-        </div>
+        <FixedIncomeTable indices={grouped.fixed_income} />
       )}
 
       {/* Controls for data tabs */}

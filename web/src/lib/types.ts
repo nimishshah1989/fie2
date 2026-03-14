@@ -92,7 +92,7 @@ export interface LiveIndex {
   ratio_returns?: Record<string, number | null>;
   index_returns?: Record<string, number | null>;
   source?: string;
-  category?: "broad" | "sectoral" | "thematic" | "global";
+  category?: "broad" | "sectoral" | "thematic" | "global" | "fixed_income";
 }
 
 export interface ActionRequest {
@@ -125,4 +125,39 @@ export interface IndicesResponse {
   timestamp: string;
   indices: LiveIndex[];
   error?: string;
+}
+
+export interface SentimentMetric {
+  key: string;
+  label: string;
+  count: number;
+  total: number;
+  pct: number;
+  invert?: boolean;
+  placeholder?: boolean;
+}
+
+export interface SentimentLayer {
+  label: string;
+  metrics: SentimentMetric[];
+  period_note?: string;
+  periods?: Record<string, string>;
+}
+
+export interface SentimentResponse {
+  success: boolean;
+  cached: boolean;
+  universe: string;
+  universe_size: number;
+  stocks_computed: number;
+  computed_at: string;
+  as_of_date: string;
+  composite_score: number;
+  zone: string;
+  layer_scores: Record<string, number>;
+  short_term_trend: SentimentLayer;
+  broad_trend: SentimentLayer;
+  advance_decline: SentimentLayer;
+  momentum: SentimentLayer;
+  extremes: SentimentLayer;
 }

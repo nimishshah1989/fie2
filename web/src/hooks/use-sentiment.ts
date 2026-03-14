@@ -5,7 +5,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 async function fetchSentiment() {
   const res = await fetch(`${API}/api/sentiment`);
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`Sentiment fetch failed: ${res.status}`);
   return res.json();
 }
 

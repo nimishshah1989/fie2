@@ -543,3 +543,23 @@ class DrawdownEvent(Base):
     __table_args__ = (
         Index('idx_drawdown_portfolio', 'portfolio_id'),
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  SENTIMENT HISTORY (daily composite score snapshots)
+# ═══════════════════════════════════════════════════════════
+
+class SentimentHistory(Base):
+    __tablename__ = "sentiment_history"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date   = Column(String(10), nullable=False, unique=True, index=True)
+    composite_score = Column(Float)
+    zone            = Column(String(20))
+    layer_short     = Column(Float)
+    layer_broad     = Column(Float)
+    layer_ad        = Column(Float)
+    layer_momentum  = Column(Float)
+    layer_extremes  = Column(Float)
+    stocks_computed = Column(Integer)
+    created_at      = Column(DateTime, default=func.now())

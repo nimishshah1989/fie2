@@ -4,7 +4,8 @@ Pure-Python EMA, RSI, and calendar-period boundary utilities.
 No external dependencies — operates on lists of floats.
 """
 
-from datetime import date
+import calendar
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 # ─── EMA ─────────────────────────────────────────────────
@@ -85,12 +86,24 @@ def resample_to_monthly(date_close_pairs: list[tuple[str, float]]) -> list[tuple
     return sorted(monthly.items())
 
 
+# ─── Weekly Resampling ───────────────────────────────────
+
+def resample_to_weekly(date_close_pairs: list[tuple[str, float]]) -> list[tuple[str, float]]:
+    """Resample daily (date_str, close) pairs to weekly last-close (ISO week)."""
+    weekly: dict[str, float] = {}
+    for date_str, close in sorted(date_close_pairs):
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        week_key = dt.strftime("%Y-W%W")
+        weekly[week_key] = close
+    return sorted(weekly.items())
+
+
 # ─── Calendar Period Boundaries ──────────────────────────
 
 def prev_month_range(ref: date) -> tuple[date, date]:
     """Return (start, end) of the calendar month prior to ref's month."""
     first_of_this_month = ref.replace(day=1)
-    end = first_of_this_month - __import__("datetime").timedelta(days=1)
+    end = first_of_this_month - timedelta(days=1)
     start = end.replace(day=1)
     return start, end
 
@@ -108,7 +121,6 @@ def prev_quarter_range(ref: date) -> tuple[date, date]:
         start_month = (q - 1) * 3 + 1
         end_month = q * 3
         start = date(ref.year, start_month, 1)
-        import calendar
         _, last_day = calendar.monthrange(ref.year, end_month)
         end = date(ref.year, end_month, last_day)
     return start, end
