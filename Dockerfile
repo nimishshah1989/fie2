@@ -31,7 +31,7 @@ COPY requirements.server.txt .
 RUN pip install --no-cache-dir -r requirements.server.txt
 
 # Copy backend source
-COPY server.py models.py price_service.py config.py ./
+COPY server.py models.py price_service.py index_constants.py config.py ./
 COPY routers/ ./routers/
 COPY services/ ./services/
 COPY middleware/ ./middleware/
