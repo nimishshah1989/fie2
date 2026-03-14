@@ -724,6 +724,10 @@ async def actionables(db: Session = Depends(get_db)):
         if a.received_at:
             days_since = (datetime.now() - a.received_at).days
 
+        # Skip already-closed trades from active list
+        if action_obj.closed_at:
+            continue
+
         results.append({
             **_serialize(a),
             "trigger_type": trigger_type,
@@ -734,3 +738,103 @@ async def actionables(db: Session = Depends(get_db)):
             "days_since": days_since, "is_ratio_trade": is_ratio,
         })
     return {"actionables": results}
+
+
+class CloseTradeRequest(BaseModel):
+    closed_price: float = Field(gt=0, description="Price at which the trade was actually closed")
+
+
+@router.post(
+    "/api/actionables/{alert_id}/close",
+    tags=["Alerts"],
+    summary="Close a triggered trade",
+    description="Marks a trade as manually closed at the provided price. Locks in the final P&L. Removes it from the active actionables list and moves it to closed history.",
+)
+async def close_actionable(alert_id: int, req: CloseTradeRequest, db: Session = Depends(get_db)):
+    """Close a triggered trade — lock P&L at the actual close price."""
+    a = db.get(TradingViewAlert, alert_id)
+    if not a:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    action_obj = a.action
+    if not action_obj:
+        raise HTTPException(status_code=400, detail="Alert has no action")
+    if action_obj.closed_at:
+        raise HTTPException(status_code=400, detail="Trade already closed")
+
+    # Compute final P&L
+    entry_low = action_obj.entry_price_low
+    entry_high = action_obj.entry_price_high
+    if entry_low is not None and entry_high is not None:
+        entry_price = (entry_low + entry_high) / 2.0
+    elif entry_low is not None:
+        entry_price = entry_low
+    elif entry_high is not None:
+        entry_price = entry_high
+    else:
+        entry_price = a.price_at_alert or a.price_close
+
+    if not entry_price or entry_price <= 0:
+        raise HTTPException(status_code=400, detail="Cannot compute P&L: entry price unavailable")
+
+    direction = (a.signal_direction or "BULLISH").upper()
+    mult = -1.0 if direction == "BEARISH" else 1.0
+    closed_pnl_pct = round(mult * ((req.closed_price - entry_price) / entry_price) * 100, 2)
+
+    action_obj.closed_at = datetime.now()
+    action_obj.closed_price = req.closed_price
+    action_obj.closed_pnl_pct = closed_pnl_pct
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Trade closed",
+        "closed_price": req.closed_price,
+        "pnl_pct": closed_pnl_pct,
+    }
+
+
+@router.get(
+    "/api/actionables/closed",
+    tags=["Alerts"],
+    summary="Closed trades history",
+    description="Returns trades that have been manually closed with locked-in P&L.",
+)
+async def closed_actionables(db: Session = Depends(get_db)):
+    """Return all manually closed trades with their locked P&L."""
+    approved = (
+        db.query(TradingViewAlert)
+        .filter(TradingViewAlert.status == AlertStatus.APPROVED)
+        .order_by(desc(TradingViewAlert.received_at))
+        .all()
+    )
+    results = []
+    for a in approved:
+        action_obj = a.action
+        if not action_obj or not action_obj.closed_at:
+            continue
+
+        entry_low = action_obj.entry_price_low
+        entry_high = action_obj.entry_price_high
+        if entry_low is not None and entry_high is not None:
+            entry_price = (entry_low + entry_high) / 2.0
+        elif entry_low is not None:
+            entry_price = entry_low
+        elif entry_high is not None:
+            entry_price = entry_high
+        else:
+            entry_price = a.price_at_alert or a.price_close
+
+        days_since = (datetime.now() - a.received_at).days if a.received_at else None
+        results.append({
+            **_serialize(a),
+            "entry_price": round(entry_price, 2) if entry_price else None,
+            "closed_price": action_obj.closed_price,
+            "closed_pnl_pct": action_obj.closed_pnl_pct,
+            "closed_at": action_obj.closed_at.isoformat() + "Z",
+            "stop_loss": action_obj.stop_loss,
+            "target_price": action_obj.target_price,
+            "days_since": days_since,
+            "is_ratio_trade": action_obj.is_ratio,
+        })
+    return {"closed_trades": results}

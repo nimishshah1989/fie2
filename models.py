@@ -129,6 +129,11 @@ class AlertAction(Base):
     stop_loss         = Column(Float, nullable=True)
     target_price      = Column(Float, nullable=True)
 
+    # Trade closure (manual close by FM)
+    closed_at        = Column(DateTime, nullable=True)
+    closed_price     = Column(Float, nullable=True)
+    closed_pnl_pct   = Column(Float, nullable=True)   # locked P&L % at close
+
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -193,6 +198,13 @@ def _run_migrations():
         "ALTER TABLE model_portfolios ADD COLUMN ucc_code VARCHAR(50)",
         "ALTER TABLE pms_nav_daily ADD COLUMN etf_investment FLOAT",
         "ALTER TABLE pms_nav_daily ADD COLUMN unit_nav FLOAT",
+        # Microbasket execution/exit date tracking
+        "ALTER TABLE microbaskets ADD COLUMN execution_date DATE",
+        "ALTER TABLE microbaskets ADD COLUMN exit_date DATE",
+        # Actionables close trade tracking
+        "ALTER TABLE alert_actions ADD COLUMN closed_at TIMESTAMP",
+        "ALTER TABLE alert_actions ADD COLUMN closed_price FLOAT",
+        "ALTER TABLE alert_actions ADD COLUMN closed_pnl_pct FLOAT",
     ]
     for sql in migrations:
         try:
@@ -370,6 +382,8 @@ class Microbasket(Base):
     description    = Column(Text, nullable=True)
     benchmark      = Column(String(50), default="NIFTY")
     portfolio_size = Column(Float, nullable=True)   # Total investment in INR (e.g. 500000)
+    execution_date = Column(Date, nullable=True)    # Date basket was deployed/started
+    exit_date      = Column(Date, nullable=True)    # Date basket was stopped (frozen returns)
     status         = Column(SQLEnum(BasketStatus), default=BasketStatus.ACTIVE)
     created_at     = Column(DateTime, default=func.now())
     updated_at     = Column(DateTime, default=func.now(), onupdate=func.now())

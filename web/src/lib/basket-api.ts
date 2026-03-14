@@ -64,6 +64,15 @@ export async function archiveBasket(
   return res.json();
 }
 
+export async function stopBasket(
+  id: number
+): Promise<{ success: boolean; exit_date?: string; error?: string }> {
+  const res = await fetch(`${API}/api/baskets/${id}/stop`, {
+    method: "POST",
+  });
+  return res.json();
+}
+
 export async function uploadBasketCSV(
   file: File
 ): Promise<CsvUploadResponse> {

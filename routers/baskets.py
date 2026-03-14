@@ -7,7 +7,7 @@ import csv
 import io
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -50,6 +50,7 @@ class CreateBasketRequest(BaseModel):
     description: Optional[str] = None
     benchmark: Optional[str] = "NIFTY"
     portfolio_size: Optional[float] = None
+    execution_date: Optional[date] = None   # Date basket was deployed
     constituents: List[ConstituentPayload] = Field(min_length=1)
 
 
@@ -58,6 +59,7 @@ class UpdateBasketRequest(BaseModel):
     description: Optional[str] = None
     benchmark: Optional[str] = None
     portfolio_size: Optional[float] = None
+    execution_date: Optional[date] = None
     constituents: Optional[List[ConstituentPayload]] = None
 
 
@@ -182,6 +184,7 @@ async def create_basket(req: CreateBasketRequest, db: Session = Depends(get_db))
         description=req.description,
         benchmark=req.benchmark or "NIFTY",
         portfolio_size=effective_size,
+        execution_date=req.execution_date,
     )
     db.add(basket)
     db.flush()
@@ -419,6 +422,8 @@ async def baskets_live(base: str = "NIFTY", db: Session = Depends(get_db)):
             "portfolio_size": b.portfolio_size,
             "portfolio_worth": portfolio_worth,
             "portfolio_cost": portfolio_cost,
+            "execution_date": b.execution_date.isoformat() if b.execution_date else None,
+            "exit_date": b.exit_date.isoformat() if b.exit_date else None,
             "num_constituents": len(b.constituents),
             "current_value": close,
             "value_date": latest_nav.date if latest_nav else None,
@@ -484,6 +489,8 @@ async def get_basket_detail(basket_id: int, db: Session = Depends(get_db)):
         "description": basket.description,
         "benchmark": basket.benchmark,
         "portfolio_size": basket.portfolio_size,
+        "execution_date": basket.execution_date.isoformat() if basket.execution_date else None,
+        "exit_date": basket.exit_date.isoformat() if basket.exit_date else None,
         "status": basket.status.value,
         "current_value": live_data["current_price"] if live_data else None,
         "num_constituents": len(basket.constituents),
@@ -531,6 +538,8 @@ async def update_basket(basket_id: int, req: UpdateBasketRequest, db: Session = 
         basket.benchmark = req.benchmark
     if req.portfolio_size is not None:
         basket.portfolio_size = req.portfolio_size if req.portfolio_size > 0 else None
+    if req.execution_date is not None:
+        basket.execution_date = req.execution_date
 
     if req.constituents is not None:
         total_weight = sum(c.weight_pct for c in req.constituents)
@@ -580,6 +589,31 @@ async def archive_basket(basket_id: int, db: Session = Depends(get_db)):
     basket.status = BasketStatus.ARCHIVED
     db.commit()
     return {"success": True, "message": f"Basket '{basket.name}' archived"}
+
+
+@router.post(
+    "/api/baskets/{basket_id}/stop",
+    tags=["Microbaskets"],
+    summary="Stop basket tracking",
+    description="Freeze basket tracking at the current date. Returns become static (computed from execution_date to exit_date). Basket remains visible but is marked as Stopped.",
+)
+async def stop_basket(basket_id: int, db: Session = Depends(get_db)):
+    """Stop a basket — records exit_date (today) and archives it, freezing returns."""
+    basket = db.get(Microbasket, basket_id)
+    if not basket:
+        raise HTTPException(status_code=404, detail="Basket not found")
+    if basket.exit_date:
+        raise HTTPException(status_code=400, detail="Basket is already stopped")
+
+    basket.exit_date = date.today()
+    basket.status = BasketStatus.ARCHIVED
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Basket '{basket.name}' stopped on {basket.exit_date.isoformat()}",
+        "exit_date": basket.exit_date.isoformat(),
+    }
 
 
 @router.post(

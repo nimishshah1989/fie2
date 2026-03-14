@@ -1,14 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SignalChip } from "@/components/signal-chip";
 import { formatPrice, formatPct, cn } from "@/lib/utils";
+import { closeActionable } from "@/lib/api";
 import type { ActionableAlert } from "@/lib/types";
-import { TrendingUp, TrendingDown, Target, ShieldAlert } from "lucide-react";
+import { TrendingUp, TrendingDown, Target, ShieldAlert, CheckCircle2, X } from "lucide-react";
 
 interface ActionableCardProps {
   alert: ActionableAlert;
+  onClose?: () => void;
 }
 
 const actionColors: Record<string, string> = {
@@ -22,7 +27,11 @@ const actionColors: Record<string, string> = {
   WATCH: "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-export function ActionableCard({ alert }: ActionableCardProps) {
+export function ActionableCard({ alert, onClose }: ActionableCardProps) {
+  const [showClose, setShowClose] = useState(false);
+  const [closePrice, setClosePrice] = useState(String(alert.current_price ?? ""));
+  const [submitting, setSubmitting] = useState(false);
+
   const isProfit = alert.pnl_pct >= 0;
   const isTPHit = alert.trigger_type === "TP_HIT";
   const borderColor = isTPHit ? "border-l-emerald-500" : "border-l-red-500";
@@ -30,6 +39,19 @@ export function ActionableCard({ alert }: ActionableCardProps) {
   const actionStyle =
     actionColors[actionCall.toUpperCase()] ??
     "bg-slate-100 text-slate-600 border-slate-200";
+
+  async function handleConfirmClose() {
+    const price = parseFloat(closePrice);
+    if (isNaN(price) || price <= 0) return;
+    setSubmitting(true);
+    try {
+      await closeActionable(alert.id, price);
+      onClose?.();
+    } finally {
+      setSubmitting(false);
+      setShowClose(false);
+    }
+  }
 
   return (
     <Card
@@ -39,7 +61,7 @@ export function ActionableCard({ alert }: ActionableCardProps) {
       )}
     >
       <CardContent className="p-4 px-3 space-y-3">
-        {/* Header: Ticker + Signal + Action + Trigger badge */}
+        {/* Header: Ticker + Signal + Action */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold text-foreground">
@@ -136,6 +158,49 @@ export function ActionableCard({ alert }: ActionableCardProps) {
             </span>
           </div>
         </div>
+
+        {/* Close Trade — inline confirm */}
+        {showClose ? (
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs text-slate-500 whitespace-nowrap">Close at ₹</span>
+            <Input
+              type="number"
+              value={closePrice}
+              onChange={(e) => setClosePrice(e.target.value)}
+              className="h-7 text-xs font-mono w-28"
+              placeholder="Price"
+              min={0}
+            />
+            <Button
+              size="sm"
+              className="h-7 text-xs px-2 bg-teal-600 text-white hover:bg-teal-700"
+              onClick={handleConfirmClose}
+              disabled={submitting}
+            >
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Confirm
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs px-2"
+              onClick={() => setShowClose(false)}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : (
+          <div className="pt-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs w-full text-slate-600 hover:text-teal-700 hover:border-teal-400"
+              onClick={() => setShowClose(true)}
+            >
+              Close Trade
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -58,7 +58,7 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, health, indices, pms, portfolios, recommendations
+from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -146,6 +146,7 @@ app.include_router(portfolios.router)
 app.include_router(baskets.router)
 app.include_router(recommendations.router)
 app.include_router(pms.router)
+app.include_router(sentiment.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -479,8 +480,27 @@ async def start_scheduler():
             id="daily_eod_fetch",
             replace_existing=True,
         )
+        # Sentiment refresh runs 5 min after EOD once prices are stored
+        def _eod_sentiment_refresh():
+            from models import SessionLocal as _SL
+            from routers.sentiment import refresh_sentiment as _refresh
+            import asyncio
+            db = _SL()
+            try:
+                asyncio.run(_refresh(db))
+            except Exception as _e:
+                logger.warning("EOD sentiment refresh failed: %s", _e)
+            finally:
+                db.close()
+
+        scheduler.add_job(
+            _eod_sentiment_refresh,
+            CronTrigger(hour=15, minute=35, timezone=ist),
+            id="daily_sentiment_refresh",
+            replace_existing=True,
+        )
         scheduler.start()
-        logger.info("APScheduler started — daily EOD fetch at 3:30 PM IST")
+        logger.info("APScheduler started — daily EOD fetch at 3:30 PM IST, sentiment refresh at 3:35 PM IST")
     except Exception as e:
         logger.warning("APScheduler not available: %s (install apscheduler)", e)
 
@@ -491,7 +511,7 @@ async def start_scheduler():
 
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):

@@ -12,9 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { X, Pencil, Archive } from "lucide-react";
+import { X, Pencil, Archive, StopCircle, Calendar } from "lucide-react";
 import { cn, formatPrice } from "@/lib/utils";
-import { archiveBasket } from "@/lib/basket-api";
+import { archiveBasket, stopBasket } from "@/lib/basket-api";
 import type { BasketLiveItem } from "@/lib/basket-types";
 import type { UpdateBasketPayload } from "@/lib/basket-types";
 
@@ -50,7 +50,9 @@ function formatINR(val: number): string {
 
 export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketDetailPanelProps) {
   const [archiving, setArchiving] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const hasPortfolioSize = basket.portfolio_size != null && basket.portfolio_size > 0;
+  const isStopped = !!basket.exit_date;
 
   const portfolioSize = basket.portfolio_size ?? 0;
   const deployed = basket.portfolio_cost ?? 0;
@@ -75,6 +77,18 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
     }
   }
 
+  async function handleStop() {
+    if (!confirm(`Stop basket "${basket.name}"? Returns will be frozen at today's date.`)) return;
+    setStopping(true);
+    try {
+      await stopBasket(basket.id);
+      onMutate();
+      onClose();
+    } finally {
+      setStopping(false);
+    }
+  }
+
   return (
     <Card className="gap-0">
       <CardContent className="p-4 sm:p-6 space-y-4">
@@ -85,7 +99,7 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
             {basket.description && (
               <p className="text-xs text-muted-foreground mt-0.5">{basket.description}</p>
             )}
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="outline" className="text-[10px]">
                 {basket.slug}
               </Badge>
@@ -97,12 +111,35 @@ export function BasketDetailPanel({ basket, onClose, onEdit, onMutate }: BasketD
                   {formatINR(portfolioSize)}
                 </Badge>
               )}
+              {basket.execution_date && (
+                <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                  <Calendar className="h-3 w-3" />
+                  Started {basket.execution_date}
+                </span>
+              )}
+              {isStopped && (
+                <Badge className="text-[10px] bg-amber-100 text-amber-700 border-amber-300">
+                  Stopped {basket.exit_date}
+                </Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" onClick={() => onEdit(basket)} title="Edit basket">
               <Pencil className="h-4 w-4" />
             </Button>
+            {!isStopped && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleStop}
+                disabled={stopping}
+                title="Stop basket — freeze returns at today"
+                className="text-amber-600 hover:text-amber-800"
+              >
+                <StopCircle className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

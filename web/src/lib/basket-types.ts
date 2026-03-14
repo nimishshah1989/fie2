@@ -39,6 +39,8 @@ export interface BasketLiveItem {
   portfolio_size?: number | null;
   portfolio_worth?: number | null;
   portfolio_cost?: number | null;
+  execution_date?: string | null;
+  exit_date?: string | null;
   num_constituents: number;
   current_value: number | null;
   value_date: string | null;
@@ -63,6 +65,8 @@ export interface BasketDetail {
   description: string | null;
   benchmark: string;
   portfolio_size?: number | null;
+  execution_date?: string | null;
+  exit_date?: string | null;
   status: "ACTIVE" | "ARCHIVED";
   current_value: number | null;
   num_constituents: number;
@@ -84,6 +88,7 @@ export interface CreateBasketPayload {
   description?: string;
   benchmark?: string;
   portfolio_size?: number;
+  execution_date?: string;
   constituents: ConstituentInput[];
 }
 

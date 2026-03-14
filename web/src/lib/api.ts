@@ -3,6 +3,7 @@ import type {
   ActionRequest,
   PerformanceAlert,
   ActionableAlert,
+  ClosedTrade,
   IndicesResponse,
   StatusResponse,
 } from "@/lib/types";
@@ -71,6 +72,25 @@ export async function fetchActionables(): Promise<ActionableAlert[]> {
   if (!res.ok) return [];
   const data = await res.json();
   return data.actionables || [];
+}
+
+export async function fetchClosedTrades(): Promise<ClosedTrade[]> {
+  const res = await fetch(`${API}/api/actionables/closed`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.closed_trades || [];
+}
+
+export async function closeActionable(
+  alertId: number,
+  closedPrice: number
+): Promise<{ success: boolean; pnl_pct?: number; error?: string }> {
+  const res = await fetch(`${API}/api/actionables/${alertId}/close`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ closed_price: closedPrice }),
+  });
+  return res.json();
 }
 
 export async function fetchStatus(): Promise<StatusResponse> {

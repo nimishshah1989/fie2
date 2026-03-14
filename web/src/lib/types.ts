@@ -66,6 +66,17 @@ export interface ActionableAlert extends Alert {
   is_ratio_trade: boolean;
 }
 
+export interface ClosedTrade extends Alert {
+  entry_price: number | null;
+  closed_price: number;
+  closed_pnl_pct: number;
+  closed_at: string;
+  stop_loss: number | null;
+  target_price: number | null;
+  days_since: number | null;
+  is_ratio_trade: boolean;
+}
+
 export interface LiveIndex {
   index_name: string;
   nse_name?: string;
@@ -81,6 +92,7 @@ export interface LiveIndex {
   ratio_returns?: Record<string, number | null>;
   index_returns?: Record<string, number | null>;
   source?: string;
+  category?: "broad" | "sectoral" | "thematic" | "global";
 }
 
 export interface ActionRequest {

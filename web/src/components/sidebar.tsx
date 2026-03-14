@@ -14,6 +14,7 @@ import {
   Layers,
   Compass,
   BookOpen,
+  BarChart2,
   Menu,
   X,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/actionables", label: "Actionables", icon: AlertTriangle },
   { href: "/performance", label: "Alert Performance", icon: TrendingUp },
   { href: "/pulse", label: "Market Pulse", icon: Activity },
+  { href: "/sentiment", label: "Sentiment", icon: BarChart2 },
   { href: "/microbaskets", label: "Microbaskets", icon: Layers },
   { href: "/recommendations", label: "Recommendations", icon: Compass },
   { href: "/portfolios", label: "Model Portfolios", icon: Briefcase },
