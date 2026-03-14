@@ -7,7 +7,6 @@ and services/stock_sentiment.py for per-stock scoring.
 import copy
 import logging
 from datetime import date, datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
