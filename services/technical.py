@@ -4,7 +4,7 @@ Pure-Python EMA, RSI, and calendar-period boundary utilities.
 No external dependencies — operates on lists of floats.
 """
 
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 

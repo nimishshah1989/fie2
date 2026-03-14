@@ -270,7 +270,13 @@ async def indices_live(base: str = "NIFTY", tracked_only: bool = True, db: Sessi
     """Return real-time live index data from NSE with ratio-based period returns.
     tracked_only=True (default) filters to only indices with yfinance historical data.
     Also includes non-nsetools instruments (BSE, commodities, currencies) from DB."""
-    from price_service import NON_NSETOOLS_KEYS, NSE_DISPLAY_MAP, NSE_INDEX_CATEGORIES, NSE_INDEX_KEYS, fetch_live_indices
+    from price_service import (
+        NON_NSETOOLS_KEYS,
+        NSE_DISPLAY_MAP,
+        NSE_INDEX_CATEGORIES,
+        NSE_INDEX_KEYS,
+        fetch_live_indices,
+    )
 
     try:
         data = fetch_live_indices()

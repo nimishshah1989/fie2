@@ -572,9 +572,10 @@ async def start_scheduler():
         )
         # Sentiment refresh runs 5 min after EOD once prices are stored
         def _eod_sentiment_refresh():
+            import asyncio
+
             from models import SessionLocal as _SL
             from routers.sentiment import refresh_sentiment as _refresh
-            import asyncio
             db = _SL()
             try:
                 asyncio.run(_refresh(db))
