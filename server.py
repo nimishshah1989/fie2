@@ -185,7 +185,10 @@ def _background_yfinance_backfill():
             logger.info("Backfill: fetching 1Y history from NSE API for all tracked indices...")
             nse_hist = fetch_historical_indices_nse_sync()
             nse_stored = 0
+            tracked = set(NSE_INDEX_KEYS)
             for idx_name, rows in nse_hist.items():
+                if idx_name not in tracked:
+                    continue  # skip untracked indices (may have long names exceeding DB column)
                 for row in rows:
                     if upsert_price_row(db, idx_name, row):
                         nse_stored += 1
@@ -438,7 +441,10 @@ def _scheduled_eod_fetch():
         try:
             from price_service import fetch_historical_indices_nse_sync
             nse_eod = fetch_historical_indices_nse_sync()
+            tracked = set(NSE_INDEX_KEYS)
             for idx_name, rows in nse_eod.items():
+                if idx_name not in tracked:
+                    continue
                 for row in rows:
                     if upsert_price_row(db, idx_name, row):
                         nse_eod_stored += 1

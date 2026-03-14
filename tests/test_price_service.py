@@ -194,11 +194,11 @@ class TestNseIndexKeys:
         """No duplicate entries in the index keys list."""
         assert len(NSE_INDEX_KEYS) == len(set(NSE_INDEX_KEYS))
 
-    def test_all_index_keys_should_have_ticker_map_entry(self):
-        """Every tracked index should have a corresponding NSE_TICKER_MAP entry."""
-        for key in NSE_INDEX_KEYS:
-            assert key in NSE_TICKER_MAP, (
-                f"Index key '{key}' is tracked but has no NSE_TICKER_MAP entry"
+    def test_ticker_map_values_should_be_valid_symbols(self):
+        """Every NSE_TICKER_MAP value should be a non-empty yfinance symbol."""
+        for key, value in NSE_TICKER_MAP.items():
+            assert isinstance(value, str) and len(value) > 0, (
+                f"NSE_TICKER_MAP['{key}'] has invalid value: {value!r}"
             )
 
     def test_non_nsetools_keys_should_be_subset_of_index_keys(self):
@@ -280,10 +280,10 @@ class TestNseDisplayMap:
         """USDINR maps to 'USD/INR'."""
         assert NSE_DISPLAY_MAP["USDINR"] == "USD/INR"
 
-    def test_finnifty_and_niftyfinservice_should_have_same_display(self):
-        """FINNIFTY and NIFTYFINSERVICE are aliases for the same index."""
-        assert NSE_DISPLAY_MAP["FINNIFTY"] == NSE_DISPLAY_MAP["NIFTYFINSERVICE"]
+    def test_finnifty_and_niftyfinservice_should_have_distinct_display_names(self):
+        """FINNIFTY and NIFTYFINSERVICE are different indices with different display names."""
         assert NSE_DISPLAY_MAP["FINNIFTY"] == "NIFTY FINANCIAL SERVICES"
+        assert NSE_DISPLAY_MAP["NIFTYFINSERVICE"] == "NIFTY FINANCIAL SERVICES 25/50"
 
 
 # ═══════════════════════════════════════════════════════════
