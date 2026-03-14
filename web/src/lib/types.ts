@@ -189,6 +189,12 @@ export interface IndicesResponse {
   error?: string;
 }
 
+export interface TickerWithScore {
+  ticker: string;
+  score: number;
+  zone: string;
+}
+
 export interface SentimentMetric {
   key: string;
   label: string;
@@ -197,7 +203,7 @@ export interface SentimentMetric {
   pct: number;
   invert?: boolean;
   placeholder?: boolean;
-  tickers?: string[];
+  tickers?: TickerWithScore[];
 }
 
 export interface SentimentLayer {

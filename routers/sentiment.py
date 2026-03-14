@@ -81,6 +81,41 @@ def _save_snapshot(db: Session, result: dict) -> None:
         db.rollback()
 
 
+def _enrich_tickers_with_scores(result: dict, db: Session) -> dict:
+    """Replace plain ticker lists with [{ticker, score, zone}] sorted by score desc."""
+    from models import StockSentiment
+
+    latest = db.query(StockSentiment.date).order_by(
+        StockSentiment.date.desc()
+    ).first()
+    if not latest:
+        return result
+
+    entries = db.query(
+        StockSentiment.ticker, StockSentiment.composite_score, StockSentiment.zone
+    ).filter(StockSentiment.date == latest[0]).all()
+    score_map = {e.ticker: {"score": e.composite_score, "zone": e.zone} for e in entries}
+
+    out = copy.deepcopy(result)
+    layer_keys = ("short_term_trend", "broad_trend", "advance_decline", "momentum", "extremes")
+    for layer_key in layer_keys:
+        layer = out.get(layer_key, {})
+        for metric in layer.get("metrics", []):
+            tickers = metric.get("tickers")
+            if tickers and isinstance(tickers, list) and tickers and isinstance(tickers[0], str):
+                enriched = []
+                for t in tickers:
+                    info = score_map.get(t, {})
+                    enriched.append({
+                        "ticker": t,
+                        "score": info.get("score", 0),
+                        "zone": info.get("zone", "Neutral"),
+                    })
+                enriched.sort(key=lambda x: x["score"], reverse=True)
+                metric["tickers"] = enriched
+    return out
+
+
 # ─── Market-wide sentiment routes ────────────────────────
 
 @router.get(
@@ -103,12 +138,16 @@ def get_sentiment(
     if _cache_valid():
         cached_result, _ = _sentiment_cache
         out = cached_result if include_tickers else _strip_tickers(cached_result)
+        if include_tickers:
+            out = _enrich_tickers_with_scores(out, db)
         return {"success": True, "cached": True, **out}
 
     result = compute_sentiment(db)
     _sentiment_cache = (result, datetime.now())
     _save_snapshot(db, result)
     out = result if include_tickers else _strip_tickers(result)
+    if include_tickers:
+        out = _enrich_tickers_with_scores(out, db)
     return {"success": True, "cached": False, **out}
 
 

@@ -31,12 +31,12 @@ const LAYER_TABS: { key: LayerKey; label: string }[] = [
   { key: "extremes", label: "Extremes" },
 ];
 
-const LAYER_SCORE_KEYS: { key: string; label: string }[] = [
-  { key: "short_term", label: "Short-Term" },
-  { key: "broad_trend", label: "Broad Trend" },
-  { key: "adv_decline", label: "A/D" },
-  { key: "momentum", label: "Momentum" },
-  { key: "extremes", label: "Extremes" },
+const LAYER_SCORE_KEYS: { key: string; label: string; desc: string }[] = [
+  { key: "short_term", label: "Short-Term", desc: "Daily EMAs (10/21/50), RSI, MACD crosses, 52W extremes" },
+  { key: "broad_trend", label: "Broad Trend", desc: "200 EMA, monthly EMAs, weekly RSI, Golden Cross" },
+  { key: "adv_decline", label: "A/D", desc: "Stocks above prev month/quarter/year highs, A/D ratio" },
+  { key: "momentum", label: "Momentum", desc: "3-month highs, 20-day ROC, higher highs & lows" },
+  { key: "extremes", label: "Extremes", desc: "RSI overbought/oversold, 52W high-low ratio" },
 ];
 
 function scoreColor(score: number): string {
@@ -175,13 +175,16 @@ export default function SentimentPage() {
               />
             </div>
             <div className="lg:col-span-2 grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {LAYER_SCORE_KEYS.map(({ key, label }) => {
+              {LAYER_SCORE_KEYS.map(({ key, label, desc }) => {
                 const val = layerScores[key] ?? 0;
                 return (
-                  <div key={key} className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                    <p className="text-xs text-slate-400 mb-1">{label}</p>
-                    <p className={cn("text-2xl font-bold font-mono tabular-nums", scoreColor(val))}>
+                  <div key={key} className="bg-white rounded-xl border border-slate-200 p-4 flex flex-col">
+                    <p className="text-xs text-slate-400 mb-1 text-center">{label}</p>
+                    <p className={cn("text-2xl font-bold font-mono tabular-nums text-center", scoreColor(val))}>
                       {val.toFixed(0)}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-auto pt-2 leading-tight">
+                      {desc}
                     </p>
                   </div>
                 );

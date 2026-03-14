@@ -2,21 +2,11 @@
 
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface IndicatorMetric {
-  key: string;
-  label: string;
-  count: number;
-  total: number;
-  pct: number;
-  invert?: boolean;
-  placeholder?: boolean;
-  tickers?: string[];
-}
+import type { SentimentMetric } from "@/lib/types";
 
 interface IndicatorRowProps {
-  metric: IndicatorMetric;
-  onClick?: (metric: IndicatorMetric) => void;
+  metric: SentimentMetric;
+  onClick?: (metric: SentimentMetric) => void;
 }
 
 export function IndicatorRow({ metric, onClick }: IndicatorRowProps) {
