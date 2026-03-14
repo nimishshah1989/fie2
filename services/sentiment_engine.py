@@ -56,9 +56,14 @@ def _m(key: str, label: str, count: int, total: int,
     return d
 
 
-def compute_sentiment(db: Session) -> dict:
-    """Compute all 26 breadth metrics for the Nifty 500 universe from DB prices."""
-    today = date.today()
+def compute_sentiment(db: Session, as_of_date: date | None = None) -> dict:
+    """Compute all 26 breadth metrics for the Nifty 500 universe from DB prices.
+
+    Args:
+        as_of_date: If provided, compute as of this date (for historical backfill).
+                    Defaults to today.
+    """
+    today = as_of_date or date.today()
     today_str = today.isoformat()
 
     # Load Nifty 500 constituents (preferred), fallback to sector stocks
@@ -89,6 +94,7 @@ def compute_sentiment(db: Session) -> dict:
         db.query(IndexPrice.index_name, IndexPrice.date, IndexPrice.close_price,
                  IndexPrice.high_price, IndexPrice.low_price)
         .filter(IndexPrice.index_name.in_(tickers), IndexPrice.date >= cutoff,
+                IndexPrice.date <= today_str,
                 IndexPrice.close_price.isnot(None))
         .order_by(IndexPrice.index_name, IndexPrice.date).all()
     )
@@ -357,3 +363,77 @@ def _empty_result(universe_size: int, as_of_date: str) -> dict:
         "composite_score": 0.0, "zone": "Neutral",
         "layer_scores": {"short_term": 0, "broad_trend": 0, "adv_decline": 0, "momentum": 0, "extremes": 0},
     }
+
+
+def backfill_sentiment_history(db: Session, weeks: int = 20) -> int:
+    """Backfill SentimentHistory for past trading days.
+
+    Computes breadth metrics for each historical trading date using
+    compute_sentiment(as_of_date=...) and stores snapshots in the
+    SentimentHistory table. Skips dates that already have entries.
+
+    Returns the number of new snapshots created.
+    """
+    from models import SentimentHistory
+
+    today = date.today()
+    cutoff = (today - timedelta(days=weeks * 7)).isoformat()
+
+    # Get distinct trading dates from IndexPrice
+    date_rows = (
+        db.query(IndexPrice.date)
+        .filter(IndexPrice.date >= cutoff, IndexPrice.date <= today.isoformat())
+        .distinct()
+        .order_by(IndexPrice.date)
+        .all()
+    )
+    trading_dates = [r[0] for r in date_rows]
+
+    # Filter out dates that already have history entries
+    existing = set(
+        r[0] for r in db.query(SentimentHistory.snapshot_date)
+        .filter(SentimentHistory.snapshot_date >= cutoff).all()
+    )
+
+    to_compute = [d for d in trading_dates if d not in existing]
+    logger.info(
+        "Sentiment backfill: %d trading dates found, %d already computed, %d to process",
+        len(trading_dates), len(existing), len(to_compute),
+    )
+
+    if not to_compute:
+        return 0
+
+    count = 0
+    for date_str in to_compute:
+        try:
+            d = date.fromisoformat(date_str)
+            result = compute_sentiment(db, as_of_date=d)
+            if result.get("stocks_computed", 0) < 10:
+                continue
+
+            layer_scores = result.get("layer_scores", {})
+            db.add(SentimentHistory(
+                snapshot_date=date_str,
+                composite_score=result.get("composite_score", 0),
+                zone=result.get("zone", "Neutral"),
+                layer_short=layer_scores.get("short_term", 0),
+                layer_broad=layer_scores.get("broad_trend", 0),
+                layer_ad=layer_scores.get("adv_decline", 0),
+                layer_momentum=layer_scores.get("momentum", 0),
+                layer_extremes=layer_scores.get("extremes", 0),
+                stocks_computed=result.get("stocks_computed", 0),
+            ))
+            count += 1
+
+            if count % 10 == 0:
+                db.commit()
+                logger.info("Sentiment backfill: processed %d/%d dates", count, len(to_compute))
+
+        except Exception as e:
+            logger.warning("Sentiment backfill failed for %s: %s", date_str, e)
+            db.rollback()
+
+    db.commit()
+    logger.info("Sentiment backfill: stored %d new snapshots", count)
+    return count

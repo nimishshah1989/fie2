@@ -380,6 +380,14 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Per-stock sentiment failed (non-fatal): %s", e)
 
+        # 9. Backfill sentiment history (20 weeks) — skips dates already computed
+        try:
+            from services.sentiment_engine import backfill_sentiment_history
+            filled = backfill_sentiment_history(db, weeks=20)
+            logger.info("Sentiment history backfill: %d new snapshots", filled)
+        except Exception as e:
+            logger.warning("Sentiment history backfill failed (non-fatal): %s", e)
+
         logger.info("Background yfinance backfill complete")
     except Exception as e:
         logger.warning("Background yfinance backfill failed (non-fatal): %s", e)
