@@ -7,7 +7,6 @@ No external dependencies — operates on lists of floats.
 from datetime import date
 from typing import Optional
 
-
 # ─── EMA ─────────────────────────────────────────────────
 
 def compute_ema(closes: list[float], period: int) -> Optional[float]:
