@@ -5,6 +5,7 @@ import { useSentiment } from "@/hooks/use-sentiment";
 import { useSentimentHistory } from "@/hooks/use-sentiment-history";
 import { CompositeGauge } from "@/components/sentiment/CompositeGauge";
 import { IndicatorRow } from "@/components/sentiment/IndicatorRow";
+import { StockListDrawer } from "@/components/sentiment/StockListDrawer";
 import { SentimentHistoryChart } from "@/components/sentiment/SentimentHistoryChart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export default function SentimentPage() {
   const { data, error, isLoading, mutate } = useSentiment();
   const { data: historyData } = useSentimentHistory();
   const [activeLayer, setActiveLayer] = useState<LayerKey>("short_term_trend");
+  const [selectedMetric, setSelectedMetric] = useState<SentimentMetric | null>(null);
 
   async function handleRefresh() {
     try {
@@ -203,6 +205,7 @@ export default function SentimentPage() {
                 <IndicatorRow
                   key={m.key}
                   metric={m}
+                  onClick={setSelectedMetric}
                 />
               ))
             ) : (
@@ -224,6 +227,13 @@ export default function SentimentPage() {
           </p>
         </div>
       )}
+
+      {/* Stock List Drawer */}
+      <StockListDrawer
+        metric={selectedMetric}
+        open={!!selectedMetric}
+        onClose={() => setSelectedMetric(null)}
+      />
     </div>
   );
 }

@@ -135,6 +135,7 @@ export interface SentimentMetric {
   pct: number;
   invert?: boolean;
   placeholder?: boolean;
+  tickers?: string[];
 }
 
 export interface SentimentLayer {

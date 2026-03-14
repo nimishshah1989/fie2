@@ -4,7 +4,7 @@ import useSWR from "swr";
 const API = process.env.NEXT_PUBLIC_API_URL || "";
 
 async function fetchSentiment() {
-  const res = await fetch(`${API}/api/sentiment`);
+  const res = await fetch(`${API}/api/sentiment?include_tickers=true`);
   if (!res.ok) throw new Error(`Sentiment fetch failed: ${res.status}`);
   return res.json();
 }

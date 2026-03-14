@@ -4,6 +4,8 @@ Computes 26 breadth indicators across 5 layers for the Nifty 500 universe.
 All data sourced from the local IndexPrice DB — no live fetching required.
 """
 
+from __future__ import annotations
+
 import logging
 from datetime import date, datetime, timedelta
 
@@ -44,9 +46,14 @@ def _pct(count: int, total: int) -> float:
     return round((count / total) * 100, 1) if total else 0.0
 
 
-def _m(key: str, label: str, count: int, total: int, **kw) -> dict:
-    """Build a single metric dict with count/total/pct."""
-    return {"key": key, "label": label, "count": count, "total": total, "pct": _pct(count, total), **kw}
+def _m(key: str, label: str, count: int, total: int,
+       tickers: list[str] | None = None, **kw) -> dict:
+    """Build a single metric dict with count/total/pct and optional ticker list."""
+    d = {"key": key, "label": label, "count": count, "total": total,
+         "pct": _pct(count, total), **kw}
+    if tickers is not None:
+        d["tickers"] = sorted(tickers)
+    return d
 
 
 def compute_sentiment(db: Session) -> dict:
@@ -109,6 +116,18 @@ def compute_sentiment(db: Session) -> dict:
     rsi_ob = rsi_os = 0
     sc = 0
 
+    # Per-indicator ticker lists
+    tickers_map: dict[str, list[str]] = {
+        "above_10ema": [], "above_21ema": [], "above_50ema": [],
+        "hit_52w_high": [], "hit_52w_low": [],
+        "macd_bull_cross": [], "rsi_daily_gt60": [],
+        "above_200ema": [], "above_12ema_monthly": [], "above_26ema_monthly": [],
+        "rsi_above_50": [], "rsi_above_40": [], "rsi_weekly_gt50": [], "golden_cross": [],
+        "above_prev_month_high": [], "above_prev_quarter_high": [], "above_prev_year_high": [],
+        "new_3m_high": [], "roc_positive": [], "uptrend_hh_hl": [],
+        "rsi_overbought": [], "rsi_oversold": [],
+    }
+
     for ticker in tickers:
         rows = price_map.get(ticker, [])
         if len(rows) < 22:
@@ -122,12 +141,15 @@ def compute_sentiment(db: Session) -> dict:
         ema10 = compute_ema(closes, 10)
         if ema10 is not None and lc > ema10:
             a10 += 1
+            tickers_map["above_10ema"].append(ticker)
         ema21 = compute_ema(closes, 21)
         if ema21 is not None and lc > ema21:
             a21 += 1
+            tickers_map["above_21ema"].append(ticker)
         ema50 = compute_ema(closes, 50)
         if ema50 is not None and lc > ema50:
             a50 += 1
+            tickers_map["above_50ema"].append(ticker)
 
         # 52-week high/low
         c52 = (today - timedelta(days=365)).isoformat()
@@ -138,8 +160,10 @@ def compute_sentiment(db: Session) -> dict:
             lows = [lo for _, _, lo in rr if lo]
             if highs and (rows[-1].high_price or lc) >= max(highs) * 0.999:
                 h52h += 1
+                tickers_map["hit_52w_high"].append(ticker)
             if lows and (rows[-1].low_price or lc) <= min(lows) * 1.001:
                 h52l += 1
+                tickers_map["hit_52w_low"].append(ticker)
 
         # MACD bullish cross in last 5 days
         e12s, e26s = compute_ema_series(closes, 12), compute_ema_series(closes, 26)
@@ -149,15 +173,18 @@ def compute_sentiment(db: Session) -> dict:
             v = [h for h in hist[-5:] if h is not None]
             if len(v) >= 2 and v[-1] > 0 and any(x < 0 for x in v[:-1]):
                 macd_bc += 1
+                tickers_map["macd_bull_cross"].append(ticker)
 
         daily_rsi = compute_rsi(closes, 14)
         if daily_rsi is not None and daily_rsi > 60:
             rsi_d60 += 1
+            tickers_map["rsi_daily_gt60"].append(ticker)
 
         # BROAD TREND
         ema200 = compute_ema(closes, 200)
         if ema200 is not None and lc > ema200:
             a200 += 1
+            tickers_map["above_200ema"].append(ticker)
         dcp = list(zip(dates, closes))
         monthly = resample_to_monthly(dcp)
         mc = [c for _, c in monthly]
@@ -166,56 +193,70 @@ def compute_sentiment(db: Session) -> dict:
             e12m = compute_ema(mc, 12)
             if e12m is not None and lmc > e12m:
                 a12m += 1
+                tickers_map["above_12ema_monthly"].append(ticker)
         if len(mc) >= 27 and lmc:
             e26m = compute_ema(mc, 26)
             if e26m is not None and lmc > e26m:
                 a26m += 1
+                tickers_map["above_26ema_monthly"].append(ticker)
         if len(mc) >= 15:
             rv = compute_rsi(mc, 14)
             if rv is not None:
                 if rv > 50:
                     rsi50 += 1
+                    tickers_map["rsi_above_50"].append(ticker)
                 if rv > 40:
                     rsi40 += 1
+                    tickers_map["rsi_above_40"].append(ticker)
         wc = [c for _, c in resample_to_weekly(dcp)]
         if len(wc) >= 15:
             wr = compute_rsi(wc, 14)
             if wr is not None and wr > 50:
                 rsi_w50 += 1
+                tickers_map["rsi_weekly_gt50"].append(ticker)
         if ema50 is not None and ema200 is not None and ema50 > ema200:
             gc += 1
+            tickers_map["golden_cross"].append(ticker)
 
         # ADVANCE/DECLINE
         mr = [r for r in rows if pm_s <= r.date <= pm_e]
         if mr and lc > max((r.high_price or r.close_price) for r in mr):
             apmh += 1
+            tickers_map["above_prev_month_high"].append(ticker)
         qr = [r for r in rows if pq_s <= r.date <= pq_e]
         if qr and lc > max((r.high_price or r.close_price) for r in qr):
             apqh += 1
+            tickers_map["above_prev_quarter_high"].append(ticker)
         yr = [r for r in rows if py_s <= r.date <= py_e]
         if yr and lc > max((r.high_price or r.close_price) for r in yr):
             apyh += 1
+            tickers_map["above_prev_year_high"].append(ticker)
 
         # MOMENTUM
         c3m = (today - timedelta(days=90)).isoformat()
         r3h = [(r.high_price or r.close_price) for d, r in zip(dates, rows) if d >= c3m]
         if r3h and (rows[-1].high_price or lc) >= max(r3h) * 0.999:
             n3mh += 1
+            tickers_map["new_3m_high"].append(ticker)
         if len(closes) >= 21 and closes[-21] > 0:
             if (closes[-1] / closes[-21] - 1) > 0:
                 rocp += 1
+                tickers_map["roc_positive"].append(ticker)
         if len(rows) >= 10:
             l10h = [r.high_price or r.close_price for r in rows[-10:]]
             l10l = [r.low_price or r.close_price for r in rows[-10:]]
             if (all(l10h[i] >= l10h[i-1] for i in range(1, 10))
                     and all(l10l[i] >= l10l[i-1] for i in range(1, 10))):
                 hh_hl += 1
+                tickers_map["uptrend_hh_hl"].append(ticker)
 
         # EXTREMES
         if daily_rsi is not None and daily_rsi > 70:
             rsi_ob += 1
+            tickers_map["rsi_overbought"].append(ticker)
         if daily_rsi is not None and daily_rsi < 30:
             rsi_os += 1
+            tickers_map["rsi_oversold"].append(ticker)
 
     # Build result
     hlt = h52h + h52l
@@ -227,22 +268,22 @@ def compute_sentiment(db: Session) -> dict:
         "stocks_computed": sc, "computed_at": datetime.now().isoformat() + "Z",
         "as_of_date": today_str,
         "short_term_trend": {"label": "Short Term Trend (Daily)", "metrics": [
-            _m("above_10ema", "Above 10 EMA (Daily)", a10, sc),
-            _m("above_21ema", "Above 21 EMA (Daily)", a21, sc),
-            _m("above_50ema", "Above 50 EMA (Daily)", a50, sc),
-            _m("hit_52w_high", "Hitting 52-Week High", h52h, sc),
-            _m("hit_52w_low", "Hitting 52-Week Low", h52l, sc, invert=True),
-            _m("macd_bull_cross", "MACD Bullish Cross (5D)", macd_bc, sc),
-            _m("rsi_daily_gt60", "Daily RSI > 60", rsi_d60, sc),
+            _m("above_10ema", "Above 10 EMA (Daily)", a10, sc, tickers=tickers_map["above_10ema"]),
+            _m("above_21ema", "Above 21 EMA (Daily)", a21, sc, tickers=tickers_map["above_21ema"]),
+            _m("above_50ema", "Above 50 EMA (Daily)", a50, sc, tickers=tickers_map["above_50ema"]),
+            _m("hit_52w_high", "Hitting 52-Week High", h52h, sc, tickers=tickers_map["hit_52w_high"]),
+            _m("hit_52w_low", "Hitting 52-Week Low", h52l, sc, tickers=tickers_map["hit_52w_low"], invert=True),
+            _m("macd_bull_cross", "MACD Bullish Cross (5D)", macd_bc, sc, tickers=tickers_map["macd_bull_cross"]),
+            _m("rsi_daily_gt60", "Daily RSI > 60", rsi_d60, sc, tickers=tickers_map["rsi_daily_gt60"]),
         ]},
         "broad_trend": {"label": "Broad Trend (Monthly)", "metrics": [
-            _m("above_200ema", "Above 200 EMA (Daily)", a200, sc),
-            _m("above_12ema_monthly", "Above 12 EMA (Monthly)", a12m, sc),
-            _m("above_26ema_monthly", "Above 26 EMA (Monthly)", a26m, sc),
-            _m("rsi_above_50", "Monthly RSI > 50", rsi50, sc),
-            _m("rsi_above_40", "Monthly RSI > 40", rsi40, sc),
-            _m("rsi_weekly_gt50", "Weekly RSI > 50", rsi_w50, sc),
-            _m("golden_cross", "Golden Cross (50 > 200 EMA)", gc, sc),
+            _m("above_200ema", "Above 200 EMA (Daily)", a200, sc, tickers=tickers_map["above_200ema"]),
+            _m("above_12ema_monthly", "Above 12 EMA (Monthly)", a12m, sc, tickers=tickers_map["above_12ema_monthly"]),
+            _m("above_26ema_monthly", "Above 26 EMA (Monthly)", a26m, sc, tickers=tickers_map["above_26ema_monthly"]),
+            _m("rsi_above_50", "Monthly RSI > 50", rsi50, sc, tickers=tickers_map["rsi_above_50"]),
+            _m("rsi_above_40", "Monthly RSI > 40", rsi40, sc, tickers=tickers_map["rsi_above_40"]),
+            _m("rsi_weekly_gt50", "Weekly RSI > 50", rsi_w50, sc, tickers=tickers_map["rsi_weekly_gt50"]),
+            _m("golden_cross", "Golden Cross (50 > 200 EMA)", gc, sc, tickers=tickers_map["golden_cross"]),
         ]},
         "advance_decline": {
             "label": "Advance / Decline",
@@ -253,21 +294,21 @@ def compute_sentiment(db: Session) -> dict:
                 "prev_year": str(py_start.year),
             },
             "metrics": [
-                _m("above_prev_month_high", f"Above Previous Month High ({pm_start.strftime('%b %Y')})", apmh, sc),
-                _m("above_prev_quarter_high", f"Above Previous Quarter High ({pq_start.strftime('%b')}--{pq_end.strftime('%b %Y')})", apqh, sc),
-                _m("above_prev_year_high", f"Above Previous Year High ({py_start.year})", apyh, sc),
+                _m("above_prev_month_high", f"Above Previous Month High ({pm_start.strftime('%b %Y')})", apmh, sc, tickers=tickers_map["above_prev_month_high"]),
+                _m("above_prev_quarter_high", f"Above Previous Quarter High ({pq_start.strftime('%b')}--{pq_end.strftime('%b %Y')})", apqh, sc, tickers=tickers_map["above_prev_quarter_high"]),
+                _m("above_prev_year_high", f"Above Previous Year High ({py_start.year})", apyh, sc, tickers=tickers_map["above_prev_year_high"]),
                 ad,
                 {"key": "up_volume_ratio", "label": "Up Volume Ratio", "count": 0, "total": 0, "pct": 0.0, "placeholder": True},
             ],
         },
         "momentum": {"label": "Momentum", "metrics": [
-            _m("new_3m_high", "At 3-Month High", n3mh, sc),
-            _m("roc_positive", "20-Day ROC > 0", rocp, sc),
-            _m("uptrend_hh_hl", "Higher Highs & Lows (10D)", hh_hl, sc),
+            _m("new_3m_high", "At 3-Month High", n3mh, sc, tickers=tickers_map["new_3m_high"]),
+            _m("roc_positive", "20-Day ROC > 0", rocp, sc, tickers=tickers_map["roc_positive"]),
+            _m("uptrend_hh_hl", "Higher Highs & Lows (10D)", hh_hl, sc, tickers=tickers_map["uptrend_hh_hl"]),
         ]},
         "extremes": {"label": "Extremes", "metrics": [
-            _m("rsi_overbought", "RSI > 70 (Overbought)", rsi_ob, sc),
-            _m("rsi_oversold", "RSI < 30 (Oversold)", rsi_os, sc, invert=True),
+            _m("rsi_overbought", "RSI > 70 (Overbought)", rsi_ob, sc, tickers=tickers_map["rsi_overbought"]),
+            _m("rsi_oversold", "RSI < 30 (Oversold)", rsi_os, sc, tickers=tickers_map["rsi_oversold"], invert=True),
             {"key": "hl_ratio", "label": "52W High/Low Ratio", "count": h52h, "total": hlt, "pct": hlp},
         ]},
     }

@@ -120,6 +120,7 @@ export const INDEX_SECTOR_MAP: Record<string, string> = {
   "NIFTY INDIA RAILWAYS PSU": "Thematic",
   "NIFTY CONGLOMERATE 50": "Thematic",
   "NIFTY IPO": "Thematic",
+  "NIFTY INDIA FPI 150": "Thematic",
   "NIFTY INDIA CORPORATE GROUP INDEX - TATA GROUP 25% CAP": "Thematic",
   "NIFTY INDIA SELECT 5 CORPORATE GROUPS (MAATR)": "Thematic",
   // Strategy & Factor

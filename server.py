@@ -177,6 +177,23 @@ def _background_yfinance_backfill():
         db.commit()
         logger.info("Backfill: stored %d index records across %d indices", idx_stored, len(idx_data))
 
+        # 1b. NSE API historical backfill — direct from nseindia.com
+        # Covers ALL 79 tracked indices including those without yfinance symbols
+        # (Housing, Tourism, EV, Railways, Capital Markets, etc.)
+        try:
+            from price_service import fetch_historical_indices_nse_sync
+            logger.info("Backfill: fetching 1Y history from NSE API for all tracked indices...")
+            nse_hist = fetch_historical_indices_nse_sync()
+            nse_stored = 0
+            for idx_name, rows in nse_hist.items():
+                for row in rows:
+                    if upsert_price_row(db, idx_name, row):
+                        nse_stored += 1
+            db.commit()
+            logger.info("Backfill: stored %d NSE API historical records across %d indices", nse_stored, len(nse_hist))
+        except Exception as e:
+            logger.warning("NSE API historical backfill failed (non-fatal): %s", e)
+
         # 2. ETFs — 1Y history via yfinance (17 tracked)
         etf_tickers = list(NSE_ETF_UNIVERSE.keys())
         logger.info("Backfill: fetching 1Y history for %d ETFs...", len(etf_tickers))
@@ -416,6 +433,20 @@ def _scheduled_eod_fetch():
                     if upsert_price_row(db, idx_name, row):
                         yf_idx_stored += 1
 
+        # 1c. NSE API historical — refresh recent history from NSE for all tracked indices
+        nse_eod_stored = 0
+        try:
+            from price_service import fetch_historical_indices_nse_sync
+            nse_eod = fetch_historical_indices_nse_sync()
+            for idx_name, rows in nse_eod.items():
+                for row in rows:
+                    if upsert_price_row(db, idx_name, row):
+                        nse_eod_stored += 1
+            db.commit()
+            logger.info("EOD: stored %d NSE API historical records", nse_eod_stored)
+        except Exception as e:
+            logger.warning("EOD NSE API historical refresh failed (non-fatal): %s", e)
+
         # 2. Fetch recent ETF prices via yfinance
         etf_tickers = list(NSE_ETF_UNIVERSE.keys())
         etf_data = fetch_yfinance_bulk_stock_history(etf_tickers, period="5d")
@@ -533,8 +564,8 @@ def _scheduled_eod_fetch():
 
         db.commit()
         logger.info(
-            "Scheduled EOD: %d nsetools + %d yf-fallback index, %d ETF, %d stock, %d alert, %d basket NAV, %d constituent records",
-            idx_stored, yf_idx_stored, etf_stored, stk_stored, alert_stored, basket_nav_count, constituent_count,
+            "Scheduled EOD: %d nsetools + %d yf-fallback + %d nse-api index, %d ETF, %d stock, %d alert, %d basket NAV, %d constituent records",
+            idx_stored, yf_idx_stored, nse_eod_stored, etf_stored, stk_stored, alert_stored, basket_nav_count, constituent_count,
         )
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)

@@ -3,6 +3,7 @@ FIE v3 — Sentiment Indicator Routes
 Thin router — delegates computation to services/sentiment_engine.py.
 """
 
+import copy
 import logging
 from datetime import date, datetime
 from typing import Optional
@@ -26,6 +27,20 @@ def _cache_valid() -> bool:
     if computed_at is None:
         return False
     return (datetime.now() - computed_at).total_seconds() < CACHE_TTL_SECONDS
+
+
+def _strip_tickers(result: dict) -> dict:
+    """Remove ticker lists from metrics for lean response.
+
+    Operates on a deep copy so the original cache is not mutated.
+    """
+    out = copy.deepcopy(result)
+    layer_keys = ("short_term_trend", "broad_trend", "advance_decline", "momentum", "extremes")
+    for layer_key in layer_keys:
+        layer = out.get(layer_key, {})
+        for metric in layer.get("metrics", []):
+            metric.pop("tickers", None)
+    return out
 
 
 def _save_snapshot(db: Session, result: dict) -> None:
@@ -73,19 +88,28 @@ def _save_snapshot(db: Session, result: dict) -> None:
     tags=["Sentiment"],
     summary="Market breadth indicators",
     description="Returns 26 market breadth metrics with composite score for "
-                "the Nifty 500 universe. Cached for 15 minutes.",
+                "the Nifty 500 universe. Cached for 15 minutes. "
+                "Pass include_tickers=true to get per-indicator stock lists.",
 )
-def get_sentiment(db: Session = Depends(get_db)):
+def get_sentiment(
+    include_tickers: bool = Query(
+        default=False,
+        description="Include per-indicator stock ticker lists in response",
+    ),
+    db: Session = Depends(get_db),
+):
     global _sentiment_cache
 
     if _cache_valid():
         cached_result, _ = _sentiment_cache
-        return {"success": True, "cached": True, **cached_result}
+        out = cached_result if include_tickers else _strip_tickers(cached_result)
+        return {"success": True, "cached": True, **out}
 
     result = compute_sentiment(db)
     _sentiment_cache = (result, datetime.now())
     _save_snapshot(db, result)
-    return {"success": True, "cached": False, **result}
+    out = result if include_tickers else _strip_tickers(result)
+    return {"success": True, "cached": False, **out}
 
 
 @router.post(
@@ -94,17 +118,24 @@ def get_sentiment(db: Session = Depends(get_db)):
     summary="Force refresh sentiment cache",
     description="Clears the sentiment cache and recomputes all metrics immediately.",
 )
-def refresh_sentiment(db: Session = Depends(get_db)):
+def refresh_sentiment(
+    include_tickers: bool = Query(
+        default=False,
+        description="Include per-indicator stock ticker lists in response",
+    ),
+    db: Session = Depends(get_db),
+):
     global _sentiment_cache
 
     result = compute_sentiment(db)
     _sentiment_cache = (result, datetime.now())
     _save_snapshot(db, result)
+    out = result if include_tickers else _strip_tickers(result)
     return {
         "success": True,
         "cached": False,
         "message": f"Sentiment recomputed for {result['stocks_computed']} stocks",
-        **result,
+        **out,
     }
 
 
