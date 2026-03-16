@@ -58,7 +58,7 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment
+from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment, simulator
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -147,6 +147,7 @@ app.include_router(baskets.router)
 app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
+app.include_router(simulator.router)
 
 
 # ═══════════════════════════════════════════════════════════
