@@ -186,6 +186,43 @@ def _load_nav_from_db(db: Session, fund_code: str) -> dict[str, float]:
     return {r.date: r.nav for r in rows}
 
 
+def _fetch_nav_on_demand(fund_code: str, db: Session) -> dict[str, float]:
+    """Fetch NAV from mfapi.in on-demand, store in DB, return nav_map.
+    Fallback when pipeline hasn't cached NAV yet (~1-2s)."""
+    import httpx
+    try:
+        resp = httpx.get(f"https://api.mfapi.in/mf/{fund_code}", timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        logger.error("On-demand NAV fetch failed for %s: %s", fund_code, e)
+        return {}
+
+    nav_map: dict[str, float] = {}
+    batch = []
+    existing_dates = {r[0] for r in db.query(MfNavHistory.date).filter(
+        MfNavHistory.fund_code == fund_code).all()}
+
+    for entry in data.get("data", []):
+        try:
+            parts = entry["date"].split("-")
+            iso_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
+            nav_val = float(entry["nav"])
+            nav_map[iso_date] = nav_val
+            if iso_date not in existing_dates:
+                batch.append(MfNavHistory(fund_code=fund_code, date=iso_date, nav=nav_val))
+        except (ValueError, KeyError, IndexError):
+            continue
+
+    if batch:
+        for i in range(0, len(batch), 500):
+            db.add_all(batch[i:i+500])
+        db.commit()
+        logger.info("On-demand NAV: fetched %d entries for fund %s, cached %d new",
+                     len(nav_map), fund_code, len(batch))
+    return nav_map
+
+
 def _load_breadth_from_db(db: Session, metric: str) -> dict[str, int]:
     """Load breadth counts from BreadthDaily. Returns {date_str: count}."""
     rows = db.query(BreadthDaily).filter(BreadthDaily.metric == metric).all()
@@ -317,18 +354,21 @@ async def get_metrics():
 
 @router.post("/run")
 async def run_simulation(req: SimulationRequest, db: Session = Depends(get_db)):
-    """Run single simulation. All data from DB — instant."""
+    """Run single simulation. Fetches NAV on-demand if not cached."""
     fund = next((f for f in TOP_FUNDS if f["code"] == req.fund_code), None)
     if not fund:
         raise HTTPException(status_code=400, detail="Invalid fund code")
 
+    # Load NAV from DB, fallback to on-demand fetch from mfapi.in
     nav_map = _load_nav_from_db(db, req.fund_code)
     if not nav_map:
-        raise HTTPException(status_code=404, detail="No NAV data cached for this fund. Data pipeline may not have run yet.")
+        nav_map = _fetch_nav_on_demand(req.fund_code, db)
+        if not nav_map:
+            raise HTTPException(status_code=404, detail="Could not fetch NAV data for this fund")
 
+    # Load breadth — if empty, simulation runs without triggers (regular SIP only)
     breadth_map = _load_breadth_from_db(db, req.metric_key)
-    if not breadth_map:
-        raise HTTPException(status_code=404, detail=f"No breadth data for metric '{req.metric_key}'. Data pipeline may not have run yet.")
+    no_breadth = len(breadth_map) == 0
 
     sip_dates = _get_sip_dates(
         date.fromisoformat(req.start_date),
@@ -344,12 +384,15 @@ async def run_simulation(req: SimulationRequest, db: Session = Depends(get_db)):
     if not result:
         raise HTTPException(status_code=400, detail="No valid SIP transactions found")
 
-    return {
+    resp = {
         "success": True,
         "fund_name": fund["name"],
         "metric_label": req.metric_key,
-        **{k: v for k, v in result.items()},
+        **result,
     }
+    if no_breadth:
+        resp["warning"] = "Breadth data not yet available — showing regular SIP only. Top-ups will appear after pipeline runs."
+    return resp
 
 
 @router.get("/batch")
