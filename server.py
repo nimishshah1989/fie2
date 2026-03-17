@@ -58,7 +58,14 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, global_pulse, health, indices, pms, portfolios, recommendations, sentiment, simulator
+from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment, simulator
+
+# Optional: global pulse router (new feature, non-critical)
+try:
+    from routers import global_pulse as _global_pulse_mod
+except Exception as _gp_err:
+    _global_pulse_mod = None
+    logging.getLogger("fie_v3").warning("Global pulse router not available: %s", _gp_err)
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -148,7 +155,8 @@ app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
 app.include_router(simulator.router)
-app.include_router(global_pulse.router)
+if _global_pulse_mod:
+    app.include_router(_global_pulse_mod.router)
 
 
 # ═══════════════════════════════════════════════════════════
