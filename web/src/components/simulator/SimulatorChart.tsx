@@ -19,16 +19,15 @@ interface Props {
   triggerDates: string[];
 }
 
-function formatINR(v: number): string {
+function fmtINR(v: number): string {
   if (v >= 1e7) return `₹${(v / 1e7).toFixed(1)}Cr`;
   if (v >= 1e5) return `₹${(v / 1e5).toFixed(1)}L`;
   if (v >= 1e3) return `₹${(v / 1e3).toFixed(0)}K`;
   return `₹${v.toFixed(0)}`;
 }
 
-function formatDate(d: string): string {
-  const dt = new Date(d);
-  return dt.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+function fmtDate(d: string): string {
+  return new Date(d).toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
 }
 
 export function SimulatorChart({ timeline, triggerDates }: Props) {
@@ -43,14 +42,14 @@ export function SimulatorChart({ timeline, triggerDates }: Props) {
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis
             dataKey="date"
-            tickFormatter={formatDate}
+            tickFormatter={fmtDate}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             axisLine={false}
             tickLine={false}
             interval="equidistantPreserveStart"
           />
           <YAxis
-            tickFormatter={formatINR}
+            tickFormatter={fmtINR}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
             axisLine={false}
             tickLine={false}
@@ -67,17 +66,19 @@ export function SimulatorChart({ timeline, triggerDates }: Props) {
                   </p>
                   <div className="space-y-1">
                     <p className="text-teal-600">
-                      Enhanced: {formatINR(d.enhanced_value)}
-                      <span className="text-slate-400 ml-1">(inv: {formatINR(d.enhanced_invested)})</span>
+                      Enhanced: {fmtINR(d.enhanced_value)}
+                      <span className="text-slate-400 ml-1">(inv: {fmtINR(d.enhanced_invested)})</span>
                     </p>
                     <p className="text-blue-600">
-                      Regular: {formatINR(d.regular_value)}
-                      <span className="text-slate-400 ml-1">(inv: {formatINR(d.regular_invested)})</span>
+                      Regular: {fmtINR(d.regular_value)}
+                      <span className="text-slate-400 ml-1">(inv: {fmtINR(d.regular_invested)})</span>
                     </p>
+                    <p className="text-slate-500">NAV: ₹{d.nav.toFixed(2)}</p>
                     {d.breadth_count !== null && (
                       <p className="text-slate-500 mt-1">
                         Breadth: {d.breadth_count}/{d.breadth_total}
-                        {d.is_trigger && <span className="text-amber-600 font-semibold ml-1">TRIGGER</span>}
+                        {d.is_trigger && <span className="text-amber-600 font-semibold ml-1">TOP-UP</span>}
+                        {d.in_cooloff && <span className="text-orange-400 font-semibold ml-1">COOLOFF</span>}
                       </p>
                     )}
                   </div>
@@ -85,11 +86,7 @@ export function SimulatorChart({ timeline, triggerDates }: Props) {
               );
             }}
           />
-          <Legend
-            verticalAlign="top"
-            height={36}
-            wrapperStyle={{ fontSize: "12px" }}
-          />
+          <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: "12px" }} />
           <Area
             type="monotone"
             dataKey="enhanced_value"
@@ -141,7 +138,7 @@ export function SimulatorChart({ timeline, triggerDates }: Props) {
       </ResponsiveContainer>
       {triggers.length > 0 && (
         <p className="text-[10px] text-slate-400 mt-2 text-center">
-          Amber dots indicate trigger dates where extra SIP was invested
+          Amber dots = top-up dates &middot; 1-month cool-off enforced between top-ups
         </p>
       )}
     </div>
