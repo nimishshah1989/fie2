@@ -599,3 +599,25 @@ class StockSentiment(Base):
         Index("idx_stock_sent_sector", "sector_index"),
         Index("idx_stock_sent_date", "date"),
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  BREADTH DAILY (aggregate Nifty 500 EMA breadth counts)
+# ═══════════════════════════════════════════════════════════
+
+class BreadthDaily(Base):
+    """Daily aggregate breadth counts for Nifty 500 universe."""
+    __tablename__ = "breadth_daily"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    date            = Column(String(10), nullable=False)
+    metric          = Column(String(30), nullable=False)  # e.g. "above_21ema", "above_200ema"
+    count           = Column(Integer, nullable=False)      # stocks meeting condition
+    total           = Column(Integer, nullable=False)      # total stocks in universe
+    created_at      = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("date", "metric", name="uq_breadth_date_metric"),
+        Index("idx_breadth_date", "date"),
+        Index("idx_breadth_metric", "metric"),
+    )

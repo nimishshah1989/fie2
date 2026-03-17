@@ -12,6 +12,7 @@ import {
   Compass,
   BookOpen,
   BarChart2,
+  FlaskConical,
   Menu,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +29,7 @@ const navItems = [
   { href: "/recommendations", label: "Recommendations", icon: Compass },
   { href: "/portfolios", label: "Model Portfolios", icon: Briefcase },
   { href: "/microbaskets", label: "Microbaskets", icon: Layers },
+  { href: "/simulator", label: "SIP Simulator", icon: FlaskConical },
   { href: "/docs", label: "Documentation", icon: BookOpen },
 ];
 

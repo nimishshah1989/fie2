@@ -58,7 +58,7 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment
+from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment, simulator
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -147,6 +147,7 @@ app.include_router(baskets.router)
 app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
+app.include_router(simulator.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -664,7 +665,7 @@ async def start_scheduler():
 
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment", "simulator"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):
