@@ -398,6 +398,14 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Global price backfill failed (non-fatal): %s", e)
 
+        # 9b. Dynamic ETF holdings — refresh top holdings for global sector ETFs
+        try:
+            from services.global_holdings import refresh_global_holdings
+            holdings_count = refresh_global_holdings(db)
+            logger.info("Backfill: refreshed %d global ETF holdings", holdings_count)
+        except Exception as e:
+            logger.warning("Global holdings refresh failed (non-fatal): %s", e)
+
         # 10. Backfill sentiment history (20 weeks) — skips dates already computed
         try:
             from services.sentiment_engine import backfill_sentiment_history
@@ -621,6 +629,14 @@ def _scheduled_eod_fetch():
             logger.info("EOD: stored %d global price records", global_stored)
         except Exception as e:
             logger.warning("Global EOD price fetch failed (non-fatal): %s", e)
+
+        # 8b. Refresh global ETF holdings (weekly-equivalent, fast)
+        try:
+            from services.global_holdings import refresh_global_holdings
+            holdings_count = refresh_global_holdings(db)
+            logger.info("EOD: refreshed %d global ETF holdings", holdings_count)
+        except Exception as e:
+            logger.warning("Global holdings EOD refresh failed (non-fatal): %s", e)
 
         # 9. Per-stock sentiment scoring (after all prices committed)
         try:

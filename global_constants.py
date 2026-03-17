@@ -63,20 +63,33 @@ GLOBAL_SECTOR_MAP = {
         "SP500_COMM":       {"symbol": "XLC",  "name": "Communication Services"},
     },
     "FTSE100": {
-        "FTSE_ENERGY":      {"symbol": "ISF.L",   "name": "Energy (iShares UK)"},
-        "FTSE_FIN":         {"symbol": "XLFN.L",  "name": "Financials (iShares UK)"},
-        "FTSE_HEALTH":      {"symbol": "IUKD.L",  "name": "Healthcare (iShares UK)"},
+        "FTSE_FIN":         {"symbol": "XLFS.L",   "name": "Financials"},
+        "FTSE_HEALTH":      {"symbol": "IUKP.L",   "name": "Healthcare"},
+        "FTSE_ENERGY":      {"symbol": "IUKE.L",   "name": "Energy"},
+        "FTSE_CSTAP":       {"symbol": "IUKS.L",   "name": "Consumer Staples"},
+        "FTSE_INDU":        {"symbol": "IUKI.L",   "name": "Industrials"},
+        "FTSE_MATL":        {"symbol": "IUKM.L",   "name": "Basic Materials"},
+        "FTSE_UTIL":        {"symbol": "IUKU.L",   "name": "Utilities"},
     },
-    "DAX": {
-        "DAX_TECH":         {"symbol": "EXV8.DE", "name": "Technology"},
-        "DAX_INDU":         {"symbol": "EXV4.DE", "name": "Industrials"},
-        "DAX_HEALTH":       {"symbol": "EXH1.DE", "name": "Healthcare"},
-        "DAX_AUTO":         {"symbol": "EXV5.DE", "name": "Auto & Parts"},
-        "DAX_BANK":         {"symbol": "EXV1.DE", "name": "Banks"},
-        "DAX_CHEM":         {"symbol": "EXV6.DE", "name": "Basic Resources"},
-        "DAX_UTIL":         {"symbol": "EXH8.DE", "name": "Utilities"},
-        "DAX_OIL":          {"symbol": "EXH4.DE", "name": "Oil & Gas"},
-        "DAX_TELE":         {"symbol": "EXV2.DE", "name": "Telecom"},
+    "STOXX600": {
+        "STOXX_TECH":       {"symbol": "EXV8.DE",  "name": "Technology"},
+        "STOXX_BANK":       {"symbol": "EXV1.DE",  "name": "Banks"},
+        "STOXX_HEALTH":     {"symbol": "EXH1.DE",  "name": "Healthcare"},
+        "STOXX_INDU":       {"symbol": "EXV4.DE",  "name": "Industrials"},
+        "STOXX_AUTO":       {"symbol": "EXV5.DE",  "name": "Auto & Parts"},
+        "STOXX_CHEM":       {"symbol": "EXV6.DE",  "name": "Basic Resources"},
+        "STOXX_UTIL":       {"symbol": "EXH8.DE",  "name": "Utilities"},
+        "STOXX_OIL":        {"symbol": "EXH4.DE",  "name": "Oil & Gas"},
+        "STOXX_TELE":       {"symbol": "EXV2.DE",  "name": "Telecom"},
+        "STOXX_FOOD":       {"symbol": "EXV3.DE",  "name": "Food & Beverage"},
+        "STOXX_INSURANCE":  {"symbol": "EXV7.DE",  "name": "Insurance"},
+    },
+    "CAC40": {
+        "CAC_LUXURY":       {"symbol": "LUX.PA",  "name": "Luxury (Amundi)"},
+        "CAC_BANK":         {"symbol": "BNK.PA",  "name": "Banks (Lyxor)"},
+        "CAC_ENERGY":       {"symbol": "ENR.PA",  "name": "Energy (Lyxor)"},
+        "CAC_HEALTH":       {"symbol": "HLT.PA",  "name": "Healthcare (Lyxor)"},
+        "CAC_INDU":         {"symbol": "IND.PA",  "name": "Industrials (Lyxor)"},
     },
     "NIKKEI": {
         "NIKKEI_BANK":      {"symbol": "1615.T",  "name": "Banks (TOPIX)"},
@@ -88,6 +101,14 @@ GLOBAL_SECTOR_MAP = {
     "HANGSENG": {
         "HSI_TECH":         {"symbol": "3067.HK", "name": "Hang Seng TECH"},
         "HSI_FIN":          {"symbol": "3143.HK", "name": "Hang Seng Financials"},
+    },
+    "ASX200": {
+        "ASX_FIN":          {"symbol": "OZF.AX",  "name": "Financials (SPDR)"},
+        "ASX_MATL":         {"symbol": "OZR.AX",  "name": "Resources (SPDR)"},
+    },
+    "KOSPI": {
+        "KOSPI_TECH":       {"symbol": "091160.KS", "name": "KODEX IT"},
+        "KOSPI_BANK":       {"symbol": "091170.KS", "name": "KODEX Banks"},
     },
 }
 
