@@ -389,12 +389,17 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Sentiment history backfill failed (non-fatal): %s", e)
 
-        # 10. Simulator data pipeline — breadth aggregation, MF NAV fetch, batch pre-compute
+        # 10. Simulator breadth aggregation only (NAV fetched on-demand per fund)
         try:
-            from services.simulator_pipeline import run_simulator_pipeline_sync
-            run_simulator_pipeline_sync()
+            from services.simulator_pipeline import aggregate_breadth as _agg_breadth
+            from models import SessionLocal as _SL
+            _sdb = _SL()
+            try:
+                _agg_breadth(_sdb)
+            finally:
+                _sdb.close()
         except Exception as e:
-            logger.warning("Simulator pipeline failed (non-fatal): %s", e)
+            logger.warning("Simulator breadth aggregation failed (non-fatal): %s", e)
 
         logger.info("Background yfinance backfill complete")
     except Exception as e:
@@ -606,12 +611,12 @@ def _scheduled_eod_fetch():
         except Exception as e:
             logger.warning("Per-stock sentiment failed (non-fatal): %s", e)
 
-        # 9. Simulator pipeline — refresh breadth, NAV cache, batch pre-compute
+        # 9. Simulator breadth aggregation (NAV fetched on-demand per fund)
         try:
-            from services.simulator_pipeline import run_simulator_pipeline_sync
-            run_simulator_pipeline_sync()
+            from services.simulator_pipeline import aggregate_breadth as _agg_breadth_eod
+            _agg_breadth_eod(db)
         except Exception as e:
-            logger.warning("Simulator pipeline EOD failed (non-fatal): %s", e)
+            logger.warning("Simulator breadth aggregation EOD failed (non-fatal): %s", e)
 
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)
