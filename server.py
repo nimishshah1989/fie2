@@ -58,7 +58,7 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment, simulator
+from routers import alerts, baskets, global_pulse, health, indices, pms, portfolios, recommendations, sentiment, simulator
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -148,6 +148,7 @@ app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
 app.include_router(simulator.router)
+app.include_router(global_pulse.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -381,7 +382,23 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Per-stock sentiment failed (non-fatal): %s", e)
 
-        # 9. Backfill sentiment history (20 weeks) — skips dates already computed
+        # 9. Global market prices — backfill 1Y for global indices, sector ETFs, stocks
+        try:
+            from price_service import fetch_global_prices
+            logger.info("Backfill: fetching 1Y global market prices...")
+            global_data = fetch_global_prices(period="1y")
+            global_stored = 0
+            for key, rows in global_data.items():
+                for row in rows:
+                    if upsert_price_row(db, key, row):
+                        global_stored += 1
+            db.commit()
+            logger.info("Backfill: stored %d global price records across %d instruments",
+                        global_stored, len(global_data))
+        except Exception as e:
+            logger.warning("Global price backfill failed (non-fatal): %s", e)
+
+        # 10. Backfill sentiment history (20 weeks) — skips dates already computed
         try:
             from services.sentiment_engine import backfill_sentiment_history
             filled = backfill_sentiment_history(db, weeks=20)
@@ -591,7 +608,21 @@ def _scheduled_eod_fetch():
             idx_stored, yf_idx_stored, nse_eod_stored, etf_stored, stk_stored, alert_stored, basket_nav_count, constituent_count,
         )
 
-        # 8. Per-stock sentiment scoring (after all prices committed)
+        # 8. Global market prices — EOD update for global indices, sector ETFs, stocks
+        try:
+            from price_service import fetch_global_prices
+            global_data = fetch_global_prices(period="5d")
+            global_stored = 0
+            for key, rows in global_data.items():
+                for row in rows:
+                    if upsert_price_row(db, key, row):
+                        global_stored += 1
+            db.commit()
+            logger.info("EOD: stored %d global price records", global_stored)
+        except Exception as e:
+            logger.warning("Global EOD price fetch failed (non-fatal): %s", e)
+
+        # 9. Per-stock sentiment scoring (after all prices committed)
         try:
             from services.stock_sentiment import compute_and_store_stock_sentiment
             stock_count = compute_and_store_stock_sentiment(db)
@@ -665,7 +696,7 @@ async def start_scheduler():
 
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment", "simulator"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment", "simulator", "global"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):

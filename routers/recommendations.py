@@ -16,7 +16,6 @@ from typing import Dict, List, Optional, Set
 import yfinance as yf
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func as sqlfunc
 from sqlalchemy.orm import Session
 
 from models import IndexConstituent, IndexPrice, get_db
@@ -25,6 +24,12 @@ from price_service import (
     SECTOR_ETF_MAP,
     SECTOR_INDICES_FOR_RECO,
     fetch_nse_index_constituents,
+)
+from services.ratio_service import (
+    batch_historical_prices,
+    batch_latest_prices,
+    compute_ratio_returns,
+    resolve_period_dates,
 )
 
 logger = logging.getLogger("fie_v3.recommendations")
@@ -44,102 +49,12 @@ class GenerateRequest(BaseModel):
 # --- Constants ----------------------------------------------------------------
 
 PERIOD_MAP = {"1w": 7, "1m": 30, "3m": 90, "6m": 180, "12m": 365}
-PERIOD_TOLERANCE = {"1w": 5, "1m": 10, "3m": 15, "6m": 15, "12m": 15}
 
-
-# --- Batch Helpers (no N+1) ---------------------------------------------------
-
-def _resolve_period_dates(db: Session) -> Dict[str, Optional[str]]:
-    """Resolve all 5 period target dates to actual DB dates -- 10 queries total, done once."""
-    resolved = {}
-    for pk, days in PERIOD_MAP.items():
-        target_str = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        tol = PERIOD_TOLERANCE.get(pk, 15)
-        target_dt = datetime.strptime(target_str, "%Y-%m-%d")
-
-        before = db.query(sqlfunc.max(IndexPrice.date)).filter(IndexPrice.date <= target_str).scalar()
-        after = db.query(sqlfunc.min(IndexPrice.date)).filter(IndexPrice.date >= target_str).scalar()
-
-        best = None
-        if before:
-            gap = (target_dt - datetime.strptime(before, "%Y-%m-%d")).days
-            if gap <= tol:
-                best = before
-        if after:
-            gap_after = (datetime.strptime(after, "%Y-%m-%d") - target_dt).days
-            if gap_after <= tol:
-                if best is None:
-                    best = after
-                elif gap_after < abs((target_dt - datetime.strptime(best, "%Y-%m-%d")).days):
-                    best = after
-        resolved[pk] = best
-    return resolved
-
-
-def _batch_latest_prices(db: Session, tickers: Set[str]) -> Dict[str, float]:
-    """Fetch latest close price for many tickers in one query.
-    Returns {ticker: close_price}."""
-    if not tickers:
-        return {}
-    # Subquery: max date per ticker
-    subq = (
-        db.query(IndexPrice.index_name, sqlfunc.max(IndexPrice.date).label("max_date"))
-        .filter(IndexPrice.index_name.in_(tickers))
-        .group_by(IndexPrice.index_name)
-        .subquery()
-    )
-    rows = (
-        db.query(IndexPrice.index_name, IndexPrice.close_price)
-        .join(subq, (IndexPrice.index_name == subq.c.index_name) & (IndexPrice.date == subq.c.max_date))
-        .all()
-    )
-    return {r[0]: r[1] for r in rows if r[1]}
-
-
-def _batch_historical_prices(db: Session, dates: List[str], tickers: Set[str]) -> Dict[str, Dict[str, float]]:
-    """Fetch prices at specific historical dates for many tickers in one query.
-    Returns {date: {ticker: close_price}}."""
-    if not dates or not tickers:
-        return {}
-    rows = (
-        db.query(IndexPrice.date, IndexPrice.index_name, IndexPrice.close_price)
-        .filter(IndexPrice.date.in_(dates), IndexPrice.index_name.in_(tickers))
-        .all()
-    )
-    result: Dict[str, Dict[str, float]] = {}
-    for date_str, ticker, price in rows:
-        if price:
-            result.setdefault(date_str, {})[ticker] = price
-    return result
-
-
-def _compute_ratio_returns_from_cache(
-    ticker: str,
-    base_key: str,
-    latest_prices: Dict[str, float],
-    period_dates: Dict[str, Optional[str]],
-    hist_prices: Dict[str, Dict[str, float]],
-) -> Dict[str, float]:
-    """Compute ratio returns using pre-fetched price data. Zero DB queries."""
-    current = latest_prices.get(ticker)
-    base_current = latest_prices.get(base_key)
-    if not current or not base_current or base_current <= 0:
-        return {}
-
-    ratio_today = current / base_current
-    returns = {}
-    for pk in PERIOD_MAP:
-        hist_date = period_dates.get(pk)
-        if not hist_date:
-            continue
-        date_prices = hist_prices.get(hist_date, {})
-        old_ticker = date_prices.get(ticker)
-        old_base = date_prices.get(base_key)
-        if old_ticker and old_base and old_base > 0:
-            ratio_old = old_ticker / old_base
-            if ratio_old > 0:
-                returns[pk] = round(((ratio_today / ratio_old) - 1) * 100, 2)
-    return returns
+# --- Legacy aliases for backward compatibility (now in services/ratio_service.py)
+_resolve_period_dates = resolve_period_dates
+_batch_latest_prices = batch_latest_prices
+_batch_historical_prices = batch_historical_prices
+_compute_ratio_returns_from_cache = compute_ratio_returns
 
 
 # --- Fundamentals Fetcher -----------------------------------------------------

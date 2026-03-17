@@ -820,3 +820,76 @@ def fetch_nse_index_constituents(index_display_name: str) -> list:
     except Exception as e:
         logger.warning("NSE constituent fetch failed for %s: %s", index_display_name, e)
         return []
+
+
+# ─── Global Market Price Fetching ─────────────────────────────────────────────
+
+def fetch_global_prices(period: str = "1y") -> dict:
+    """Fetch historical prices for all global instruments via yfinance.
+    Returns {internal_key: [{date, open, high, low, close, volume}, ...]}."""
+    import pandas as pd
+
+    from global_constants import get_all_global_symbols
+
+    symbols = get_all_global_symbols()
+    if not symbols:
+        return {}
+
+    # Build reverse map: yfinance_symbol -> internal_key
+    sym_to_key = {sym: key for key, sym in symbols.items()}
+    all_syms = list(sym_to_key.keys())
+    chunk_size = 30
+    results = {}
+
+    for i in range(0, len(all_syms), chunk_size):
+        chunk = all_syms[i:i + chunk_size]
+        try:
+            raw = _yf_download_with_retry(
+                " ".join(chunk), period=period,
+                auto_adjust=True, progress=False, threads=True,
+            )
+            if raw is None or raw.empty:
+                continue
+
+            multi = len(chunk) > 1
+            for yf_sym in chunk:
+                key = sym_to_key[yf_sym]
+                try:
+                    if multi:
+                        closes = raw["Close"][yf_sym].dropna()
+                        opens = raw["Open"][yf_sym].dropna()
+                        highs = raw["High"][yf_sym].dropna()
+                        lows = raw["Low"][yf_sym].dropna()
+                        vols = raw["Volume"][yf_sym].dropna() if "Volume" in raw.columns.get_level_values(0) else pd.Series()
+                    else:
+                        closes = raw["Close"].dropna()
+                        opens = raw["Open"].dropna()
+                        highs = raw["High"].dropna()
+                        lows = raw["Low"].dropna()
+                        vols = raw["Volume"].dropna() if "Volume" in raw.columns else pd.Series()
+
+                    if closes.empty:
+                        continue
+
+                    rows = []
+                    for dt in closes.index:
+                        rows.append({
+                            "date": dt.strftime("%Y-%m-%d"),
+                            "open": float(opens.get(dt, 0)) if dt in opens.index else None,
+                            "high": float(highs.get(dt, 0)) if dt in highs.index else None,
+                            "low": float(lows.get(dt, 0)) if dt in lows.index else None,
+                            "close": float(closes[dt]),
+                            "volume": float(vols.get(dt, 0)) if not vols.empty and dt in vols.index else None,
+                        })
+                    results[key] = rows
+                except Exception as e:
+                    logger.debug("Global price parse error for %s (%s): %s", key, yf_sym, e)
+
+            if i + chunk_size < len(all_syms):
+                time.sleep(2)
+
+        except Exception as e:
+            logger.warning("Global price download error (chunk %d): %s", i // chunk_size, e)
+
+    logger.info("Global price fetch: %d/%d instruments fetched", len(results), len(symbols))
+    return results

@@ -15,9 +15,10 @@ import {
 } from "@/components/ui/select";
 import { BASE_INDEX_OPTIONS, PERIOD_OPTIONS } from "@/lib/constants";
 import { formatTimestamp } from "@/lib/utils";
-import { Activity } from "lucide-react";
+import { Activity, Globe } from "lucide-react";
 import { PageInfo } from "@/components/page-info";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import type { LiveIndex } from "@/lib/types";
 
 type PulseTab = "broad" | "sectoral" | "thematic" | "global" | "fixed_income";
@@ -72,6 +73,13 @@ export default function PulsePage() {
         <p className="text-xs sm:text-sm text-muted-foreground mt-1">
           Live index signals, sector analysis, and global benchmarks
         </p>
+        <Link
+          href="/pulse/global"
+          className="inline-flex items-center gap-1.5 mt-2 text-xs font-medium text-teal-600 hover:text-teal-700 hover:underline transition-colors"
+        >
+          <Globe className="size-3.5" />
+          Global Relative Strength View →
+        </Link>
       </div>
 
       <PageInfo>
