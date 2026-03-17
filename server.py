@@ -58,7 +58,7 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment
+from routers import alerts, baskets, global_markets, health, indices, pms, portfolios, recommendations, sentiment
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -147,6 +147,7 @@ app.include_router(baskets.router)
 app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
+app.include_router(global_markets.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -208,6 +209,14 @@ def _background_yfinance_backfill():
                     etf_stored += 1
         db.commit()
         logger.info("Backfill: stored %d ETF records across %d ETFs", etf_stored, len(etf_data))
+
+        # 2b. Global markets — 1Y history via yfinance (benchmarks + sector ETFs)
+        try:
+            from routers.global_markets import backfill_global_sync
+            global_stored = backfill_global_sync(db)
+            logger.info("Backfill: stored %d global market records", global_stored)
+        except Exception as e:
+            logger.warning("Global markets backfill failed (non-fatal): %s", e)
 
         # 3. Portfolio instruments (stocks + ETFs) — from inception date via yfinance
         ticker_inception = get_all_portfolio_tickers_with_inception(db)
@@ -477,6 +486,22 @@ def _scheduled_eod_fetch():
             for row in rows:
                 if upsert_price_row(db, ticker, row):
                     etf_stored += 1
+
+        # 2b. Global markets — recent prices for benchmarks + sector ETFs
+        global_stored = 0
+        try:
+            from global_constants import get_all_global_symbols
+            from price_service import fetch_yfinance_index_history
+            for gkey, gsym in get_all_global_symbols().items():
+                try:
+                    rows = fetch_yfinance_index_history(gkey, period="5d", yf_symbol_override=gsym)
+                    for row in rows:
+                        if upsert_price_row(db, gkey, row):
+                            global_stored += 1
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning("Global markets EOD failed (non-fatal): %s", e)
 
         # 3. Fetch recent portfolio stock prices via yfinance
         stock_tickers = get_portfolio_tickers(db)

@@ -2,9 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useIndices } from "@/hooks/use-indices";
+import { useGlobalMarkets } from "@/hooks/use-global-markets";
 import { IndexTable } from "@/components/index-table";
 import { SignalHeatmap } from "@/components/signal-heatmap";
 import { FixedIncomeTable } from "@/components/fixed-income-table";
+import { GlobalMarketsTable } from "@/components/global-markets-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -26,7 +28,7 @@ const TABS: { key: PulseTab; label: string }[] = [
   { key: "broad",       label: "Broad Market" },
   { key: "sectoral",    label: "Sectoral" },
   { key: "thematic",    label: "Thematic" },
-  { key: "global",      label: "BSE & Global" },
+  { key: "global",      label: "Global Markets" },
   { key: "fixed_income", label: "Fixed Income" },
 ];
 
@@ -45,6 +47,7 @@ export default function PulsePage() {
   const [activeTab, setActiveTab] = useState<PulseTab>("broad");
 
   const { data, error, isLoading } = useIndices(base);
+  const { data: globalData, error: globalError, isLoading: globalLoading } = useGlobalMarkets();
 
   // Group indices by category
   const grouped = useMemo(() => {
@@ -53,6 +56,8 @@ export default function PulsePage() {
     };
     for (const idx of data.indices) {
       const cat = getCategory(idx);
+      // Skip old BSE/commodity items from the global tab — now served by GlobalMarketsTable
+      if (cat === "global") continue;
       map[cat].push(idx);
     }
     return map;
@@ -75,8 +80,8 @@ export default function PulsePage() {
       </div>
 
       <PageInfo>
-        Live NSE index data with ratio analysis versus a benchmark index. Covers 79 indices across broad market, sectoral,
-        thematic, BSE/global, and fixed income categories. Ratio returns show relative outperformance —
+        Live NSE index data with ratio analysis versus a benchmark index. Covers 79+ indices across broad market, sectoral,
+        thematic, global markets, and fixed income categories. Ratio returns show relative outperformance —
         positive means the index outperformed the benchmark over that period.
       </PageInfo>
 
@@ -95,7 +100,11 @@ export default function PulsePage() {
             )}
           >
             {label}
-            {grouped[key].length > 0 && (
+            {key === "global" ? (
+              globalData.markets.length > 0 && (
+                <span className="ml-1.5 text-xs text-muted-foreground">({globalData.markets.length})</span>
+              )
+            ) : grouped[key].length > 0 && (
               <span className="ml-1.5 text-xs text-muted-foreground">({grouped[key].length})</span>
             )}
           </button>
@@ -107,8 +116,38 @@ export default function PulsePage() {
         <FixedIncomeTable indices={grouped.fixed_income} />
       )}
 
+      {/* Global Markets tab */}
+      {activeTab === "global" && (
+        <>
+          {globalLoading && (
+            <div className="space-y-4">
+              <Skeleton className="h-32 rounded-xl" />
+              <Skeleton className="h-32 rounded-xl" />
+              <Skeleton className="h-32 rounded-xl" />
+            </div>
+          )}
+          {globalError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              Failed to load global market data.
+            </div>
+          )}
+          {!globalLoading && !globalError && globalData.markets.length > 0 && (
+            <GlobalMarketsTable markets={globalData.markets} timestamp={globalData.timestamp} />
+          )}
+          {!globalLoading && !globalError && globalData.markets.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Activity className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-semibold text-foreground">No global data available</h3>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                Global market data will appear here once the backend has fetched prices from yfinance.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+
       {/* Controls for data tabs */}
-      {activeTab !== "fixed_income" && (
+      {activeTab !== "fixed_income" && activeTab !== "global" && (
         <>
           {/* Filters Row */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -142,7 +181,7 @@ export default function PulsePage() {
           {/* Info Caption */}
           {!isLoading && activeIndices.length > 0 && (
             <p className="text-xs text-muted-foreground">
-              {activeIndices.length} {activeTab === "global" ? "instruments" : "indices"} &bull;{" "}
+              {activeIndices.length} indices &bull;{" "}
               Last refreshed {formatTimestamp(data.timestamp)}
             </p>
           )}

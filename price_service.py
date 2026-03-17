@@ -453,15 +453,15 @@ def fetch_stock_history(ticker: str, period: str = "1y") -> list:
         return []
 
 
-def fetch_yfinance_index_history(index_key: str, period: str = "2y") -> list:
+def fetch_yfinance_index_history(index_key: str, period: str = "2y", yf_symbol_override: str = None) -> list:
     """
     Fetch historical daily data for a single index via yfinance.
-    Uses NSE_TICKER_MAP to resolve the yfinance symbol.
+    Uses NSE_TICKER_MAP to resolve the yfinance symbol, or yf_symbol_override if provided.
     Returns [{date, open, high, low, close, volume}, ...]
     """
     try:
         import yfinance as yf
-        yf_sym = NSE_TICKER_MAP.get(index_key.upper())
+        yf_sym = yf_symbol_override or NSE_TICKER_MAP.get(index_key.upper())
         if not yf_sym:
             logger.debug("No yfinance symbol for index key: %s", index_key)
             return []
