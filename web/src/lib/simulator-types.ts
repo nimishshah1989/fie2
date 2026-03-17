@@ -4,6 +4,12 @@ export interface MutualFund {
   category: string;
 }
 
+export interface MetricInfo {
+  key: string;
+  label: string;
+  description?: string;
+}
+
 export interface Strategy {
   id: string;
   label: string;
@@ -23,7 +29,6 @@ export interface TimelinePoint {
   is_trigger: boolean;
   in_cooloff: boolean;
   breadth_count: number | null;
-  breadth_total: number | null;
 }
 
 export interface SimulationResult {
@@ -75,6 +80,10 @@ export interface BatchResponse {
   results: BatchRow[];
   errors: string[];
   funds_count: number;
+  cached?: boolean;
+  computed_at?: string | null;
+  metrics?: MetricInfo[];
+  thresholds?: number[];
 }
 
 export interface SimulationParams {

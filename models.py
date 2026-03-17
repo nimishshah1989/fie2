@@ -621,3 +621,61 @@ class BreadthDaily(Base):
         Index("idx_breadth_date", "date"),
         Index("idx_breadth_metric", "metric"),
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  BREADTH THRESHOLD FLAGS (pre-computed 1/0 for each metric × threshold)
+# ═══════════════════════════════════════════════════════════
+
+class BreadthThresholdFlag(Base):
+    """Pre-computed trigger flags: for each date × metric × standard threshold,
+    stores whether the breadth count is at or below the threshold (triggered=1)."""
+    __tablename__ = "breadth_threshold_flags"
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    date      = Column(String(10), nullable=False)
+    metric    = Column(String(30), nullable=False)
+    threshold = Column(Integer, nullable=False)     # 25, 50, 75, 100, 125
+    triggered = Column(Boolean, nullable=False)      # True if count <= threshold
+    count     = Column(Integer, nullable=False)       # actual breadth count that day
+    created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("date", "metric", "threshold", name="uq_breadth_flag"),
+        Index("idx_breadth_flag_lookup", "metric", "threshold", "date"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+#  MF NAV HISTORY (cached mutual fund NAV from mfapi.in)
+# ═══════════════════════════════════════════════════════════
+
+class MfNavHistory(Base):
+    """Cached daily NAV for tracked mutual fund schemes."""
+    __tablename__ = "mf_nav_history"
+
+    id        = Column(Integer, primary_key=True, autoincrement=True)
+    fund_code = Column(String(20), nullable=False)
+    date      = Column(String(10), nullable=False)
+    nav       = Column(Float, nullable=False)
+    fetched_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("fund_code", "date", name="uq_mf_nav_fund_date"),
+        Index("idx_mf_nav_fund", "fund_code"),
+        Index("idx_mf_nav_date", "date"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+#  SIMULATOR CACHE (pre-computed batch results as JSON)
+# ═══════════════════════════════════════════════════════════
+
+class SimulatorCache(Base):
+    """Stores pre-computed simulator batch results to serve instantly."""
+    __tablename__ = "simulator_cache"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    cache_key   = Column(String(100), nullable=False, unique=True)  # e.g. "batch_default"
+    data_json   = Column(Text, nullable=False)
+    computed_at = Column(DateTime, default=func.now())

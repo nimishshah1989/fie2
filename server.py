@@ -389,6 +389,13 @@ def _background_yfinance_backfill():
         except Exception as e:
             logger.warning("Sentiment history backfill failed (non-fatal): %s", e)
 
+        # 10. Simulator data pipeline — breadth aggregation, MF NAV fetch, batch pre-compute
+        try:
+            from services.simulator_pipeline import run_simulator_pipeline_sync
+            run_simulator_pipeline_sync()
+        except Exception as e:
+            logger.warning("Simulator pipeline failed (non-fatal): %s", e)
+
         logger.info("Background yfinance backfill complete")
     except Exception as e:
         logger.warning("Background yfinance backfill failed (non-fatal): %s", e)
@@ -598,6 +605,13 @@ def _scheduled_eod_fetch():
             logger.info("Per-stock sentiment: computed for %d stocks", stock_count)
         except Exception as e:
             logger.warning("Per-stock sentiment failed (non-fatal): %s", e)
+
+        # 9. Simulator pipeline — refresh breadth, NAV cache, batch pre-compute
+        try:
+            from services.simulator_pipeline import run_simulator_pipeline_sync
+            run_simulator_pipeline_sync()
+        except Exception as e:
+            logger.warning("Simulator pipeline EOD failed (non-fatal): %s", e)
 
     except Exception as e:
         logger.error("Scheduled EOD fetch failed: %s", e)

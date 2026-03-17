@@ -1,16 +1,29 @@
 """
 FIE v3 — Mutual Fund SIP Simulator Router
-Simulates enhanced SIP strategy based on market breadth signals.
-Uses BreadthDaily table for aggregate Nifty 500 EMA counts.
+All data pre-computed and served from DB. Simulation is pure math.
+
+Data pipeline (runs at startup + EOD):
+  StockSentiment → BreadthDaily → BreadthThresholdFlag
+  mfapi.in (concurrent) → MfNavHistory
+  Batch pre-computation → SimulatorCache
 """
 
+import json
 import logging
 from datetime import date, timedelta
 from typing import Optional
 
-import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from models import (
+    BreadthDaily,
+    BreadthThresholdFlag,
+    MfNavHistory,
+    SimulatorCache,
+    get_db,
+)
 
 logger = logging.getLogger("fie_v3.simulator")
 
@@ -45,12 +58,30 @@ TOP_FUNDS = [
     {"code": "120684", "name": "Kotak Emerging Equity Fund - Direct Growth", "category": "Mid Cap"},
 ]
 
-# ─── Default Strategies ───────────────────────────────────
+# ─── All Breadth Metrics (from StockSentiment columns) ────
+ALL_METRICS = [
+    {"key": "above_10ema", "label": "Above 10 EMA", "description": "Stocks trading above 10-day EMA"},
+    {"key": "above_21ema", "label": "Above 21 EMA", "description": "Stocks trading above 21-day EMA"},
+    {"key": "above_50ema", "label": "Above 50 EMA", "description": "Stocks trading above 50-day EMA"},
+    {"key": "above_200ema", "label": "Above 200 EMA", "description": "Stocks trading above 200-day EMA"},
+    {"key": "golden_cross", "label": "Golden Cross", "description": "Stocks with 50 EMA above 200 EMA"},
+    {"key": "macd_bull_cross", "label": "MACD Bullish", "description": "Stocks with bullish MACD crossover"},
+    {"key": "hit_52w_low", "label": "Near 52W Low", "description": "Stocks near 52-week low"},
+    {"key": "hit_52w_high", "label": "Near 52W High", "description": "Stocks near 52-week high"},
+    {"key": "roc_positive", "label": "ROC Positive", "description": "Stocks with positive rate of change"},
+    {"key": "above_prev_month_high", "label": "Above Prev Month High", "description": "Stocks above previous month high"},
+]
+
+STANDARD_THRESHOLDS = [25, 50, 75, 100, 125]
+
+COOLOFF_DAYS = 30
+
+# ─── Default Strategies for batch view ────────────────────
 DEFAULT_STRATEGIES = [
     {
         "id": "strategy_1",
         "label": "21 EMA Breadth ≤ 75 → 1x Top-Up",
-        "description": "No. of Nifty 500 stocks trading above 21 EMA (Daily) less than 75 → 1 extra SIP",
+        "description": "Stocks above 21 EMA drops below 75 → 1 extra SIP",
         "metric": "above_21ema",
         "threshold": 75,
         "multiplier": 1,
@@ -58,15 +89,15 @@ DEFAULT_STRATEGIES = [
     {
         "id": "strategy_2",
         "label": "200 EMA Breadth ≤ 100 → 2x Top-Up",
-        "description": "No. of Nifty 500 stocks trading above 200 EMA (Daily) less than 100 → 2 extra SIP",
+        "description": "Stocks above 200 EMA drops below 100 → 2 extra SIP",
         "metric": "above_200ema",
         "threshold": 100,
         "multiplier": 2,
     },
 ]
 
-COOLOFF_DAYS = 30  # 1 month cool-off after a top-up
 
+# ─── Request/Response Models ──────────────────────────────
 
 class SimulationRequest(BaseModel):
     fund_code: str
@@ -74,109 +105,19 @@ class SimulationRequest(BaseModel):
     stock_threshold: int
     sip_amount: float = 10000
     multiplier: float = 2.0
-    start_date: str  # YYYY-MM-DD
+    start_date: str
     duration_months: Optional[int] = None
     sip_day: int = 1
     cooloff_days: int = COOLOFF_DAYS
 
 
-class SimulationResult(BaseModel):
-    fund_name: str
-    metric_label: str
-    regular_total_invested: float
-    regular_current_value: float
-    regular_units: float
-    regular_xirr: Optional[float]
-    enhanced_total_invested: float
-    enhanced_current_value: float
-    enhanced_units: float
-    enhanced_xirr: Optional[float]
-    alpha_value: float
-    alpha_pct: float
-    extra_invested: float
-    num_triggers: int
-    total_sip_count: int
-    cooloff_skips: int
-    timeline: list[dict]
-    trigger_dates: list[str]
+# ─── Helpers ──────────────────────────────────────────────
 
-
-class BatchSummaryRow(BaseModel):
-    fund_code: str
-    fund_name: str
-    category: str
-    strategy_id: str
-    period_label: str
-    period_months: Optional[int]
-    regular_invested: float
-    regular_value: float
-    regular_xirr: Optional[float]
-    enhanced_invested: float
-    enhanced_value: float
-    enhanced_xirr: Optional[float]
-    incremental_return_abs: float
-    incremental_return_pct: float
-    incremental_xirr: Optional[float]
-    num_triggers: int
-    cooloff_skips: int
-    total_sips: int
-
-
-# ─── NAV Cache ─────────────────────────────────────────────
-_nav_cache: dict[str, dict[str, float]] = {}
-
-
-async def fetch_nav_history(fund_code: str) -> dict[str, float]:
-    """Fetch historical NAV from MFAPI. Returns {date_str: nav}."""
-    if fund_code in _nav_cache:
-        return _nav_cache[fund_code]
-
-    url = f"https://api.mfapi.in/mf/{fund_code}"
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception as e:
-        logger.error("Failed to fetch NAV for %s: %s", fund_code, e)
-        raise HTTPException(status_code=502, detail=f"Failed to fetch NAV data: {e}")
-
-    nav_map: dict[str, float] = {}
-    for entry in data.get("data", []):
-        try:
-            parts = entry["date"].split("-")
-            iso_date = f"{parts[2]}-{parts[1]}-{parts[0]}"
-            nav_map[iso_date] = float(entry["nav"])
-        except (ValueError, KeyError, IndexError):
-            continue
-
-    _nav_cache[fund_code] = nav_map
-    logger.info("Fetched %d NAV entries for fund %s", len(nav_map), fund_code)
-    return nav_map
-
-
-# ─── Breadth Cache ─────────────────────────────────────────
-_breadth_cache: dict[str, dict[str, dict]] = {}
-
-
-def fetch_breadth_from_db(metric: str) -> dict[str, dict]:
-    """Fetch breadth data from BreadthDaily table. Returns {date_str: {count, total}}."""
-    if metric in _breadth_cache:
-        return _breadth_cache[metric]
-
-    from models import BreadthDaily, SessionLocal
-
-    db = SessionLocal()
-    try:
-        rows = db.query(BreadthDaily).filter(BreadthDaily.metric == metric).all()
-        result: dict[str, dict] = {}
-        for r in rows:
-            result[r.date] = {"count": r.count, "total": r.total}
-        _breadth_cache[metric] = result
-        logger.info("Loaded %d breadth records for metric '%s'", len(result), metric)
-        return result
-    finally:
-        db.close()
+def _add_months(d: date, months: int) -> date:
+    month = d.month + months
+    year = d.year + (month - 1) // 12
+    month = ((month - 1) % 12) + 1
+    return date(year, month, min(d.day, 28))
 
 
 def _get_sip_dates(start: date, duration_months: Optional[int], sip_day: int) -> list[date]:
@@ -189,38 +130,17 @@ def _get_sip_dates(start: date, duration_months: Optional[int], sip_day: int) ->
     return dates
 
 
-def _add_months(d: date, months: int) -> date:
-    month = d.month + months
-    year = d.year + (month - 1) // 12
-    month = ((month - 1) % 12) + 1
-    day = min(d.day, 28)
-    return date(year, month, day)
-
-
-def _find_nav(nav_map: dict[str, float], target: date) -> tuple[str, float]:
-    """Find closest NAV on or near target date."""
+def _find_nearest(data_map: dict[str, float], target: date) -> tuple[str, float]:
+    """Find value on or near target date (±5 days)."""
     for offset in range(6):
         d = (target + timedelta(days=offset)).isoformat()
-        if d in nav_map:
-            return d, nav_map[d]
+        if d in data_map:
+            return d, data_map[d]
     for offset in range(1, 4):
         d = (target - timedelta(days=offset)).isoformat()
-        if d in nav_map:
-            return d, nav_map[d]
+        if d in data_map:
+            return d, data_map[d]
     return "", 0.0
-
-
-def _find_breadth(breadth: dict[str, dict], target: date) -> Optional[dict]:
-    """Find breadth data on or near target date."""
-    for offset in range(5):
-        d = (target + timedelta(days=offset)).isoformat()
-        if d in breadth:
-            return breadth[d]
-    for offset in range(1, 4):
-        d = (target - timedelta(days=offset)).isoformat()
-        if d in breadth:
-            return breadth[d]
-    return None
 
 
 def _compute_xirr(cashflows: list[tuple[date, float]], final_value: float, final_date: date) -> Optional[float]:
@@ -237,8 +157,8 @@ def _compute_xirr(cashflows: list[tuple[date, float]], final_value: float, final
     except Exception:
         pass
 
-    # Fallback: Newton's method
     flows = list(cashflows) + [(final_date, final_value)]
+
     def npv(rate: float) -> float:
         base = flows[0][0]
         return sum(amt / ((1 + rate) ** ((d - base).days / 365.25)) for d, amt in flows)
@@ -260,55 +180,70 @@ def _compute_xirr(cashflows: list[tuple[date, float]], final_value: float, final
     return round(rate * 100, 2)
 
 
+def _load_nav_from_db(db: Session, fund_code: str) -> dict[str, float]:
+    """Load NAV history from MfNavHistory table. Returns {date_str: nav}."""
+    rows = db.query(MfNavHistory).filter(MfNavHistory.fund_code == fund_code).all()
+    return {r.date: r.nav for r in rows}
+
+
+def _load_breadth_from_db(db: Session, metric: str) -> dict[str, int]:
+    """Load breadth counts from BreadthDaily. Returns {date_str: count}."""
+    rows = db.query(BreadthDaily).filter(BreadthDaily.metric == metric).all()
+    return {r.date: r.count for r in rows}
+
+
+def _find_breadth_count(breadth_map: dict[str, int], target: date) -> Optional[int]:
+    """Find breadth count on or near target date."""
+    for offset in range(5):
+        d = (target + timedelta(days=offset)).isoformat()
+        if d in breadth_map:
+            return breadth_map[d]
+    for offset in range(1, 4):
+        d = (target - timedelta(days=offset)).isoformat()
+        if d in breadth_map:
+            return breadth_map[d]
+    return None
+
+
 def run_sim_core(
     nav_map: dict[str, float],
-    breadth: dict[str, dict],
+    breadth_map: dict[str, int],
     sip_dates: list[date],
     sip_amount: float,
     multiplier: float,
     threshold: int,
     cooloff_days: int,
-) -> dict:
-    """Core simulation engine. Returns dict with all results."""
+) -> Optional[dict]:
+    """Core simulation engine. All data from DB, pure math."""
     reg_units = enh_units = reg_invested = enh_invested = 0.0
     reg_cashflows: list[tuple[date, float]] = []
     enh_cashflows: list[tuple[date, float]] = []
     timeline: list[dict] = []
     trigger_dates: list[str] = []
-    num_triggers = 0
-    cooloff_skips = 0
+    num_triggers = cooloff_skips = 0
     last_trigger_date: Optional[date] = None
 
     for sip_date in sip_dates:
-        nav_date_str, nav = _find_nav(nav_map, sip_date)
+        nav_date_str, nav = _find_nearest(nav_map, sip_date)
         if not nav_date_str or nav <= 0:
             continue
 
-        bd = _find_breadth(breadth, sip_date)
+        breadth_count = _find_breadth_count(breadth_map, sip_date)
         is_trigger = False
-        breadth_count = None
-        breadth_total = None
         in_cooloff = False
 
-        if bd:
-            breadth_count = bd["count"]
-            breadth_total = bd["total"]
-            signal_fires = breadth_count <= threshold
-
-            if signal_fires:
-                # Check cool-off: skip if within cooloff_days of last trigger
+        if breadth_count is not None:
+            if breadth_count <= threshold:
                 if last_trigger_date and (sip_date - last_trigger_date).days < cooloff_days:
                     in_cooloff = True
                     cooloff_skips += 1
                 else:
                     is_trigger = True
 
-        # Regular SIP (always the same)
         reg_units += sip_amount / nav
         reg_invested += sip_amount
         reg_cashflows.append((sip_date, -sip_amount))
 
-        # Enhanced SIP
         enh_amount = sip_amount
         if is_trigger:
             enh_amount += sip_amount * multiplier
@@ -330,13 +265,11 @@ def run_sim_core(
             "is_trigger": is_trigger,
             "in_cooloff": in_cooloff,
             "breadth_count": breadth_count,
-            "breadth_total": breadth_total,
         })
 
     if not timeline:
         return None
 
-    # Final valuation
     sorted_dates = sorted(nav_map.keys(), reverse=True)
     latest_nav_date = sorted_dates[0] if sorted_dates else timeline[-1]["date"]
     latest_nav = nav_map.get(latest_nav_date, timeline[-1]["nav"])
@@ -344,18 +277,16 @@ def run_sim_core(
 
     reg_final = round(reg_units * latest_nav, 2)
     enh_final = round(enh_units * latest_nav, 2)
-    reg_xirr = _compute_xirr(reg_cashflows, reg_final, final_date)
-    enh_xirr = _compute_xirr(enh_cashflows, enh_final, final_date)
 
     return {
         "reg_invested": round(reg_invested, 2),
         "reg_value": reg_final,
         "reg_units": round(reg_units, 4),
-        "reg_xirr": reg_xirr,
+        "reg_xirr": _compute_xirr(reg_cashflows, reg_final, final_date),
         "enh_invested": round(enh_invested, 2),
         "enh_value": enh_final,
         "enh_units": round(enh_units, 4),
-        "enh_xirr": enh_xirr,
+        "enh_xirr": _compute_xirr(enh_cashflows, enh_final, final_date),
         "alpha_value": round(enh_final - reg_final, 2),
         "alpha_pct": round(((enh_final / reg_final) - 1) * 100, 2) if reg_final > 0 else 0,
         "extra_invested": round(enh_invested - reg_invested, 2),
@@ -364,12 +295,10 @@ def run_sim_core(
         "total_sips": len(timeline),
         "timeline": timeline,
         "trigger_dates": trigger_dates,
-        "reg_cashflows": reg_cashflows,
-        "enh_cashflows": enh_cashflows,
     }
 
 
-# ─── Endpoints ─────────────────────────────────────────────
+# ─── Endpoints ────────────────────────────────────────────
 
 @router.get("/funds")
 async def get_funds():
@@ -378,144 +307,104 @@ async def get_funds():
 
 @router.get("/metrics")
 async def get_metrics():
-    return {"success": True, "strategies": DEFAULT_STRATEGIES}
+    return {
+        "success": True,
+        "metrics": ALL_METRICS,
+        "thresholds": STANDARD_THRESHOLDS,
+        "strategies": DEFAULT_STRATEGIES,
+    }
 
 
 @router.post("/run")
-async def run_simulation(req: SimulationRequest):
-    """Run single simulation with custom parameters."""
+async def run_simulation(req: SimulationRequest, db: Session = Depends(get_db)):
+    """Run single simulation. All data from DB — instant."""
     fund = next((f for f in TOP_FUNDS if f["code"] == req.fund_code), None)
     if not fund:
         raise HTTPException(status_code=400, detail="Invalid fund code")
 
-    nav_map = await fetch_nav_history(req.fund_code)
+    nav_map = _load_nav_from_db(db, req.fund_code)
     if not nav_map:
-        raise HTTPException(status_code=502, detail="No NAV data available")
+        raise HTTPException(status_code=404, detail="No NAV data cached for this fund. Data pipeline may not have run yet.")
 
-    breadth = fetch_breadth_from_db(req.metric_key)
-    sip_dates = _get_sip_dates(date.fromisoformat(req.start_date), req.duration_months, req.sip_day)
+    breadth_map = _load_breadth_from_db(db, req.metric_key)
+    if not breadth_map:
+        raise HTTPException(status_code=404, detail=f"No breadth data for metric '{req.metric_key}'. Data pipeline may not have run yet.")
+
+    sip_dates = _get_sip_dates(
+        date.fromisoformat(req.start_date),
+        req.duration_months, req.sip_day,
+    )
     if not sip_dates:
         raise HTTPException(status_code=400, detail="No SIP dates in range")
 
-    result = run_sim_core(nav_map, breadth, sip_dates, req.sip_amount, req.multiplier, req.stock_threshold, req.cooloff_days)
+    result = run_sim_core(
+        nav_map, breadth_map, sip_dates,
+        req.sip_amount, req.multiplier, req.stock_threshold, req.cooloff_days,
+    )
     if not result:
-        raise HTTPException(status_code=400, detail="No valid SIP transactions")
+        raise HTTPException(status_code=400, detail="No valid SIP transactions found")
 
     return {
         "success": True,
         "fund_name": fund["name"],
         "metric_label": req.metric_key,
-        **{k: v for k, v in result.items() if k not in ("reg_cashflows", "enh_cashflows")},
+        **{k: v for k, v in result.items()},
     }
 
 
 @router.get("/batch")
-async def batch_simulate(sip_amount: float = 10000, sip_day: int = 1):
-    """Pre-compute both default strategies for all 25 funds across 1Y, 2Y, 3Y, Lifetime."""
-    periods = [
-        {"label": "1Y", "months": 12},
-        {"label": "2Y", "months": 24},
-        {"label": "3Y", "months": 36},
-        {"label": "Lifetime", "months": None},
-    ]
+async def batch_results(db: Session = Depends(get_db)):
+    """Serve pre-computed batch results from cache. Instant."""
+    cached = db.query(SimulatorCache).filter(
+        SimulatorCache.cache_key == "batch_default"
+    ).first()
 
-    # Pre-load breadth data for both metrics
-    breadth_data = {}
-    for strat in DEFAULT_STRATEGIES:
-        breadth_data[strat["metric"]] = fetch_breadth_from_db(strat["metric"])
+    if not cached:
+        return {
+            "success": False,
+            "strategies": DEFAULT_STRATEGIES,
+            "results": [],
+            "errors": ["Batch results not yet computed. Data pipeline runs on startup."],
+            "funds_count": len(TOP_FUNDS),
+            "cached": False,
+        }
 
-    results = []
-    errors = []
-
-    for fund in TOP_FUNDS:
-        try:
-            nav_map = await fetch_nav_history(fund["code"])
-            if not nav_map:
-                errors.append(f"No NAV for {fund['name']}")
-                continue
-        except Exception as e:
-            errors.append(f"NAV fetch failed for {fund['name']}: {e}")
-            continue
-
-        # Determine earliest NAV date for lifetime
-        earliest_nav = min(nav_map.keys())
-
-        for strat in DEFAULT_STRATEGIES:
-            breadth = breadth_data[strat["metric"]]
-
-            for period in periods:
-                if period["months"] is not None:
-                    start = _add_months(date.today(), -period["months"])
-                else:
-                    # Lifetime: start from earliest NAV or earliest breadth
-                    start = date.fromisoformat(earliest_nav)
-
-                sip_dates = _get_sip_dates(start, period["months"], sip_day)
-                if not sip_dates:
-                    continue
-
-                sim = run_sim_core(
-                    nav_map, breadth, sip_dates, sip_amount,
-                    strat["multiplier"], strat["threshold"], COOLOFF_DAYS,
-                )
-                if not sim:
-                    continue
-
-                # Incremental XIRR = enhanced XIRR - regular XIRR
-                inc_xirr = None
-                if sim["enh_xirr"] is not None and sim["reg_xirr"] is not None:
-                    inc_xirr = round(sim["enh_xirr"] - sim["reg_xirr"], 2)
-
-                # Incremental return = extra value gained per extra rupee invested
-                inc_return_abs = sim["alpha_value"]
-                inc_return_pct = sim["alpha_pct"]
-
-                results.append(BatchSummaryRow(
-                    fund_code=fund["code"],
-                    fund_name=fund["name"],
-                    category=fund["category"],
-                    strategy_id=strat["id"],
-                    period_label=period["label"],
-                    period_months=period["months"],
-                    regular_invested=sim["reg_invested"],
-                    regular_value=sim["reg_value"],
-                    regular_xirr=sim["reg_xirr"],
-                    enhanced_invested=sim["enh_invested"],
-                    enhanced_value=sim["enh_value"],
-                    enhanced_xirr=sim["enh_xirr"],
-                    incremental_return_abs=inc_return_abs,
-                    incremental_return_pct=inc_return_pct,
-                    incremental_xirr=inc_xirr,
-                    num_triggers=sim["num_triggers"],
-                    cooloff_skips=sim["cooloff_skips"],
-                    total_sips=sim["total_sips"],
-                ))
-
-    return {
-        "success": True,
-        "strategies": DEFAULT_STRATEGIES,
-        "results": [r.model_dump() for r in results],
-        "errors": errors,
-        "funds_count": len(TOP_FUNDS),
-    }
+    data = json.loads(cached.data_json)
+    data["cached"] = True
+    data["computed_at"] = cached.computed_at.isoformat() if cached.computed_at else None
+    return data
 
 
 @router.get("/breadth-status")
-async def breadth_status():
-    """Check if breadth data is available."""
-    from models import BreadthDaily, SessionLocal
-    db = SessionLocal()
-    try:
-        total = db.query(BreadthDaily).count()
-        metrics = {}
-        for metric in ["above_21ema", "above_200ema"]:
-            count = db.query(BreadthDaily).filter(BreadthDaily.metric == metric).count()
-            if count > 0:
-                first = db.query(BreadthDaily).filter(BreadthDaily.metric == metric).order_by(BreadthDaily.date).first()
-                last = db.query(BreadthDaily).filter(BreadthDaily.metric == metric).order_by(BreadthDaily.date.desc()).first()
-                metrics[metric] = {"rows": count, "first_date": first.date, "last_date": last.date}
-            else:
-                metrics[metric] = {"rows": 0}
-        return {"success": True, "total_rows": total, "metrics": metrics}
-    finally:
-        db.close()
+async def breadth_status(db: Session = Depends(get_db)):
+    """Check breadth + NAV data availability."""
+    total_breadth = db.query(BreadthDaily).count()
+    total_nav = db.query(MfNavHistory).count()
+    total_flags = db.query(BreadthThresholdFlag).count()
+
+    metrics = {}
+    for m in ALL_METRICS:
+        key = m["key"]
+        count = db.query(BreadthDaily).filter(BreadthDaily.metric == key).count()
+        if count > 0:
+            first = db.query(BreadthDaily).filter(BreadthDaily.metric == key).order_by(BreadthDaily.date).first()
+            last = db.query(BreadthDaily).filter(BreadthDaily.metric == key).order_by(BreadthDaily.date.desc()).first()
+            metrics[key] = {"rows": count, "first_date": first.date, "last_date": last.date}
+        else:
+            metrics[key] = {"rows": 0}
+
+    fund_nav_counts = {}
+    for f in TOP_FUNDS:
+        cnt = db.query(MfNavHistory).filter(MfNavHistory.fund_code == f["code"]).count()
+        if cnt > 0:
+            fund_nav_counts[f["code"]] = cnt
+
+    return {
+        "success": True,
+        "breadth_rows": total_breadth,
+        "nav_rows": total_nav,
+        "flag_rows": total_flags,
+        "metrics": metrics,
+        "funds_with_nav": len(fund_nav_counts),
+        "fund_nav_counts": fund_nav_counts,
+    }

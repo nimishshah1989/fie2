@@ -76,7 +76,7 @@ export function SimulatorChart({ timeline, triggerDates }: Props) {
                     <p className="text-slate-500">NAV: ₹{d.nav.toFixed(2)}</p>
                     {d.breadth_count !== null && (
                       <p className="text-slate-500 mt-1">
-                        Breadth: {d.breadth_count}/{d.breadth_total}
+                        Breadth: {d.breadth_count} stocks
                         {d.is_trigger && <span className="text-amber-600 font-semibold ml-1">TOP-UP</span>}
                         {d.in_cooloff && <span className="text-orange-400 font-semibold ml-1">COOLOFF</span>}
                       </p>
