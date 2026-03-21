@@ -599,3 +599,167 @@ class StockSentiment(Base):
         Index("idx_stock_sent_sector", "sector_index"),
         Index("idx_stock_sent_date", "date"),
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  SECTOR COMPASS TABLES (RS momentum + model portfolio)
+# ═══════════════════════════════════════════════════════════
+
+class CompassQuadrant(str, enum.Enum):
+    LEADING = "LEADING"
+    WEAKENING = "WEAKENING"
+    IMPROVING = "IMPROVING"
+    LAGGING = "LAGGING"
+
+
+class CompassAction(str, enum.Enum):
+    BUY = "BUY"
+    ACCUMULATE = "ACCUMULATE"
+    WATCH = "WATCH"
+    HOLD = "HOLD"
+    SELL = "SELL"
+    AVOID = "AVOID"
+    EXIT = "EXIT"
+
+
+class CompassVolumeSignal(str, enum.Enum):
+    ACCUMULATION = "ACCUMULATION"
+    WEAK_RALLY = "WEAK_RALLY"
+    DISTRIBUTION = "DISTRIBUTION"
+    WEAK_DECLINE = "WEAK_DECLINE"
+
+
+class CompassStockPrice(Base):
+    """EOD OHLCV for sector constituent stocks — compass-specific table."""
+    __tablename__ = "compass_stock_prices"
+
+    id     = Column(Integer, primary_key=True, autoincrement=True)
+    date   = Column(String(10), nullable=False)
+    ticker = Column(String(50), nullable=False)
+    open   = Column(Float, nullable=True)
+    high   = Column(Float, nullable=True)
+    low    = Column(Float, nullable=True)
+    close  = Column(Float, nullable=False)
+    volume = Column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("idx_compass_sp_date_ticker", "date", "ticker", unique=True),
+        Index("idx_compass_sp_ticker", "ticker"),
+        Index("idx_compass_sp_date", "date"),
+    )
+
+
+class CompassETFPrice(Base):
+    """EOD OHLCV for NSE sector ETFs — compass-specific table."""
+    __tablename__ = "compass_etf_prices"
+
+    id     = Column(Integer, primary_key=True, autoincrement=True)
+    date   = Column(String(10), nullable=False)
+    ticker = Column(String(50), nullable=False)
+    open   = Column(Float, nullable=True)
+    high   = Column(Float, nullable=True)
+    low    = Column(Float, nullable=True)
+    close  = Column(Float, nullable=False)
+    volume = Column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("idx_compass_ep_date_ticker", "date", "ticker", unique=True),
+        Index("idx_compass_ep_ticker", "ticker"),
+    )
+
+
+class CompassRSScore(Base):
+    """Daily RS score, momentum, volume signal, quadrant, action per instrument."""
+    __tablename__ = "compass_rs_scores"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    date             = Column(String(10), nullable=False)
+    instrument_id    = Column(String(50), nullable=False)   # sector key, ETF ticker, or stock ticker
+    instrument_type  = Column(String(10), nullable=False)   # 'index', 'etf', 'stock'
+    parent_sector    = Column(String(50), nullable=True)    # sector key (for stocks/ETFs)
+    rs_score         = Column(Float, nullable=False)        # 0-100 percentile rank
+    rs_momentum      = Column(Float, nullable=False)        # change over 4 weeks
+    volume_signal    = Column(SQLEnum(CompassVolumeSignal), nullable=True)
+    quadrant         = Column(SQLEnum(CompassQuadrant), nullable=False)
+    action           = Column(SQLEnum(CompassAction), nullable=False)
+    pe_ratio         = Column(Float, nullable=True)
+    market_cap_cr    = Column(Float, nullable=True)
+    stop_loss_pct    = Column(Float, nullable=True)
+    relative_return  = Column(Float, nullable=True)         # raw % vs benchmark
+
+    __table_args__ = (
+        Index("idx_compass_rs_date_inst", "date", "instrument_id", "instrument_type", unique=True),
+        Index("idx_compass_rs_date", "date"),
+        Index("idx_compass_rs_type", "instrument_type"),
+        Index("idx_compass_rs_sector", "parent_sector"),
+    )
+
+
+class CompassModelState(Base):
+    """Current model portfolio state — positions, cash, metadata."""
+    __tablename__ = "compass_model_state"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    sector_key      = Column(String(50), nullable=False)
+    instrument_id   = Column(String(50), nullable=False)   # ETF ticker or stock ticker
+    instrument_type = Column(String(10), nullable=False)   # 'etf' or 'stock'
+    entry_date      = Column(String(10), nullable=False)
+    entry_price     = Column(Float, nullable=False)
+    current_price   = Column(Float, nullable=True)
+    quantity        = Column(Float, nullable=True)
+    weight_pct      = Column(Float, nullable=True)
+    stop_loss       = Column(Float, nullable=True)
+    trailing_stop   = Column(Float, nullable=True)
+    highest_since   = Column(Float, nullable=True)
+    status          = Column(String(10), default="OPEN")   # OPEN or CLOSED
+    exit_date       = Column(String(10), nullable=True)
+    exit_price      = Column(Float, nullable=True)
+    exit_reason     = Column(String(50), nullable=True)
+    pnl_pct         = Column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("idx_compass_ms_status", "status"),
+        Index("idx_compass_ms_sector", "sector_key"),
+    )
+
+
+class CompassModelTrade(Base):
+    """Trade log for model portfolio — every entry/exit recorded."""
+    __tablename__ = "compass_model_trades"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    trade_date      = Column(String(10), nullable=False)
+    sector_key      = Column(String(50), nullable=False)
+    instrument_id   = Column(String(50), nullable=False)
+    instrument_type = Column(String(10), nullable=False)
+    side            = Column(String(4), nullable=False)     # BUY or SELL
+    price           = Column(Float, nullable=False)
+    quantity        = Column(Float, nullable=True)
+    value           = Column(Float, nullable=True)
+    reason          = Column(String(100), nullable=True)    # e.g. "LEADING+ACCUMULATION", "STOP_LOSS"
+    quadrant        = Column(SQLEnum(CompassQuadrant), nullable=True)
+    rs_score        = Column(Float, nullable=True)
+    created_at      = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("idx_compass_mt_date", "trade_date"),
+    )
+
+
+class CompassModelNAV(Base):
+    """Daily NAV for model portfolio vs benchmarks."""
+    __tablename__ = "compass_model_nav"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    date            = Column(String(10), nullable=False, unique=True)
+    nav             = Column(Float, nullable=False)          # model portfolio NAV (base 100)
+    benchmark_nav   = Column(Float, nullable=True)           # NIFTY NAV (base 100)
+    fm_nav          = Column(Float, nullable=True)           # FM portfolio NAV (base 100)
+    cash_pct        = Column(Float, nullable=True)
+    num_positions   = Column(Integer, nullable=True)
+    total_value     = Column(Float, nullable=True)           # in INR
+    created_at      = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("idx_compass_nav_date", "date"),
+    )

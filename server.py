@@ -58,7 +58,7 @@ from models import (
 )
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, health, indices, pms, portfolios, recommendations, sentiment
+from routers import alerts, baskets, compass, health, indices, pms, portfolios, recommendations, sentiment
 from services.data_helpers import get_all_portfolio_tickers_with_inception, upsert_price_row
 
 # ═══════════════════════════════════════════════════════════
@@ -147,6 +147,7 @@ app.include_router(baskets.router)
 app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
+app.include_router(compass.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -387,6 +388,26 @@ def _background_yfinance_backfill():
             logger.info("Sentiment history backfill: %d new snapshots", filled)
         except Exception as e:
             logger.warning("Sentiment history backfill failed (non-fatal): %s", e)
+
+        # 10. Compass: backfill 1Y stock + ETF prices, then compute RS scores
+        try:
+            from services.compass_data import backfill_compass_stocks, backfill_compass_etfs
+            from services.compass_rs import compute_sector_rs_scores, persist_rs_scores
+            from services.compass_portfolio import update_model_nav
+
+            logger.info("Compass backfill: starting 1Y stock + ETF price fetch...")
+            compass_stocks = backfill_compass_stocks(db, period="1y")
+            compass_etfs = backfill_compass_etfs(db, period="1y")
+            logger.info("Compass backfill: %d stock + %d ETF records stored", compass_stocks, compass_etfs)
+
+            # Compute initial RS scores
+            scores = compute_sector_rs_scores(db, base_index="NIFTY", period_key="3M")
+            if scores:
+                persist_rs_scores(db, scores, instrument_type="index")
+                update_model_nav(db)
+                logger.info("Compass: initial RS scores computed for %d sectors", len(scores))
+        except Exception as e:
+            logger.warning("Compass backfill failed (non-fatal): %s", e)
 
         logger.info("Background yfinance backfill complete")
     except Exception as e:
@@ -652,8 +673,67 @@ async def start_scheduler():
             id="daily_sentiment_refresh",
             replace_existing=True,
         )
+        # Compass: 15-minute intraday refresh (9:15 AM - 3:45 PM IST, Mon-Fri)
+        # Fetches latest prices from yfinance, recomputes RS scores, clears API cache
+        def _compass_intraday_refresh():
+            from models import SessionLocal as _SL
+            db = _SL()
+            try:
+                from services.compass_data import daily_refresh_compass_prices
+                from services.compass_rs import compute_sector_rs_scores, persist_rs_scores
+                from routers.compass import _clear_cache
+
+                daily_refresh_compass_prices(db)
+                scores = compute_sector_rs_scores(db, base_index="NIFTY", period_key="3M")
+                persist_rs_scores(db, scores, instrument_type="index")
+                _clear_cache()
+                logger.info("Compass 15-min refresh: %d sectors scored", len(scores))
+            except Exception as _e:
+                logger.warning("Compass 15-min refresh failed: %s", _e)
+            finally:
+                db.close()
+
+        from apscheduler.triggers.cron import CronTrigger as _CT
+        scheduler.add_job(
+            _compass_intraday_refresh,
+            _CT(minute="*/15", hour="9-15", day_of_week="mon-fri", timezone=ist),
+            id="compass_intraday_refresh",
+            replace_existing=True,
+        )
+
+        # Compass: EOD rebalance at 3:40 PM IST (model portfolio trades only at EOD)
+        def _compass_eod_rebalance():
+            from models import SessionLocal as _SL
+            db = _SL()
+            try:
+                from services.compass_data import daily_refresh_compass_prices
+                from services.compass_rs import compute_sector_rs_scores, persist_rs_scores
+                from services.compass_portfolio import run_weekly_rebalance, update_model_nav
+                from routers.compass import _clear_cache
+
+                daily_refresh_compass_prices(db)
+                scores = compute_sector_rs_scores(db, base_index="NIFTY", period_key="3M")
+                persist_rs_scores(db, scores, instrument_type="index")
+                run_weekly_rebalance(db, scores)
+                update_model_nav(db)
+                _clear_cache()
+                logger.info("Compass EOD rebalance: %d sectors scored", len(scores))
+            except Exception as _e:
+                logger.warning("Compass EOD rebalance failed: %s", _e)
+            finally:
+                db.close()
+
+        scheduler.add_job(
+            _compass_eod_rebalance,
+            CronTrigger(hour=15, minute=40, timezone=ist),
+            id="compass_eod_rebalance",
+            replace_existing=True,
+        )
         scheduler.start()
-        logger.info("APScheduler started — daily EOD fetch at 3:30 PM IST, sentiment refresh at 3:35 PM IST")
+        logger.info(
+            "APScheduler started — EOD 3:30, sentiment 3:35, compass EOD 3:40 PM IST, "
+            "compass intraday every 15 min (9:15-3:45 Mon-Fri)"
+        )
     except Exception as e:
         logger.warning("APScheduler not available: %s (install apscheduler)", e)
 
@@ -664,7 +744,7 @@ async def start_scheduler():
 
 _frontend_dir = Path(__file__).parent / "web" / "out"
 if _frontend_dir.is_dir():
-    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment"):
+    for _page in ("pulse", "approved", "trade", "performance", "portfolios", "actionables", "docs", "microbaskets", "recommendations", "sentiment", "compass"):
         _html = _frontend_dir / f"{_page}.html"
         if _html.is_file():
             def _make_page_handler(path: Path):

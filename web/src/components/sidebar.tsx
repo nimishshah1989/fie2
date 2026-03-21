@@ -13,6 +13,7 @@ import {
   BookOpen,
   BarChart2,
   Menu,
+  Target,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/pulse", label: "Market Pulse", icon: Activity },
   { href: "/sentiment", label: "Sentiment", icon: BarChart2 },
   { href: "/recommendations", label: "Recommendations", icon: Compass },
+  { href: "/compass", label: "Sector Compass", icon: Target },
   { href: "/portfolios", label: "Model Portfolios", icon: Briefcase },
   { href: "/microbaskets", label: "Microbaskets", icon: Layers },
   { href: "/docs", label: "Documentation", icon: BookOpen },

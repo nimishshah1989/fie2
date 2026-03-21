@@ -378,3 +378,68 @@ SECTOR_ETF_MAP = {
     "NIFTYMETAL": ["METALIETF"],
     "NIFTYAUTO": ["NETFAUTO"],
 }
+
+# ═══════════════════════════════════════════════════════════
+#  SECTOR COMPASS — ETF Universe + Sector-ETF Mapping
+# ═══════════════════════════════════════════════════════════
+
+# All NSE-traded sector/thematic ETFs with yfinance symbols
+COMPASS_ETF_UNIVERSE: dict[str, str] = {
+    # Broad market
+    "NIFTYBEES": "NIFTYBEES.NS",
+    "JUNIORBEES": "JUNIORBEES.NS",
+    "BANKBEES": "BANKBEES.NS",
+    # Sector
+    "ITBEES": "ITBEES.NS",
+    "PHARMABEES": "PHARMABEES.NS",
+    "PSUBNKBEES": "PSUBNKBEES.NS",
+    "FMCGIETF": "FMCGIETF.NS",
+    "METALIETF": "METALIETF.NS",
+    "NETFAUTO": "NETFAUTO.NS",
+    "OILIETF": "OILIETF.NS",
+    "CPSEETF": "CPSEETF.NS",
+    "INFRAIETF": "INFRAIETF.NS",
+    "CONSMETF": "CONSUMIETF.NS",
+    "HEALTHIETF": "HEALTHIETF.NS",
+    "DIVOPPBEES": "DIVOPPBEES.NS",
+    "PVTBANIETF": "PVTBANIETF.NS",
+    "COMMOIETF": "COMMOIETF.NS",
+    "REALTYIETF": "REALTYIETF.NS",
+    "ENERGYIETF": "ENERGYIETF.NS",
+    "MEDIAIETF": "MEDIAIETF.NS",
+    # MidCap/SmallCap
+    "MID150BEES": "MID150BEES.NS",
+    "MIDCAPIETF": "MIDCAPIETF.NS",
+    "SMALLCAPETF": "SMALLCAPETF.NS",
+    # Commodity
+    "GOLDBEES": "GOLDBEES.NS",
+    "SILVERBEES": "SILVERBEES.NS",
+}
+
+# Maps sector index key -> list of ETFs that track it (for compass)
+COMPASS_SECTOR_ETF_MAP: dict[str, list[str]] = {
+    "BANKNIFTY": ["BANKBEES"],
+    "NIFTYIT": ["ITBEES"],
+    "NIFTYPHARMA": ["PHARMABEES"],
+    "NIFTYPSUBANK": ["PSUBNKBEES"],
+    "NIFTYFMCG": ["FMCGIETF"],
+    "NIFTYMETAL": ["METALIETF"],
+    "NIFTYAUTO": ["NETFAUTO"],
+    "NIFTYOILGAS": ["OILIETF"],
+    "NIFTYCPSE": ["CPSEETF"],
+    "NIFTYINFRA": ["INFRAIETF"],
+    "NIFTYCONSUMPTION": ["CONSMETF"],
+    "NIFTYHEALTHCARE": ["HEALTHIETF"],
+    "NIFTYPVTBANK": ["PVTBANIETF"],
+    "NIFTYCOMMODITIES": ["COMMOIETF"],
+    "NIFTYREALTY": ["REALTYIETF"],
+    "NIFTYENERGY": ["ENERGYIETF"],
+    "NIFTYMEDIA": ["MEDIAIETF"],
+}
+
+# Sector indices used by compass (all sectoral + thematic with sufficient history)
+COMPASS_SECTOR_INDICES: list[tuple[str, str]] = [
+    (key, NSE_DISPLAY_MAP.get(key, key))
+    for key, cat in NSE_INDEX_CATEGORIES.items()
+    if cat in ("sectoral", "thematic") and key not in _RECO_SKIP
+]
