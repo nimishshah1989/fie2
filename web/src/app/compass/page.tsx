@@ -9,12 +9,13 @@ import { SectorBubbleChart } from "@/components/compass/SectorBubbleChart";
 import { ActionSummary } from "@/components/compass/ActionSummary";
 import { StockDrillDown } from "@/components/compass/StockDrillDown";
 import { ModelPortfolioDashboard } from "@/components/compass/ModelPortfolioDashboard";
+import { CompassMethodology } from "@/components/compass/CompassMethodology";
 import { refreshCompass } from "@/lib/compass-api";
 import type { Period } from "@/lib/compass-types";
 
 const PERIODS: Period[] = ["1M", "3M", "6M", "12M"];
 const BASES = ["NIFTY", "NIFTY100", "NIFTY500"];
-const TABS = ["Sectors", "Model Portfolio"] as const;
+const TABS = ["Sectors", "Model Portfolio", "Methodology"] as const;
 
 export default function CompassPage() {
   const [base, setBase] = useState("NIFTY");
@@ -159,6 +160,8 @@ export default function CompassPage() {
       )}
 
       {activeTab === "Model Portfolio" && <ModelPortfolioDashboard />}
+
+      {activeTab === "Methodology" && <CompassMethodology />}
     </div>
   );
 }
