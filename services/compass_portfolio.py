@@ -293,8 +293,8 @@ def _rebalance_portfolio(db: Session, sector_scores: list[dict], portfolio_type:
         should_exit = False
         exit_reason = ""
 
-        # Exit rule 1: SELL signal (LAGGING quadrant = underperforming + losing momentum)
-        if sector_data["action"] == CompassAction.SELL.value:
+        # Exit rule 1: SELL or AVOID signal
+        if sector_data["action"] in (CompassAction.SELL.value, CompassAction.AVOID.value):
             should_exit = True
             exit_reason = "SELL_SIGNAL"
 

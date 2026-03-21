@@ -205,6 +205,11 @@ def _run_migrations():
         "ALTER TABLE alert_actions ADD COLUMN closed_at TIMESTAMP",
         "ALTER TABLE alert_actions ADD COLUMN closed_price FLOAT",
         "ALTER TABLE alert_actions ADD COLUMN closed_pnl_pct FLOAT",
+        # Gate-based action enum additions (v3.2)
+        "ALTER TYPE compassaction ADD VALUE IF NOT EXISTS 'WATCH_EMERGING'",
+        "ALTER TYPE compassaction ADD VALUE IF NOT EXISTS 'WATCH_RELATIVE'",
+        "ALTER TYPE compassaction ADD VALUE IF NOT EXISTS 'WATCH_EARLY'",
+        "ALTER TYPE compassaction ADD VALUE IF NOT EXISTS 'AVOID'",
     ]
     for sql in migrations:
         try:
@@ -615,7 +620,10 @@ class CompassQuadrant(str, enum.Enum):
 class CompassAction(str, enum.Enum):
     BUY = "BUY"
     HOLD = "HOLD"
-    WATCH = "WATCH"
+    WATCH_EMERGING = "WATCH_EMERGING"
+    WATCH_RELATIVE = "WATCH_RELATIVE"
+    WATCH_EARLY = "WATCH_EARLY"
+    AVOID = "AVOID"
     SELL = "SELL"
 
 

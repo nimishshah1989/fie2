@@ -480,11 +480,38 @@ COMPASS_ETF_UNIVERSE: dict[str, str] = {
     "GILT5YBEES": "GILT5YBEES.NS",
     "CPSEBOND": "CPSEBOND.NS",
     "BHARAT22": "BHARAT22.NS",
+    # ── Sensex / BSE ETFs ──
+    "SENSEXIETF": "SENSEXIETF.NS",
+    "SENSEXBEES": "SENSEXBEES.NS",
+    "UTISENSETF": "UTISENSETF.NS",
+    # ── Factor / Strategy (newer) ──
+    "HDFCVALUE": "HDFCVALUE.NS",
+    "SBIETFQLTY": "SBIETFQLTY.NS",
+    "MIDSMALL": "MIDSMALL.NS",
+    "KOTAKNIFTY": "KOTAKNIFTY.NS",
+    "SHARIABEES": "SHARIABEES.NS",
+    # ── Additional Sector ETFs ──
+    "KOTAKBKETF": "KOTAKBKETF.NS",
+    "SETFNN50": "SETFNN50.NS",
+    "UTINEXT50": "UTINEXT50.NS",
+    # ── Bharat Bond Series ──
+    "EBBETF0430": "EBBETF0430.NS",
+    "EBBETF0431": "EBBETF0431.NS",
+    "EBBETF0432": "EBBETF0432.NS",
+    "EBBETF0433": "EBBETF0433.NS",
+    # ── Additional Gilt / Debt ──
+    "GSEC10YBEES": "GSEC10YBEES.NS",
+    "LTGILTBEES": "LTGILTBEES.NS",
+    # ── Additional Commodity ──
+    "TATAGOLD": "TATAGOLD.NS",
+    "KOTAKGOLD": "KOTAKGOLD.NS",
+    "KOTAKSILVER": "KOTAKSILVER.NS",
     # ── International ──
     "N100": "N100.NS",
     "NASDAQ100": "NASDAQ100.NS",
-    "MON100": "MON100.NS",
     "MOUS500": "MOUS500.NS",
+    "MASPTOP50": "MASPTOP50.NS",
+    "MONQ50": "MONQ50.NS",
 }
 
 # Maps sector index key -> list of ETFs that track it (for compass)

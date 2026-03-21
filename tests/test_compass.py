@@ -1,5 +1,5 @@
 """
-Tests for Sector Compass — RS engine, portfolio rules, and API router.
+Tests for Sector Compass — Gate-based RS engine, portfolio rules, and API router.
 """
 
 import pytest
@@ -20,10 +20,10 @@ from models import (
 )
 from services.compass_rs import (
     _classify_quadrant,
-    _compute_conviction,
+    _classify_pe_zone,
     _compute_relative_return,
     _compute_volume_signal,
-    _derive_action,
+    _derive_action_gate,
     _get_sector_category,
 )
 
@@ -32,27 +32,22 @@ from services.compass_rs import (
 
 
 class TestClassifyQuadrant:
-    """RS Score is now a ratio centered at 0 (not percentile 0-100).
+    """RS Score is a ratio centered at 0 (not percentile 0-100).
     Positive = outperforming benchmark. Quadrant threshold is 0, not 50."""
 
     def test_leading(self):
-        # Positive RS + positive momentum = LEADING
         assert _classify_quadrant(5.2, 2.1) == CompassQuadrant.LEADING
 
     def test_weakening(self):
-        # Positive RS + negative momentum = WEAKENING
         assert _classify_quadrant(3.5, -1.8) == CompassQuadrant.WEAKENING
 
     def test_improving(self):
-        # Negative RS + positive momentum = IMPROVING
         assert _classify_quadrant(-2.0, 4.5) == CompassQuadrant.IMPROVING
 
     def test_lagging(self):
-        # Negative RS + negative momentum = LAGGING
         assert _classify_quadrant(-5.0, -3.0) == CompassQuadrant.LAGGING
 
     def test_boundary_zero_zero(self):
-        # RS=0 and momentum=0 → LAGGING (≤0, ≤0)
         assert _classify_quadrant(0, 0) == CompassQuadrant.LAGGING
 
     def test_zero_score_positive_momentum(self):
@@ -62,87 +57,173 @@ class TestClassifyQuadrant:
         assert _classify_quadrant(3.0, 0) == CompassQuadrant.WEAKENING
 
 
-class TestDeriveAction:
-    def test_leading_high_conviction_is_buy(self):
-        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.ACCUMULATION, conviction=70) == CompassAction.BUY
+class TestDeriveActionGate:
+    """Gate-based decision engine: 3 binary gates → deterministic actions."""
 
-    def test_leading_low_conviction_is_hold(self):
-        # Even LEADING, if conviction is low, action is HOLD not BUY
-        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.WEAK_RALLY, conviction=40) == CompassAction.HOLD
+    # ── All 8 gate combinations ──────────────────────
 
-    def test_leading_borderline_conviction_is_buy(self):
-        assert _derive_action(CompassQuadrant.LEADING, None, conviction=60) == CompassAction.BUY
-
-    def test_improving_is_watch(self):
-        assert _derive_action(CompassQuadrant.IMPROVING, CompassVolumeSignal.ACCUMULATION, conviction=55) == CompassAction.WATCH
-
-    def test_improving_low_conviction_is_sell(self):
-        assert _derive_action(CompassQuadrant.IMPROVING, None, conviction=30) == CompassAction.SELL
-
-    def test_weakening_is_hold(self):
-        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.DISTRIBUTION, conviction=50) == CompassAction.HOLD
-
-    def test_weakening_any_volume_is_hold(self):
-        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.WEAK_DECLINE, conviction=40) == CompassAction.HOLD
-
-    def test_lagging_is_sell(self):
-        assert _derive_action(CompassQuadrant.LAGGING, CompassVolumeSignal.DISTRIBUTION, conviction=20) == CompassAction.SELL
-
-    def test_lagging_no_volume_is_sell(self):
-        assert _derive_action(CompassQuadrant.LAGGING, None, conviction=10) == CompassAction.SELL
-
-
-class TestConviction:
-    def test_bull_accumulation_positive_returns(self):
-        """Full bullish setup: high RS, rising momentum, accumulation, positive abs return, bull market."""
-        score = _compute_conviction(
-            rs_score=15.0, momentum=8.0,
+    def test_all_pass_is_buy(self):
+        """G1✓ G2✓ G3✓ → BUY"""
+        action, reason = _derive_action_gate(
+            absolute_return=5.0, rs_score=3.0, momentum=2.0,
             volume_signal=CompassVolumeSignal.ACCUMULATION,
-            absolute_return=10.0,
             market_regime={"regime": "BULL"},
         )
-        assert score >= 70, f"Full bull setup should have high conviction, got {score}"
+        assert action == CompassAction.BUY
+        assert "Rising" in reason
 
-    def test_bear_market_correction_limits_score(self):
-        """Even with good RS, bear market + negative abs return should suppress conviction."""
-        score = _compute_conviction(
-            rs_score=10.0, momentum=5.0,
-            volume_signal=CompassVolumeSignal.WEAK_RALLY,
-            absolute_return=-8.0,
+    def test_rising_outperforming_fading_is_hold(self):
+        """G1✓ G2✓ G3✗ → HOLD"""
+        action, _ = _derive_action_gate(
+            absolute_return=3.0, rs_score=2.0, momentum=-1.0,
+            volume_signal=None, market_regime={"regime": "BULL"},
+        )
+        assert action == CompassAction.HOLD
+
+    def test_rising_lagging_strengthening_is_watch_emerging(self):
+        """G1✓ G2✗ G3✓ → WATCH_EMERGING"""
+        action, reason = _derive_action_gate(
+            absolute_return=4.0, rs_score=-2.0, momentum=3.0,
+            volume_signal=None, market_regime={"regime": "BULL"},
+        )
+        assert action == CompassAction.WATCH_EMERGING
+        assert "RS crossing" in reason
+
+    def test_rising_lagging_fading_is_avoid(self):
+        """G1✓ G2✗ G3✗ → AVOID"""
+        action, _ = _derive_action_gate(
+            absolute_return=2.0, rs_score=-3.0, momentum=-1.0,
+            volume_signal=None, market_regime={"regime": "BULL"},
+        )
+        assert action == CompassAction.AVOID
+
+    def test_falling_outperforming_strengthening_is_watch_relative(self):
+        """G1✗ G2✓ G3✓ → WATCH_RELATIVE"""
+        action, reason = _derive_action_gate(
+            absolute_return=-2.0, rs_score=5.0, momentum=2.0,
+            volume_signal=None, market_regime={"regime": "CORRECTION"},
+        )
+        assert action == CompassAction.WATCH_RELATIVE
+        assert "absolute return" in reason.lower()
+
+    def test_falling_outperforming_fading_is_sell(self):
+        """G1✗ G2✓ G3✗ → SELL"""
+        action, _ = _derive_action_gate(
+            absolute_return=-5.0, rs_score=2.0, momentum=-3.0,
+            volume_signal=None, market_regime={"regime": "CORRECTION"},
+        )
+        assert action == CompassAction.SELL
+
+    def test_falling_lagging_strengthening_is_watch_early(self):
+        """G1✗ G2✗ G3✓ → WATCH_EARLY"""
+        action, reason = _derive_action_gate(
+            absolute_return=-3.0, rs_score=-2.0, momentum=1.5,
+            volume_signal=None, market_regime={"regime": "BEAR"},
+        )
+        assert action == CompassAction.WATCH_EARLY
+        assert "early" in reason.lower() or "Early" in reason
+
+    def test_all_fail_is_sell(self):
+        """G1✗ G2✗ G3✗ → SELL"""
+        action, reason = _derive_action_gate(
+            absolute_return=-8.0, rs_score=-5.0, momentum=-3.0,
+            volume_signal=CompassVolumeSignal.DISTRIBUTION,
             market_regime={"regime": "BEAR"},
         )
-        assert score < 60, f"Bear market with negative abs return shouldn't reach BUY threshold, got {score}"
+        assert action == CompassAction.SELL
+        assert "Falling" in reason
 
-    def test_distribution_volume_penalizes(self):
-        """Distribution volume (selling pressure) should significantly reduce conviction."""
-        with_accum = _compute_conviction(
-            rs_score=10.0, momentum=3.0,
+    # ── Volume overrides ─────────────────────────────
+
+    def test_distribution_downgrades_buy_to_hold(self):
+        """BUY + DISTRIBUTION volume → HOLD (smart money selling)"""
+        action, reason = _derive_action_gate(
+            absolute_return=5.0, rs_score=3.0, momentum=2.0,
+            volume_signal=CompassVolumeSignal.DISTRIBUTION,
+            market_regime={"regime": "BULL"},
+        )
+        assert action == CompassAction.HOLD
+        assert "smart money" in reason.lower() or "distribution" in reason.lower()
+
+    def test_accumulation_on_watch_adds_note(self):
+        """WATCH + ACCUMULATION volume → still WATCH but reason mentions accumulation"""
+        action, reason = _derive_action_gate(
+            absolute_return=4.0, rs_score=-2.0, momentum=3.0,
             volume_signal=CompassVolumeSignal.ACCUMULATION,
-            absolute_return=5.0,
-            market_regime={"regime": "CAUTIOUS"},
+            market_regime={"regime": "BULL"},
         )
-        with_dist = _compute_conviction(
-            rs_score=10.0, momentum=3.0,
-            volume_signal=CompassVolumeSignal.DISTRIBUTION,
-            absolute_return=5.0,
-            market_regime={"regime": "CAUTIOUS"},
-        )
-        assert with_accum - with_dist >= 25, "Accumulation vs distribution should differ by 25+ pts"
+        assert action == CompassAction.WATCH_EMERGING
+        assert "accumulation" in reason.lower()
 
-    def test_falling_sector_in_correction(self):
-        """Sector falling -10% in a correction: should have very low conviction."""
-        score = _compute_conviction(
-            rs_score=-5.0, momentum=-3.0,
-            volume_signal=CompassVolumeSignal.DISTRIBUTION,
-            absolute_return=-10.0,
+    # ── Market regime overrides ──────────────────────
+
+    def test_bear_caps_buy_to_hold(self):
+        """All gates pass but BEAR regime → HOLD"""
+        action, reason = _derive_action_gate(
+            absolute_return=5.0, rs_score=3.0, momentum=2.0,
+            volume_signal=CompassVolumeSignal.ACCUMULATION,
+            market_regime={"regime": "BEAR"},
+        )
+        assert action == CompassAction.HOLD
+        assert "BEAR" in reason
+
+    def test_correction_with_weak_volume_caps_buy(self):
+        """All gates pass but CORRECTION + WEAK_RALLY → HOLD"""
+        action, reason = _derive_action_gate(
+            absolute_return=5.0, rs_score=3.0, momentum=2.0,
+            volume_signal=CompassVolumeSignal.WEAK_RALLY,
             market_regime={"regime": "CORRECTION"},
         )
-        assert score < 20, f"Falling sector in correction should be very low, got {score}"
+        assert action == CompassAction.HOLD
+        assert "CORRECTION" in reason
+
+    def test_correction_with_accumulation_allows_buy(self):
+        """All gates pass + CORRECTION + ACCUMULATION → BUY allowed"""
+        action, _ = _derive_action_gate(
+            absolute_return=5.0, rs_score=3.0, momentum=2.0,
+            volume_signal=CompassVolumeSignal.ACCUMULATION,
+            market_regime={"regime": "CORRECTION"},
+        )
+        assert action == CompassAction.BUY
+
+    def test_bull_regime_no_override(self):
+        """BULL regime doesn't modify any action"""
+        action, _ = _derive_action_gate(
+            absolute_return=5.0, rs_score=3.0, momentum=2.0,
+            volume_signal=None,
+            market_regime={"regime": "BULL"},
+        )
+        assert action == CompassAction.BUY
+
+
+class TestClassifyPEZone:
+    def test_value(self):
+        assert _classify_pe_zone(12.0) == "VALUE"
+
+    def test_fair(self):
+        assert _classify_pe_zone(20.0) == "FAIR"
+
+    def test_stretched(self):
+        assert _classify_pe_zone(30.0) == "STRETCHED"
+
+    def test_expensive(self):
+        assert _classify_pe_zone(50.0) == "EXPENSIVE"
+
+    def test_none(self):
+        assert _classify_pe_zone(None) is None
+
+    def test_boundary_15(self):
+        assert _classify_pe_zone(15.0) == "FAIR"
+
+    def test_boundary_25(self):
+        assert _classify_pe_zone(25.0) == "STRETCHED"
+
+    def test_boundary_40(self):
+        assert _classify_pe_zone(40.0) == "EXPENSIVE"
 
 
 class TestComputeRelativeReturn:
     def test_outperformance(self):
-        # Asset doubles, benchmark flat → +100% excess
         asset = {f"2025-{i:02d}-01": 100 + i * 10 for i in range(1, 7)}
         bench = {f"2025-{i:02d}-01": 100 for i in range(1, 7)}
         result = _compute_relative_return(asset, bench, period_days=5)
@@ -150,7 +231,6 @@ class TestComputeRelativeReturn:
         assert result > 0
 
     def test_underperformance(self):
-        # Asset flat, benchmark rises → negative excess
         asset = {f"2025-{i:02d}-01": 100 for i in range(1, 7)}
         bench = {f"2025-{i:02d}-01": 100 + i * 10 for i in range(1, 7)}
         result = _compute_relative_return(asset, bench, period_days=5)
@@ -170,7 +250,6 @@ class TestComputeRelativeReturn:
         assert result is None
 
     def test_zero_starting_price(self):
-        # When both start at 0, the function returns None due to zero division guard
         asset = {"2025-01-01": 0, "2025-02-01": 0, "2025-06-01": 100}
         bench = {"2025-01-01": 0, "2025-02-01": 0, "2025-06-01": 110}
         result = _compute_relative_return(asset, bench, period_days=2)
@@ -185,15 +264,13 @@ class TestComputeVolumeSignal:
         ]
 
     def test_accumulation(self):
-        # Price rising + volume rising (recent > older)
         prices = [100 + i * 0.5 for i in range(70)]
-        volumes = [1000] * 40 + [2000] * 30  # recent volume higher
+        volumes = [1000] * 40 + [2000] * 30
         series = self._make_series(prices, volumes)
         result = _compute_volume_signal(series)
         assert result == CompassVolumeSignal.ACCUMULATION
 
     def test_distribution(self):
-        # Price falling + volume rising
         prices = [200 - i * 0.5 for i in range(70)]
         volumes = [1000] * 40 + [2000] * 30
         series = self._make_series(prices, volumes)
@@ -201,7 +278,6 @@ class TestComputeVolumeSignal:
         assert result == CompassVolumeSignal.DISTRIBUTION
 
     def test_weak_rally(self):
-        # Price rising + volume falling
         prices = [100 + i * 0.5 for i in range(70)]
         volumes = [2000] * 40 + [1000] * 30
         series = self._make_series(prices, volumes)
@@ -209,7 +285,6 @@ class TestComputeVolumeSignal:
         assert result == CompassVolumeSignal.WEAK_RALLY
 
     def test_weak_decline(self):
-        # Price falling + volume falling
         prices = [200 - i * 0.5 for i in range(70)]
         volumes = [2000] * 40 + [1000] * 30
         series = self._make_series(prices, volumes)
@@ -452,14 +527,12 @@ class TestCompassPortfolioRules:
     def test_rebalance_no_data(self, db_session):
         from services.compass_portfolio import run_weekly_rebalance
         result = run_weekly_rebalance(db_session, [])
-        # Now returns dict keyed by portfolio type
         assert result["etf_only"]["entries"] == []
         assert result["etf_only"]["exits"] == []
 
     def test_rebalance_with_buy_signal(self, db_session):
         from services.compass_portfolio import run_weekly_rebalance
 
-        # Seed ETF price so entry can get a price
         _seed_etf_prices(db_session, "ITBEES", days=10)
 
         scores = [{
@@ -479,7 +552,6 @@ class TestCompassPortfolioRules:
         assert len(etf_result["entries"]) == 1
         assert etf_result["entries"][0]["sector"] == "NIFTYIT"
 
-        # Verify position was created
         pos = db_session.query(CompassModelState).filter_by(
             sector_key="NIFTYIT", portfolio_type="etf_only"
         ).first()
@@ -490,7 +562,6 @@ class TestCompassPortfolioRules:
     def test_max_positions_respected(self, db_session):
         from services.compass_portfolio import run_weekly_rebalance
 
-        # Fill 6 positions for etf_only
         for i in range(6):
             db_session.add(CompassModelState(
                 portfolio_type="etf_only",
@@ -513,47 +584,39 @@ class TestCompassPortfolioRules:
             "volume_signal": "ACCUMULATION",
         }]
         result = run_weekly_rebalance(db_session, scores)
-        assert len(result["etf_only"]["entries"]) == 0  # no room
+        assert len(result["etf_only"]["entries"]) == 0
 
 
 class TestCompassRSComputation:
     def test_sector_scores_with_data(self, db_session):
         from services.compass_rs import compute_sector_rs_scores
 
-        # Seed NIFTY benchmark
         _seed_index_prices(db_session, "NIFTY", days=100, start_price=22000)
-
-        # Seed a few sector indices
         _seed_index_prices(db_session, "NIFTYIT", days=100, start_price=33000)
         _seed_index_prices(db_session, "BANKNIFTY", days=100, start_price=48000)
         _seed_index_prices(db_session, "NIFTYPHARMA", days=100, start_price=16000)
-
-        # Seed ETF data for volume signal
         _seed_etf_prices(db_session, "ITBEES", days=100)
         _seed_etf_prices(db_session, "BANKBEES", days=100)
 
         scores = compute_sector_rs_scores(db_session, base_index="NIFTY", period_key="1M")
-        # Should get scores for tracked sectors that have data
         assert len(scores) >= 3
 
+        valid_actions = {a.value for a in CompassAction}
         for s in scores:
-            # RS Score is now a ratio (% outperformance), can be any value
             assert isinstance(s["rs_score"], float)
             assert s["quadrant"] in ("LEADING", "WEAKENING", "IMPROVING", "LAGGING")
-            assert s["action"] in ("BUY", "ACCUMULATE", "WATCH", "HOLD", "SELL", "AVOID")
+            assert s["action"] in valid_actions
+            assert "action_reason" in s
 
     def test_stock_scores_with_data(self, db_session):
         from services.compass_rs import compute_stock_rs_scores
 
-        # Seed sector index
         _seed_index_prices(db_session, "NIFTYIT", days=100, start_price=33000)
 
-        # Seed constituents
         db_session.add(IndexConstituent(index_name="NIFTY IT", ticker="TCS", company_name="TCS Ltd"))
         db_session.add(IndexConstituent(index_name="NIFTY IT", ticker="INFY", company_name="Infosys Ltd"))
         db_session.commit()
 
-        # Seed stock prices
         _seed_stock_prices(db_session, "TCS", days=100, start_price=3500)
         _seed_stock_prices(db_session, "INFY", days=100, start_price=1400)
 
@@ -564,6 +627,7 @@ class TestCompassRSComputation:
             assert "rs_score" in s
             assert "quadrant" in s
             assert "action" in s
+            assert "action_reason" in s
 
     def test_persist_rs_scores(self, db_session):
         from services.compass_rs import persist_rs_scores

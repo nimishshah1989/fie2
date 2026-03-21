@@ -2,33 +2,107 @@
 
 const SECTIONS = [
   {
-    title: "Relative Strength (RS) Score",
-    content: `The RS Score measures how much a sector has outperformed or underperformed the benchmark index (NIFTY, NIFTY 100, or NIFTY 500) over the selected period.
+    title: "Three Gates — The Decision Framework",
+    content: `Every sector, stock, and ETF is evaluated by three YES/NO questions. No weights, no scores — just binary conditions that anyone can verify.
 
-**Calculation:**
-1. Compute relative return = (Sector Return − Benchmark Return) over the chosen period (1M, 3M, 6M, or 12M)
-2. Rank all sectors by relative return
-3. Convert rank to percentile (0–100)
+| Gate | Question | How It's Measured |
+|------|----------|-------------------|
+| **G1** | Is it going up? | Absolute return > 0 over the selected period |
+| **G2** | Is it beating the market? | RS Score > 0 (sector return − benchmark return) |
+| **G3** | Is it getting stronger? | Momentum > 0 (RS today − RS 4 weeks ago) |
 
-A score of 80 means the sector outperformed 80% of all other sectors relative to the benchmark. Simple, no weights, no complex formulas.`,
+The combination of these three gates determines the action. No arbitrary thresholds or fuzzy scores.`,
   },
   {
-    title: "RS Momentum",
-    content: `RS Momentum captures whether a sector's relative strength is improving or fading — the direction of change, not the level.
+    title: "Gate Combinations → Actions",
+    content: `Each combination of pass/fail across the three gates maps to exactly one action:
 
-**Calculation:**
-1. Compute today's RS Score
-2. Compute the RS Score from 4 weeks ago (using the same method)
-3. Momentum = Current RS Score − RS Score 4 weeks ago
+| G1 (Rising?) | G2 (Beating Mkt?) | G3 (Strengthening?) | Action |
+|:---:|:---:|:---:|---|
+| YES | YES | YES | **BUY** — All conditions met. Enter position. |
+| YES | YES | NO | **HOLD** — Outperforming but momentum fading. Tighten stops, no new entry. |
+| YES | NO | YES | **WATCH (Emerging)** — Rising but still lagging market. Watch for RS > 0. |
+| YES | NO | NO | **AVOID** — Rising but underperforming with fading momentum. Poor setup. |
+| NO | YES | YES | **WATCH (Relative)** — Outperforming but price still falling. Watch for price turning positive. |
+| NO | YES | NO | **SELL** — Falling and losing relative strength edge. |
+| NO | NO | YES | **WATCH (Early)** — Early reversal signal. Needs RS and price both turning positive. |
+| NO | NO | NO | **SELL** — Everything failing. Underperforming and falling. |`,
+  },
+  {
+    title: "Volume & Regime Overrides",
+    content: `Volume and market regime can override the base action — but only to downgrade, never upgrade:
 
-**Positive momentum** = the sector is gaining relative strength (improving vs peers)
-**Negative momentum** = the sector is losing relative strength (fading vs peers)
+**Volume Override:**
+- DISTRIBUTION volume on a BUY → downgrades to **HOLD** ("smart money selling despite price strength")
+- ACCUMULATION volume on a WATCH → adds a note that setup has higher probability
 
-This is the single most important signal for timing. A sector can have a high RS Score but negative momentum — meaning it was strong but is now weakening.`,
+**Market Regime Override (based on NIFTY):**
+- **BEAR** (drawdown > 15%) → BUY capped at HOLD. No new entries in a bear market.
+- **CORRECTION** (drawdown > 8% or below 50 DMA with 3M return < -5%) → BUY requires volume to NOT be DISTRIBUTION or WEAK RALLY.
+- **CAUTIOUS** (below 50 DMA) → No override, but regime is displayed.
+- **BULL** → No override.`,
+  },
+  {
+    title: "P/E Valuation Qualifier",
+    content: `P/E does not change the action — it provides valuation context alongside the signal:
+
+| P/E Range | Tag | Implication |
+|-----------|-----|-------------|
+| < 15 | **Value** | Cheap. Full conviction on BUY signals. |
+| 15–25 | **Fair** | Normal valuation. No edge or concern. |
+| 25–40 | **Stretched** | Premium valuation. BUY still valid but note the price. |
+| > 40 | **Expensive** | Momentum may still work short-term, but entering at a premium. |
+
+P/E is trailing 12-month (TTM) — factual, published by NSE, no analyst estimates needed.
+A low P/E on a SELL signal is a value trap warning, not a reason to buy.`,
+  },
+  {
+    title: "WATCH Variants Explained",
+    content: `WATCH is not a single signal — it has three distinct variants, each watching for a specific trigger:
+
+**WATCH (Emerging)** — G1✓ G2✗ G3✓
+Sector is rising and gaining momentum, but still underperforming the benchmark.
+**Trigger:** RS crossing above 0 — when sector return overtakes benchmark.
+**What happens:** Upgrades to BUY. Classic breakout setup — sector catching up to market.
+
+**WATCH (Relative)** — G1✗ G2✓ G3✓
+Sector is outperforming and strengthening vs market, but absolute price is still negative.
+**Trigger:** Absolute return turning positive — when sector price crosses its starting level.
+**What happens:** Upgrades to BUY. Strongest horse in a weak market — first to turn when tide shifts.
+
+**WATCH (Early)** — G1✗ G2✗ G3✓
+Everything is down, but momentum just turned positive — earliest possible reversal signal.
+**Trigger:** RS and absolute return both turning positive. Needs 2 gates to flip.
+**What happens:** Upgrades to WATCH (Emerging) or WATCH (Relative) first, then eventually BUY.`,
+  },
+  {
+    title: "How RS Score Is Calculated",
+    content: `RS Score = (Sector Return − Benchmark Return) over the selected period.
+
+**Example:**
+- NIFTY IT returned +5% in 3 months
+- NIFTY (benchmark) returned +8% in 3 months
+- RS Score = 5% − 8% = **−3%** (underperforming)
+
+Simple subtraction. Positive = outperforming. Negative = underperforming.
+No percentiles, no normalization, no complex formulas.`,
+  },
+  {
+    title: "How Momentum Is Calculated",
+    content: `Momentum = RS Score today − RS Score 4 weeks ago.
+
+This measures the **direction of change** in relative strength, not the level.
+
+**Example:**
+- RS Score today = +5%
+- RS Score 4 weeks ago = +8%
+- Momentum = 5% − 8% = **−3** (fading)
+
+A sector can have a high RS Score but negative momentum — meaning it was strong but is now weakening. This is the most important signal for timing entries and exits.`,
   },
   {
     title: "Volume Trend",
-    content: `Volume confirms whether price moves have institutional conviction behind them. We classify volume into 4 signals:
+    content: `Volume confirms whether price moves have institutional conviction behind them:
 
 | Signal | Condition | Meaning |
 |--------|-----------|---------|
@@ -37,89 +111,32 @@ This is the single most important signal for timing. A sector can have a high RS
 | **DISTRIBUTION** | Volume rising + Price falling | Smart money selling — danger signal |
 | **WEAK DECLINE** | Volume falling + Price falling | Selling exhaustion — potential bottom |
 
-**How it works:**
-- Compare 20-day average volume vs 60-day average volume
-- If 20d > 60d → volume is rising; otherwise falling
-- Compare current price vs 20-day average price for direction
-- Combine volume direction + price direction → signal`,
+Volume is measured by comparing 20-day average volume vs 60-day average volume, combined with price direction over the same period.`,
   },
   {
-    title: "Quadrant Classification",
-    content: `Every sector is placed into one of four quadrants based on two axes:
+    title: "Same Framework at Every Level",
+    content: `The exact same 3-gate logic applies at all levels:
 
-| Quadrant | RS Score | Momentum | Interpretation |
-|----------|----------|----------|----------------|
-| **LEADING** | > 50 | > 0 | Strong and getting stronger — best place to be |
-| **WEAKENING** | > 50 | ≤ 0 | Was strong, now fading — watch for exits |
-| **IMPROVING** | ≤ 50 | > 0 | Was weak, now gaining — watch for entries |
-| **LAGGING** | ≤ 50 | ≤ 0 | Weak and getting weaker — avoid |
+| Level | G1: Going up? | G2: Beating what? | G3: Momentum vs what? |
+|-------|--------------|-------------------|----------------------|
+| **Sector** | Sector index return | Sector vs NIFTY | Sector RS change over 4w |
+| **Stock** | Stock return | Stock vs its sector index | Stock RS change over 4w |
+| **ETF** | ETF return | ETF vs NIFTY | ETF RS change over 4w |
 
-Sectors naturally rotate through these quadrants: IMPROVING → LEADING → WEAKENING → LAGGING → IMPROVING. The goal is to enter during IMPROVING and exit during WEAKENING.`,
-  },
-  {
-    title: "Action Signals",
-    content: `Each sector gets one of 4 clear actions based on its quadrant:
-
-| Quadrant | Action | Meaning |
-|----------|--------|---------|
-| LEADING | **BUY** | Outperforming + gaining momentum — enter |
-| WEAKENING | **HOLD** | Still outperforming but momentum fading — tighten stops |
-| IMPROVING | **WATCH** | Underperforming but momentum turning up — wait |
-| LAGGING | **SELL** | Underperforming + losing momentum — exit |
-
-Simple rule: **BUY** what's strong and getting stronger. **SELL** what's weak and getting weaker. No ambiguity.`,
-  },
-  {
-    title: "Stock Drill-Down",
-    content: `When you click on a sector bubble, you see all constituent stocks within that sector ranked using the same RS methodology.
-
-**Key difference at stock level:**
-- Stocks are ranked against the **sector index** (not NIFTY) — this shows which stocks are leading within their sector
-- Volume signals are computed per-stock using individual stock volume data
-- Stop-loss levels are tighter for stocks (12%) vs sectors (8%)
-
-This lets you find the strongest stocks within the strongest sectors — a double filter for quality.`,
-  },
-  {
-    title: "Model Portfolio (Paper Trading)",
-    content: `The system runs an autonomous paper-trading portfolio to validate the RS methodology in real-time.
-
-**Rules:**
-- Starting capital: ₹1 Crore
-- Maximum 6 sector positions at any time (equal weight)
-- Instruments: Sector ETFs (preferred) or top-ranked stocks
-
-**Entry rules:**
-- Enter when a sector signals **BUY** (LEADING + ACCUMULATION)
-- Only if portfolio has capacity (< 6 positions)
-
-**Exit rules:**
-- Sector moves to **LAGGING** quadrant
-- Sector is **WEAKENING** with **DISTRIBUTION** volume
-- Stop-loss hit: 8% for sector ETFs, 12% for individual stocks
-- Trailing stop: activates at 10% after 15% unrealized gain
-
-**NAV tracking:**
-- Daily NAV computed (base 100)
-- Compared against NIFTY benchmark
-- Compared against the fund manager's actual portfolio
-- Performance metrics: total return, alpha, max drawdown, win rate
-
-The model portfolio rebalances daily at 3:40 PM IST. Prices refresh every 15 minutes during market hours.`,
+Stocks compete against their sector, not the broad market. So within a BUY sector, individual stocks may be SELL (lagging their peers).`,
   },
   {
     title: "Data Sources",
-    content: `All data is 100% real — fetched from live market sources. Zero synthetic or mock data.
+    content: `All data is 100% real — fetched from live market sources.
 
 | Data | Source | Frequency |
 |------|--------|-----------|
 | Index prices (135+ NSE indices) | nsetools (NSE API) | Every 15 min during market hours |
-| Stock prices (all sector constituents) | yfinance | Every 15 min (5-day rolling window) |
-| ETF prices (25 NSE-traded ETFs) | yfinance | Every 15 min (5-day rolling window) |
+| Stock prices (sector constituents) | NSE API + yfinance fallback | Daily EOD |
+| ETF prices | NSE API + yfinance fallback | Daily EOD |
 | Sector index constituents | NSE API | Daily |
-| Historical prices (1Y backfill) | yfinance | On startup |
-
-**Cache:** RS scores are cached for 15 minutes to avoid redundant computation. Cache is cleared on manual refresh.`,
+| Historical prices (1Y backfill) | NSE API + yfinance | On startup |
+| P/E ratios | NSE published data | Cached 24h |`,
   },
 ];
 
@@ -131,8 +148,8 @@ export function CompassMethodology() {
           How the Sector Compass Works
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          A simple, transparent framework — no black boxes, no complex weights.
-          Three numbers per sector: RS Score, Momentum, and Volume Trend.
+          A deterministic, gate-based framework — no black boxes, no arbitrary weights.
+          Three YES/NO questions determine every action.
         </p>
       </div>
 
@@ -219,7 +236,6 @@ function MdTable({ rows }: { rows: string[] }) {
       .map((cell) => cell.trim());
 
   const headers = parseRow(rows[0]);
-  // Skip separator row (row[1])
   const dataRows = rows.slice(2).map(parseRow);
 
   return (

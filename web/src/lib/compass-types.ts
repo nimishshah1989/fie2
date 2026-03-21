@@ -1,10 +1,46 @@
 /** Sector Compass — TypeScript types */
 
 export type Quadrant = "LEADING" | "WEAKENING" | "IMPROVING" | "LAGGING";
-export type CompassAction = "BUY" | "HOLD" | "WATCH" | "SELL";
+export type CompassAction =
+  | "BUY"
+  | "HOLD"
+  | "WATCH_EMERGING"
+  | "WATCH_RELATIVE"
+  | "WATCH_EARLY"
+  | "AVOID"
+  | "SELL";
 export type VolumeSignal = "ACCUMULATION" | "WEAK_RALLY" | "DISTRIBUTION" | "WEAK_DECLINE";
 export type MarketRegime = "BULL" | "CAUTIOUS" | "CORRECTION" | "BEAR";
 export type Period = "1M" | "3M" | "6M" | "12M";
+export type PEZone = "VALUE" | "FAIR" | "STRETCHED" | "EXPENSIVE";
+
+/** Check if an action is any WATCH variant */
+export function isWatch(action: CompassAction): boolean {
+  return action === "WATCH_EMERGING" || action === "WATCH_RELATIVE" || action === "WATCH_EARLY";
+}
+
+/** Human-readable action label */
+export function actionLabel(action: CompassAction): string {
+  switch (action) {
+    case "BUY": return "BUY";
+    case "HOLD": return "HOLD";
+    case "WATCH_EMERGING": return "WATCH";
+    case "WATCH_RELATIVE": return "WATCH";
+    case "WATCH_EARLY": return "WATCH";
+    case "AVOID": return "AVOID";
+    case "SELL": return "SELL";
+  }
+}
+
+/** Short WATCH sub-label for the variant */
+export function watchSubLabel(action: CompassAction): string | null {
+  switch (action) {
+    case "WATCH_EMERGING": return "Emerging";
+    case "WATCH_RELATIVE": return "Relative";
+    case "WATCH_EARLY": return "Early";
+    default: return null;
+  }
+}
 
 export interface SectorRS {
   sector_key: string;
@@ -16,10 +52,11 @@ export interface SectorRS {
   volume_signal: VolumeSignal | null;
   quadrant: Quadrant;
   action: CompassAction;
-  conviction: number;
+  action_reason: string;
+  pe_ratio: number | null;
+  pe_zone: PEZone | null;
   etfs: string[];
   category: string;
-  pe_ratio: number | null;
   market_regime: MarketRegime | null;
   last_updated: string | null;
 }
@@ -34,10 +71,10 @@ export interface StockRS {
   volume_signal: VolumeSignal | null;
   quadrant: Quadrant;
   action: CompassAction;
-  conviction: number;
-  weight_pct: number | null;
-  stop_loss_pct: number | null;
+  action_reason: string;
   pe_ratio: number | null;
+  pe_zone: PEZone | null;
+  weight_pct: number | null;
 }
 
 export interface ETFRS {
@@ -51,7 +88,7 @@ export interface ETFRS {
   volume_signal: VolumeSignal | null;
   quadrant: Quadrant;
   action: CompassAction;
-  conviction: number;
+  action_reason: string;
 }
 
 export type PortfolioType = "etf_only" | "stock_etf" | "stock_only";

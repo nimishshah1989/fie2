@@ -2,6 +2,7 @@
 
 import { ArrowUpRight } from "lucide-react";
 import type { SectorRS, CompassAction } from "@/lib/compass-types";
+import { actionLabel, watchSubLabel, isWatch } from "@/lib/compass-types";
 
 const ACTION_CONFIG: Record<CompassAction, {
   bg: string; text: string; border: string;
@@ -9,21 +10,38 @@ const ACTION_CONFIG: Record<CompassAction, {
 }> = {
   BUY: {
     bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200",
-    label: "BUY", description: "Outperforming benchmark with rising momentum. Enter via ETF or top stocks.",
+    label: "BUY", description: "Rising, outperforming benchmark, and gaining momentum. All 3 gates pass.",
   },
   HOLD: {
     bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200",
-    label: "HOLD", description: "Still outperforming but momentum fading. Tighten stops, no new entries.",
+    label: "HOLD", description: "Outperforming but momentum fading, or BUY downgraded by volume/regime. Tighten stops, no new entry.",
   },
-  WATCH: {
+  WATCH_EMERGING: {
     bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200",
-    label: "WATCH", description: "Underperforming but momentum turning up. Wait for confirmation.",
+    label: "WATCH — Emerging", description: "Rising and strengthening but still lagging market. Watch for RS crossing above 0.",
+  },
+  WATCH_RELATIVE: {
+    bg: "bg-sky-50", text: "text-sky-700", border: "border-sky-200",
+    label: "WATCH — Relative", description: "Outperforming and strengthening vs market, but price still falling. Watch for absolute return turning positive.",
+  },
+  WATCH_EARLY: {
+    bg: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200",
+    label: "WATCH — Early", description: "Momentum just turned positive — earliest reversal signal. Needs both RS and price to confirm.",
+  },
+  AVOID: {
+    bg: "bg-orange-50", text: "text-orange-700", border: "border-orange-200",
+    label: "AVOID", description: "Rising but underperforming with fading momentum. Poor risk/reward.",
   },
   SELL: {
     bg: "bg-red-50", text: "text-red-700", border: "border-red-200",
-    label: "SELL", description: "Underperforming with falling momentum. Exit positions.",
+    label: "SELL", description: "Multiple gates failing. Underperforming and/or falling with no momentum support.",
   },
 };
+
+/** Display order for the action board */
+const ACTION_ORDER: CompassAction[] = [
+  "BUY", "SELL", "HOLD", "WATCH_EMERGING", "WATCH_RELATIVE", "WATCH_EARLY", "AVOID",
+];
 
 interface Props {
   sectors: SectorRS[];
@@ -37,9 +55,7 @@ export function ActionSummary({ sectors, onSectorClick }: Props) {
     grouped[s.action].push(s);
   }
 
-  // Only show actions that have sectors, in priority order
-  const actionOrder: CompassAction[] = ["BUY", "SELL", "WATCH", "HOLD"];
-  const activeActions = actionOrder.filter((a) => grouped[a]?.length);
+  const activeActions = ACTION_ORDER.filter((a) => grouped[a]?.length);
 
   return (
     <div className="space-y-3">
@@ -75,7 +91,7 @@ export function ActionSummary({ sectors, onSectorClick }: Props) {
                         <p className="text-sm font-medium text-slate-900 truncate">
                           {s.display_name}
                         </p>
-                        <div className="flex items-center gap-3 mt-0.5">
+                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                           <span className="text-xs text-slate-500">
                             RS <span className={`font-mono font-semibold ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score.toFixed(1)}%</span>
                           </span>
@@ -84,13 +100,16 @@ export function ActionSummary({ sectors, onSectorClick }: Props) {
                               Abs {s.absolute_return > 0 ? "+" : ""}{s.absolute_return.toFixed(1)}%
                             </span>
                           )}
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-mono font-semibold ${
-                            s.conviction >= 60 ? "bg-emerald-100 text-emerald-700" :
-                            s.conviction >= 40 ? "bg-amber-100 text-amber-700" :
-                            "bg-red-100 text-red-700"
-                          }`}>
-                            {s.conviction}
-                          </span>
+                          {s.pe_zone && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                              s.pe_zone === "VALUE" ? "bg-emerald-100 text-emerald-700" :
+                              s.pe_zone === "FAIR" ? "bg-slate-100 text-slate-600" :
+                              s.pe_zone === "STRETCHED" ? "bg-amber-100 text-amber-700" :
+                              "bg-red-100 text-red-700"
+                            }`}>
+                              {s.pe_zone}{s.pe_ratio ? ` (${s.pe_ratio.toFixed(0)})` : ""}
+                            </span>
+                          )}
                           {s.volume_signal && (
                             <span className="text-xs text-slate-400">
                               {s.volume_signal.replace("_", " ")}

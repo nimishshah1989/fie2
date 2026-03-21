@@ -248,101 +248,112 @@ def _compute_market_regime(benchmark_closes: dict[str, float]) -> dict:
     }
 
 
-def _compute_conviction(
+PE_ZONE_THRESHOLDS = {"VALUE": 15, "FAIR": 25, "STRETCHED": 40}
+
+
+def _classify_pe_zone(pe_ratio: Optional[float]) -> Optional[str]:
+    """Classify P/E into valuation zone: VALUE / FAIR / STRETCHED / EXPENSIVE."""
+    if pe_ratio is None:
+        return None
+    if pe_ratio < PE_ZONE_THRESHOLDS["VALUE"]:
+        return "VALUE"
+    elif pe_ratio < PE_ZONE_THRESHOLDS["FAIR"]:
+        return "FAIR"
+    elif pe_ratio < PE_ZONE_THRESHOLDS["STRETCHED"]:
+        return "STRETCHED"
+    else:
+        return "EXPENSIVE"
+
+
+def _derive_action_gate(
+    absolute_return: Optional[float],
     rs_score: float,
     momentum: float,
     volume_signal: Optional[CompassVolumeSignal],
-    absolute_return: Optional[float],
     market_regime: dict,
-) -> int:
+) -> tuple[CompassAction, str]:
     """
-    Multi-factor conviction score (0-100) combining:
-    - Relative strength vs benchmark (0-25)
-    - Momentum direction and magnitude (0-20)
-    - Volume confirmation (0-20)
-    - Absolute return — is the sector actually going up? (0-20)
-    - Market regime — is the overall market supportive? (0-15)
+    Gate-based decision engine. No weights, no scores.
 
-    A 30-year technical trader would never buy a sector just because
-    it fell less than the benchmark. This score requires multiple
-    confirming factors.
+    Three YES/NO gates:
+      G1: Is it going up?        (absolute_return > 0)
+      G2: Is it beating market?  (rs_score > 0)
+      G3: Is it getting stronger? (momentum > 0)
+
+    8 combinations → 5 actions (BUY, HOLD, WATCH variants, AVOID, SELL).
+    Volume and market regime act as overrides, not scores.
+
+    Returns (action, reason) where reason explains why.
     """
-    score = 0
+    g1 = (absolute_return or 0) > 0   # going up?
+    g2 = rs_score > 0                 # beating market?
+    g3 = momentum > 0                 # getting stronger?
 
-    # 1. Relative strength (0-25 pts)
-    # Positive RS is good, but diminishing returns above +15%
-    if rs_score > 0:
-        score += min(25, int(rs_score * 1.5))
+    regime = market_regime.get("regime", "UNKNOWN")
+
+    # ── 8 gate combinations ─────────────────────────────────
+    if g1 and g2 and g3:
+        # All three pass → BUY (subject to overrides)
+        action = CompassAction.BUY
+        reason = "Rising, outperforming, and strengthening"
+
+    elif g1 and g2 and not g3:
+        # Rising and outperforming but momentum fading
+        action = CompassAction.HOLD
+        reason = "Outperforming but momentum fading — tighten stops, no new entry"
+
+    elif g1 and not g2 and g3:
+        # Rising and gaining momentum but still lagging market
+        action = CompassAction.WATCH_EMERGING
+        reason = "Rising but lagging market. Watch for RS crossing above 0"
+
+    elif g1 and not g2 and not g3:
+        # Rising but underperforming and momentum fading
+        action = CompassAction.AVOID
+        reason = "Rising but underperforming with fading momentum"
+
+    elif not g1 and g2 and g3:
+        # Falling but outperforming market and strengthening
+        action = CompassAction.WATCH_RELATIVE
+        reason = "Outperforming but price still falling. Watch for absolute return turning positive"
+
+    elif not g1 and g2 and not g3:
+        # Falling, was outperforming, now losing edge
+        action = CompassAction.SELL
+        reason = "Falling and losing relative strength edge"
+
+    elif not g1 and not g2 and g3:
+        # Everything down but momentum just turned positive
+        action = CompassAction.WATCH_EARLY
+        reason = "Early reversal signal. Needs RS and price both turning positive"
+
     else:
-        score += max(-10, int(rs_score * 0.5))  # penalty for underperformance
+        # not g1, not g2, not g3 — everything failing
+        action = CompassAction.SELL
+        reason = "Falling, underperforming, and weakening"
 
-    # 2. Momentum (0-20 pts)
-    # Rising RS is bullish, falling RS is bearish
-    if momentum > 0:
-        score += min(20, int(momentum * 2))
-    else:
-        score += max(-10, int(momentum * 1.5))  # penalty
+    # ── Volume override ─────────────────────────────────────
+    if action == CompassAction.BUY and volume_signal == CompassVolumeSignal.DISTRIBUTION:
+        action = CompassAction.HOLD
+        reason = "All gates pass but smart money selling (distribution volume) — hold, don't add"
 
-    # 3. Volume confirmation (0-20 pts)
-    # This is critical — volume MUST confirm price action
-    vol_scores = {
-        CompassVolumeSignal.ACCUMULATION: 20,   # best: price up + volume up
-        CompassVolumeSignal.WEAK_RALLY: 5,      # caution: price up but volume down
-        CompassVolumeSignal.DISTRIBUTION: -10,   # danger: price down + volume up (selling)
-        CompassVolumeSignal.WEAK_DECLINE: -5,    # mild: price down + volume down
-    }
-    if volume_signal:
-        score += vol_scores.get(volume_signal, 0)
-    # No penalty if volume data unavailable (many sectors lack ETF mapping)
+    # Add volume note to WATCH actions
+    if action in (CompassAction.WATCH_EMERGING, CompassAction.WATCH_RELATIVE, CompassAction.WATCH_EARLY):
+        if volume_signal == CompassVolumeSignal.ACCUMULATION:
+            reason += ". Volume confirms accumulation — higher probability setup"
 
-    # 4. Absolute return (0-20 pts)
-    # A sector MUST be in an uptrend to be a BUY, not just "falling less"
-    if absolute_return is not None:
-        if absolute_return > 5:
-            score += 20  # clearly rising
-        elif absolute_return > 0:
-            score += int(absolute_return * 3)  # marginally positive
-        elif absolute_return > -5:
-            score += int(absolute_return * 2)  # mild decline → small penalty
-        else:
-            score += max(-15, int(absolute_return * 1.5))  # significant decline
+    # ── Market regime override ──────────────────────────────
+    if regime == "BEAR" and action == CompassAction.BUY:
+        action = CompassAction.HOLD
+        reason = "All gates pass but market in BEAR regime — hold only, no new buys"
 
-    # 5. Market regime (0-15 pts)
-    regime_scores = {
-        "BULL": 15,       # broad market supportive
-        "CAUTIOUS": 5,    # mixed signals
-        "CORRECTION": -5, # headwinds — raise the bar for BUY
-        "BEAR": -15,      # strong headwinds — only exceptional sectors get BUY
-    }
-    score += regime_scores.get(market_regime.get("regime", "UNKNOWN"), 0)
+    if regime == "CORRECTION" and action == CompassAction.BUY:
+        # In CORRECTION, BUY needs volume to NOT be DISTRIBUTION or WEAK_RALLY
+        if volume_signal in (CompassVolumeSignal.DISTRIBUTION, CompassVolumeSignal.WEAK_RALLY):
+            action = CompassAction.HOLD
+            reason = "All gates pass but CORRECTION regime with weak/distribution volume — hold, wait for volume confirmation"
 
-    return max(0, min(100, score))
-
-
-def _derive_action(
-    quadrant: CompassQuadrant,
-    volume_signal: Optional[CompassVolumeSignal],
-    conviction: int = 50,
-) -> CompassAction:
-    """
-    Conviction-driven action signal. The quadrant sets the base direction,
-    but conviction gates whether we actually recommend action.
-
-    BUY:   Conviction ≥ 60 AND in LEADING quadrant
-    HOLD:  In LEADING/WEAKENING but conviction too low for BUY
-    WATCH: In IMPROVING quadrant (momentum turning up)
-    SELL:  Conviction < 30 OR in LAGGING quadrant
-    """
-    if quadrant == CompassQuadrant.LEADING and conviction >= 60:
-        return CompassAction.BUY
-    elif quadrant in (CompassQuadrant.LEADING, CompassQuadrant.WEAKENING):
-        return CompassAction.HOLD
-    elif quadrant == CompassQuadrant.IMPROVING:
-        if conviction >= 50:
-            return CompassAction.WATCH
-        return CompassAction.SELL  # improving but too weak overall
-    else:  # LAGGING
-        return CompassAction.SELL
+    return action, reason
 
 
 def compute_sector_rs_scores(
@@ -415,7 +426,7 @@ def compute_sector_rs_scores(
             if abs_ret is not None:
                 abs_return_map[sector_key] = abs_ret
 
-    # Step 6: build results with conviction scoring
+    # Step 6: build results with gate-based decision engine
     results = []
     for sector_key, display_name, rs_score in sector_data:
         past_rs = past_rs_map.get(sector_key, rs_score)
@@ -431,8 +442,9 @@ def compute_sector_rs_scores(
 
         quadrant = _classify_quadrant(rs_score, momentum)
         abs_return = abs_return_map.get(sector_key)
-        conviction = _compute_conviction(rs_score, momentum, volume_signal, abs_return, market_regime)
-        action = _derive_action(quadrant, volume_signal, conviction)
+        pe_ratio = pe_cache.get(sector_key)
+        action, reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
+        pe_zone = _classify_pe_zone(pe_ratio)
 
         results.append({
             "sector_key": sector_key,
@@ -444,10 +456,11 @@ def compute_sector_rs_scores(
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
-            "conviction": conviction,
+            "action_reason": reason,
+            "pe_ratio": pe_ratio,
+            "pe_zone": pe_zone,
             "etfs": etfs,
             "category": _get_sector_category(sector_key),
-            "pe_ratio": pe_cache.get(sector_key),
             "market_regime": market_regime["regime"],
         })
 
@@ -537,7 +550,7 @@ def compute_stock_rs_scores(
     benchmark_closes = _get_index_close_map(db, base_index, days=period_days + TRADING_DAYS_4W + 60)
     market_regime = _compute_market_regime(benchmark_closes) if benchmark_closes else {"regime": "UNKNOWN"}
 
-    # Step 5: build results
+    # Step 5: build results with gate-based engine
     results = []
     for ticker, name, rs_score, weight_pct in stock_data:
         past_rs = past_rs_map.get(ticker, rs_score)
@@ -550,10 +563,9 @@ def compute_stock_rs_scores(
         abs_return = _compute_absolute_return(stock_closes, period_days) if stock_closes else None
 
         quadrant = _classify_quadrant(rs_score, momentum)
-        conviction = _compute_conviction(rs_score, momentum, volume_signal, abs_return, market_regime)
-        action = _derive_action(quadrant, volume_signal, conviction)
-
-        stop_loss_pct = 12.0 if action == CompassAction.BUY else None
+        pe_ratio = pe_map.get(ticker)
+        action, reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
+        pe_zone = _classify_pe_zone(pe_ratio)
 
         results.append({
             "ticker": ticker,
@@ -565,10 +577,10 @@ def compute_stock_rs_scores(
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
-            "conviction": conviction,
+            "action_reason": reason,
+            "pe_ratio": pe_ratio,
+            "pe_zone": pe_zone,
             "weight_pct": weight_pct,
-            "stop_loss_pct": stop_loss_pct,
-            "pe_ratio": pe_map.get(ticker),
         })
 
     results.sort(key=lambda x: x["rs_score"], reverse=True)
@@ -638,8 +650,7 @@ def compute_etf_rs_scores(
         abs_return = _compute_absolute_return(etf_closes, period_days) if etf_closes else None
 
         quadrant = _classify_quadrant(rs_score, momentum)
-        conviction = _compute_conviction(rs_score, momentum, volume_signal, abs_return, market_regime)
-        action = _derive_action(quadrant, volume_signal, conviction)
+        action, reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
 
         results.append({
             "ticker": ticker,
@@ -652,7 +663,7 @@ def compute_etf_rs_scores(
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
-            "conviction": conviction,
+            "action_reason": reason,
         })
 
     results.sort(key=lambda x: x["rs_score"], reverse=True)
