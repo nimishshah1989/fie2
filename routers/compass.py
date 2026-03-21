@@ -211,37 +211,48 @@ def get_etf_scores(
 
 
 @router.get("/model-portfolio")
-def get_model_portfolio(db: Session = Depends(get_db)):
+def get_model_portfolio(
+    portfolio_type: str = Query("etf_only", description="etf_only, stock_etf, or stock_only"),
+    db: Session = Depends(get_db),
+):
     """Get current model portfolio positions and state."""
-    from services.compass_portfolio import get_model_portfolio_state
-    return get_model_portfolio_state(db)
+    from services.compass_portfolio import PORTFOLIO_TYPES, get_model_portfolio_state
+
+    if portfolio_type not in PORTFOLIO_TYPES:
+        raise HTTPException(400, f"Invalid portfolio_type. Use: {', '.join(PORTFOLIO_TYPES)}")
+    return get_model_portfolio_state(db, portfolio_type=portfolio_type)
 
 
-@router.get("/model-portfolio/trades", response_model=list[TradeResponse])
+@router.get("/model-portfolio/trades")
 def get_model_trades(
+    portfolio_type: str = Query("etf_only"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """Get model portfolio trade history."""
     from services.compass_portfolio import get_trade_history
-    return get_trade_history(db, limit=limit)
+    return get_trade_history(db, portfolio_type=portfolio_type, limit=limit)
 
 
-@router.get("/model-portfolio/nav", response_model=list[NAVResponse])
+@router.get("/model-portfolio/nav")
 def get_model_nav(
+    portfolio_type: str = Query("etf_only"),
     days: int = Query(365, ge=7, le=730),
     db: Session = Depends(get_db),
 ):
     """Get model portfolio NAV history."""
     from services.compass_portfolio import get_nav_history
-    return get_nav_history(db, days=days)
+    return get_nav_history(db, portfolio_type=portfolio_type, days=days)
 
 
 @router.get("/model-portfolio/performance")
-def get_model_performance(db: Session = Depends(get_db)):
+def get_model_performance(
+    portfolio_type: str = Query("etf_only"),
+    db: Session = Depends(get_db),
+):
     """Get model portfolio performance metrics."""
     from services.compass_portfolio import get_performance_metrics
-    return get_performance_metrics(db)
+    return get_performance_metrics(db, portfolio_type=portfolio_type)
 
 
 @router.post("/refresh")

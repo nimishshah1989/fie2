@@ -3,8 +3,8 @@ Sector Compass — RS Engine
 3 simple indicators: RS Score, Momentum, Volume Trend.
 No complex weights. No multi-timeframe composites. Intuitive and actionable.
 
-RS Score: percentile rank of relative return vs NIFTY across sector universe
-Momentum: change in RS score over 4 weeks (is strength improving or fading?)
+RS Score: relative return ratio vs benchmark (% outperformance/underperformance)
+Momentum: change in RS Score over 4 weeks (is strength improving or fading?)
 Volume:   20d vs 60d average + price direction → accumulation/distribution
 """
 
@@ -177,13 +177,14 @@ def _compute_volume_signal(price_volume: list[dict]) -> Optional[CompassVolumeSi
 
 def _classify_quadrant(rs_score: float, momentum: float) -> CompassQuadrant:
     """
-    Simple 2x2: RS Score centered at 50, Momentum centered at 0.
+    Simple 2x2: RS Score centered at 0 (outperforming vs underperforming),
+    Momentum centered at 0 (improving vs deteriorating).
     """
-    if rs_score > 50 and momentum > 0:
+    if rs_score > 0 and momentum > 0:
         return CompassQuadrant.LEADING
-    elif rs_score > 50 and momentum <= 0:
+    elif rs_score > 0 and momentum <= 0:
         return CompassQuadrant.WEAKENING
-    elif rs_score <= 50 and momentum > 0:
+    elif rs_score <= 0 and momentum > 0:
         return CompassQuadrant.IMPROVING
     else:
         return CompassQuadrant.LAGGING
@@ -220,90 +221,65 @@ def compute_sector_rs_scores(
 ) -> list[dict]:
     """
     Compute RS scores for all sector indices vs base index.
-    Returns list of sector dicts with rs_score, momentum, volume_signal, quadrant, action.
+    RS Score = relative return ratio: (sector_return / benchmark_return - 1) * 100
+    Positive = outperforming benchmark. Negative = underperforming.
+    Momentum = change in RS Score over 4 weeks.
     """
     period_days = PERIOD_DAYS_MAP.get(period_key, 63)
-    benchmark_closes = _get_index_close_map(db, base_index, days=period_days + 60)
+    benchmark_closes = _get_index_close_map(db, base_index, days=period_days + TRADING_DAYS_4W + 60)
 
     if not benchmark_closes:
         logger.warning("No benchmark data for %s", base_index)
         return []
 
-    # Step 1: compute relative returns for all sectors
-    sector_returns: list[tuple[str, str, float]] = []
+    # Step 1: compute RS Score (relative return ratio) for all sectors
+    sector_data: list[tuple[str, str, float]] = []  # (key, display_name, rs_score)
     for sector_key, display_name in COMPASS_SECTOR_INDICES:
-        sector_closes = _get_index_close_map(db, sector_key, days=period_days + 60)
+        sector_closes = _get_index_close_map(db, sector_key, days=period_days + TRADING_DAYS_4W + 60)
         if not sector_closes:
             continue
         rel_return = _compute_relative_return(sector_closes, benchmark_closes, period_days)
         if rel_return is not None:
-            sector_returns.append((sector_key, display_name, rel_return))
+            sector_data.append((sector_key, display_name, rel_return))
 
-    if not sector_returns:
+    if not sector_data:
         return []
 
-    # Step 2: percentile rank (simple: rank / count * 100)
-    sorted_by_return = sorted(sector_returns, key=lambda x: x[2])
-    n = len(sorted_by_return)
-    rank_map: dict[str, float] = {}
-    for i, (key, _, _) in enumerate(sorted_by_return):
-        rank_map[key] = ((i + 1) / n) * 100
-
-    # Step 3: compute momentum (RS score 4 weeks ago vs now)
-    # We need a second pass with shifted period
-    momentum_period = period_days
-    momentum_shift = TRADING_DAYS_4W
-
-    past_returns: list[tuple[str, float]] = []
+    # Step 2: compute momentum — RS Score 4 weeks ago vs now
+    past_rs_map: dict[str, float] = {}
     for sector_key, display_name in COMPASS_SECTOR_INDICES:
-        sector_closes = _get_index_close_map(db, sector_key, days=period_days + momentum_shift + 60)
+        sector_closes = _get_index_close_map(db, sector_key, days=period_days + TRADING_DAYS_4W + 60)
         if not sector_closes:
             continue
         dates = sorted(sector_closes.keys())
-        if len(dates) < momentum_shift + period_days // 2:
+        if len(dates) < TRADING_DAYS_4W + period_days // 2:
             continue
 
-        # Truncate to 4 weeks ago
-        shifted_dates = dates[:-momentum_shift] if len(dates) > momentum_shift else dates
-        shifted_closes = {d: sector_closes[d] for d in shifted_dates}
-
+        shifted_closes = {d: sector_closes[d] for d in dates[:-TRADING_DAYS_4W]}
         bench_dates = sorted(benchmark_closes.keys())
-        # Also need benchmark shifted
-        full_bench = _get_index_close_map(db, base_index, days=period_days + momentum_shift + 60)
-        shifted_bench_dates = sorted(full_bench.keys())
-        if len(shifted_bench_dates) > momentum_shift:
-            shifted_bench_dates = shifted_bench_dates[:-momentum_shift]
-        shifted_bench = {d: full_bench[d] for d in shifted_bench_dates if d in full_bench}
+        if len(bench_dates) > TRADING_DAYS_4W:
+            shifted_bench = {d: benchmark_closes[d] for d in bench_dates[:-TRADING_DAYS_4W] if d in benchmark_closes}
+        else:
+            shifted_bench = benchmark_closes
 
         past_rel = _compute_relative_return(shifted_closes, shifted_bench, period_days)
         if past_rel is not None:
-            past_returns.append((sector_key, past_rel))
+            past_rs_map[sector_key] = past_rel
 
-    # Rank past returns
-    past_sorted = sorted(past_returns, key=lambda x: x[1])
-    past_n = len(past_sorted)
-    past_rank_map: dict[str, float] = {}
-    for i, (key, _) in enumerate(past_sorted):
-        past_rank_map[key] = ((i + 1) / past_n) * 100 if past_n > 0 else 50
-
-    # Step 4: fetch P/E ratios from sector ETFs (cached, non-blocking)
+    # Step 3: fetch P/E ratios (cached)
     pe_cache = _get_cached_sector_pe(db)
 
-    # Step 5: build results
+    # Step 4: build results
     results = []
-    today_str = datetime.now().strftime("%Y-%m-%d")
-    for sector_key, display_name, rel_return in sector_returns:
-        rs_score = rank_map.get(sector_key, 50)
-        past_score = past_rank_map.get(sector_key, rs_score)
-        momentum = rs_score - past_score
+    for sector_key, display_name, rs_score in sector_data:
+        past_rs = past_rs_map.get(sector_key, rs_score)
+        momentum = rs_score - past_rs
 
-        # Volume signal from the index (use index price data for volume proxy)
-        # For indices, we look at sector ETF volume if available
+        # Volume signal from sector ETF
         etfs = COMPASS_SECTOR_ETF_MAP.get(sector_key, [])
         volume_signal = None
         if etfs:
-            etf_ticker = etfs[0]
-            etf_vol_data = _get_etf_volume_series(db, etf_ticker)
+            etf_vol_data = _get_etf_volume_series(db, etfs[0])
             if etf_vol_data and len(etf_vol_data) >= 60:
                 volume_signal = _compute_volume_signal(etf_vol_data)
 
@@ -313,9 +289,9 @@ def compute_sector_rs_scores(
         results.append({
             "sector_key": sector_key,
             "display_name": display_name,
-            "rs_score": round(rs_score, 1),
-            "rs_momentum": round(momentum, 1),
-            "relative_return": round(rel_return, 2),
+            "rs_score": round(rs_score, 2),
+            "rs_momentum": round(momentum, 2),
+            "relative_return": round(rs_score, 2),  # same as rs_score now
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
@@ -347,15 +323,14 @@ def compute_stock_rs_scores(
 ) -> list[dict]:
     """
     Compute RS scores for all stocks within a sector.
-    Stocks are ranked against each other (within the sector universe).
-    RS is measured vs the SECTOR index (not NIFTY) so we see which stocks
-    are outperforming their own sector.
+    RS Score = relative return ratio vs SECTOR index (% outperformance).
+    Positive = beating sector, negative = lagging sector.
     """
     period_days = PERIOD_DAYS_MAP.get(period_key, 63)
     display_name = NSE_DISPLAY_MAP.get(sector_key, sector_key)
 
     # Sector index as benchmark for stocks
-    sector_closes = _get_index_close_map(db, sector_key, days=period_days + 60)
+    sector_closes = _get_index_close_map(db, sector_key, days=period_days + TRADING_DAYS_4W + 60)
     if not sector_closes:
         logger.warning("No sector data for %s", sector_key)
         return []
@@ -369,29 +344,21 @@ def compute_stock_rs_scores(
     if not constituents:
         return []
 
-    # Step 1: relative returns for each stock vs sector
-    stock_returns: list[tuple[str, str, float, Optional[float]]] = []
+    # Step 1: RS Score (relative return ratio) for each stock vs sector
+    stock_data: list[tuple[str, str, float, Optional[float]]] = []
     for c in constituents:
-        stock_closes = _get_stock_close_map(db, c.ticker, days=period_days + 60)
+        stock_closes = _get_stock_close_map(db, c.ticker, days=period_days + TRADING_DAYS_4W + 60)
         if not stock_closes:
             continue
         rel_return = _compute_relative_return(stock_closes, sector_closes, period_days)
         if rel_return is not None:
-            stock_returns.append((c.ticker, c.company_name or c.ticker, rel_return, c.weight_pct))
+            stock_data.append((c.ticker, c.company_name or c.ticker, rel_return, c.weight_pct))
 
-    if not stock_returns:
+    if not stock_data:
         return []
 
-    # Step 2: percentile rank within sector
-    sorted_stocks = sorted(stock_returns, key=lambda x: x[2])
-    n = len(sorted_stocks)
-    rank_map = {}
-    for i, (ticker, _, _, _) in enumerate(sorted_stocks):
-        rank_map[ticker] = ((i + 1) / n) * 100
-
-    # Step 3: momentum (4 weeks shift)
-    full_sector_closes = _get_index_close_map(db, sector_key, days=period_days + TRADING_DAYS_4W + 60)
-    past_returns_list: list[tuple[str, float]] = []
+    # Step 2: momentum (RS score 4 weeks ago vs now)
+    past_rs_map: dict[str, float] = {}
     for c in constituents:
         stock_closes = _get_stock_close_map(db, c.ticker, days=period_days + TRADING_DAYS_4W + 60)
         if not stock_closes:
@@ -401,49 +368,40 @@ def compute_stock_rs_scores(
             continue
         shifted_closes = {d: stock_closes[d] for d in dates[:-TRADING_DAYS_4W]}
 
-        bench_dates = sorted(full_sector_closes.keys())
+        bench_dates = sorted(sector_closes.keys())
         if len(bench_dates) > TRADING_DAYS_4W:
-            shifted_bench = {d: full_sector_closes[d] for d in bench_dates[:-TRADING_DAYS_4W]}
+            shifted_bench = {d: sector_closes[d] for d in bench_dates[:-TRADING_DAYS_4W]}
         else:
-            shifted_bench = full_sector_closes
+            shifted_bench = sector_closes
 
         past_rel = _compute_relative_return(shifted_closes, shifted_bench, period_days)
         if past_rel is not None:
-            past_returns_list.append((c.ticker, past_rel))
+            past_rs_map[c.ticker] = past_rel
 
-    past_sorted = sorted(past_returns_list, key=lambda x: x[1])
-    past_n = len(past_sorted)
-    past_rank_map = {}
-    for i, (ticker, _) in enumerate(past_sorted):
-        past_rank_map[ticker] = ((i + 1) / past_n) * 100 if past_n > 0 else 50
-
-    # Step 4: fetch P/E for stocks (threaded, fast)
-    stock_tickers = [t for t, _, _, _ in stock_returns]
+    # Step 3: fetch P/E for stocks (threaded)
+    stock_tickers = [t for t, _, _, _ in stock_data]
     pe_map = fetch_pe_ratios_for_stocks(stock_tickers)
 
-    # Step 5: build results
+    # Step 4: build results
     results = []
-    for ticker, name, rel_return, weight_pct in stock_returns:
-        rs_score = rank_map.get(ticker, 50)
-        past_score = past_rank_map.get(ticker, rs_score)
-        momentum = rs_score - past_score
+    for ticker, name, rs_score, weight_pct in stock_data:
+        past_rs = past_rs_map.get(ticker, rs_score)
+        momentum = rs_score - past_rs
 
-        # Volume signal from stock data
         vol_data = _get_stock_volume_series(db, ticker)
         volume_signal = _compute_volume_signal(vol_data) if vol_data else None
 
         quadrant = _classify_quadrant(rs_score, momentum)
         action = _derive_action(quadrant, volume_signal)
 
-        # Stop loss: 8% for sector-level, 12% for stock-level
         stop_loss_pct = 12.0 if action in (CompassAction.BUY, CompassAction.ACCUMULATE) else None
 
         results.append({
             "ticker": ticker,
             "company_name": name,
-            "rs_score": round(rs_score, 1),
-            "rs_momentum": round(momentum, 1),
-            "relative_return": round(rel_return, 2),
+            "rs_score": round(rs_score, 2),
+            "rs_momentum": round(momentum, 2),
+            "relative_return": round(rs_score, 2),
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
@@ -452,7 +410,6 @@ def compute_stock_rs_scores(
             "pe_ratio": pe_map.get(ticker),
         })
 
-    # Sort by RS score descending
     results.sort(key=lambda x: x["rs_score"], reverse=True)
     return results
 
@@ -462,43 +419,58 @@ def compute_etf_rs_scores(
     base_index: str = "NIFTY",
     period_key: str = "3M",
 ) -> list[dict]:
-    """Compute RS scores for all sector ETFs vs NIFTY."""
+    """Compute RS scores for all sector ETFs vs NIFTY. RS = relative return ratio."""
     period_days = PERIOD_DAYS_MAP.get(period_key, 63)
-    benchmark_closes = _get_index_close_map(db, base_index, days=period_days + 60)
+    benchmark_closes = _get_index_close_map(db, base_index, days=period_days + TRADING_DAYS_4W + 60)
 
     if not benchmark_closes:
         return []
 
-    etf_returns: list[tuple[str, str, float]] = []
+    # Step 1: current RS Score for each ETF
+    etf_data: list[tuple[str, str, float]] = []
     for etf_ticker, yf_symbol in COMPASS_ETF_UNIVERSE.items():
-        etf_closes = _get_etf_close_map(db, etf_ticker, days=period_days + 60)
+        etf_closes = _get_etf_close_map(db, etf_ticker, days=period_days + TRADING_DAYS_4W + 60)
         if not etf_closes:
             continue
         rel_return = _compute_relative_return(etf_closes, benchmark_closes, period_days)
         if rel_return is not None:
-            # Find parent sector
             parent = None
             for sk, etfs in COMPASS_SECTOR_ETF_MAP.items():
                 if etf_ticker in etfs:
                     parent = sk
                     break
-            etf_returns.append((etf_ticker, parent or "", rel_return))
+            etf_data.append((etf_ticker, parent or "", rel_return))
 
-    if not etf_returns:
+    if not etf_data:
         return []
 
-    sorted_etfs = sorted(etf_returns, key=lambda x: x[2])
-    n = len(sorted_etfs)
+    # Step 2: compute momentum (RS 4 weeks ago)
+    past_rs_map: dict[str, float] = {}
+    for etf_ticker, yf_symbol in COMPASS_ETF_UNIVERSE.items():
+        etf_closes = _get_etf_close_map(db, etf_ticker, days=period_days + TRADING_DAYS_4W + 60)
+        if not etf_closes:
+            continue
+        dates = sorted(etf_closes.keys())
+        if len(dates) < TRADING_DAYS_4W + period_days // 2:
+            continue
+        shifted_closes = {d: etf_closes[d] for d in dates[:-TRADING_DAYS_4W]}
+        bench_dates = sorted(benchmark_closes.keys())
+        if len(bench_dates) > TRADING_DAYS_4W:
+            shifted_bench = {d: benchmark_closes[d] for d in bench_dates[:-TRADING_DAYS_4W] if d in benchmark_closes}
+        else:
+            shifted_bench = benchmark_closes
+        past_rel = _compute_relative_return(shifted_closes, shifted_bench, period_days)
+        if past_rel is not None:
+            past_rs_map[etf_ticker] = past_rel
 
     results = []
-    for i, (ticker, parent_sector, rel_return) in enumerate(sorted_etfs):
-        rs_score = ((i + 1) / n) * 100
-        # Simple momentum from ETF volume
+    for ticker, parent_sector, rs_score in etf_data:
+        past_rs = past_rs_map.get(ticker, rs_score)
+        momentum = rs_score - past_rs
+
         vol_data = _get_etf_volume_series(db, ticker)
         volume_signal = _compute_volume_signal(vol_data) if vol_data and len(vol_data) >= 60 else None
 
-        # For momentum we use a simplified approach: direction of relative return
-        momentum = rel_return * 0.5  # simplified proxy
         quadrant = _classify_quadrant(rs_score, momentum)
         action = _derive_action(quadrant, volume_signal)
 
@@ -506,9 +478,9 @@ def compute_etf_rs_scores(
             "ticker": ticker,
             "parent_sector": parent_sector,
             "sector_name": NSE_DISPLAY_MAP.get(parent_sector, parent_sector) if parent_sector else None,
-            "rs_score": round(rs_score, 1),
-            "rs_momentum": round(momentum, 1),
-            "relative_return": round(rel_return, 2),
+            "rs_score": round(rs_score, 2),
+            "rs_momentum": round(momentum, 2),
+            "relative_return": round(rs_score, 2),
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
@@ -516,6 +488,29 @@ def compute_etf_rs_scores(
 
     results.sort(key=lambda x: x["rs_score"], reverse=True)
     return results
+
+
+def compute_annualized_volatility(closes: dict[str, float], lookback: int = 60) -> Optional[float]:
+    """Compute annualized volatility from daily close prices (std of log returns * sqrt(252))."""
+    import math
+    dates = sorted(closes.keys())
+    if len(dates) < max(20, lookback // 2):
+        return None
+    recent = dates[-lookback:] if len(dates) >= lookback else dates
+    prices = [closes[d] for d in recent]
+
+    log_returns = []
+    for i in range(1, len(prices)):
+        if prices[i] > 0 and prices[i - 1] > 0:
+            log_returns.append(math.log(prices[i] / prices[i - 1]))
+
+    if len(log_returns) < 10:
+        return None
+
+    mean = sum(log_returns) / len(log_returns)
+    variance = sum((r - mean) ** 2 for r in log_returns) / (len(log_returns) - 1)
+    daily_vol = variance ** 0.5
+    return round(daily_vol * (252 ** 0.5) * 100, 2)  # annualized, as %
 
 
 def persist_rs_scores(db: Session, scores: list[dict], instrument_type: str, date_str: Optional[str] = None) -> int:

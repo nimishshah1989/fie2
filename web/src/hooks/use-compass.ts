@@ -18,6 +18,7 @@ import type {
   NAVPoint,
   PerformanceMetrics,
   Period,
+  PortfolioType,
 } from "@/lib/compass-types";
 
 // Refresh every 15 minutes — matches backend RS recomputation cycle
@@ -50,37 +51,37 @@ export function useCompassETFs(base: string, period: Period) {
   return { etfs: data ?? [], error, isLoading, mutate };
 }
 
-export function useModelPortfolio() {
+export function useModelPortfolio(portfolioType: PortfolioType = "etf_only") {
   const { data, error, isLoading, mutate } = useSWR<PortfolioState | null>(
-    "compass-model-portfolio",
-    fetchModelPortfolio,
+    `compass-model-portfolio-${portfolioType}`,
+    () => fetchModelPortfolio(portfolioType),
     { refreshInterval: REFRESH }
   );
   return { portfolio: data, error, isLoading, mutate };
 }
 
-export function useModelTrades(limit = 50) {
+export function useModelTrades(portfolioType: PortfolioType = "etf_only", limit = 50) {
   const { data, error, isLoading } = useSWR<ModelTrade[]>(
-    `compass-model-trades-${limit}`,
-    () => fetchModelTrades(limit),
+    `compass-model-trades-${portfolioType}-${limit}`,
+    () => fetchModelTrades(portfolioType, limit),
     { refreshInterval: REFRESH }
   );
   return { trades: data ?? [], error, isLoading };
 }
 
-export function useModelNAV(days = 365) {
+export function useModelNAV(portfolioType: PortfolioType = "etf_only", days = 365) {
   const { data, error, isLoading } = useSWR<NAVPoint[]>(
-    `compass-model-nav-${days}`,
-    () => fetchModelNAV(days),
+    `compass-model-nav-${portfolioType}-${days}`,
+    () => fetchModelNAV(portfolioType, days),
     { refreshInterval: REFRESH }
   );
   return { navHistory: data ?? [], error, isLoading };
 }
 
-export function useModelPerformance() {
+export function useModelPerformance(portfolioType: PortfolioType = "etf_only") {
   const { data, error, isLoading } = useSWR<PerformanceMetrics | null>(
-    "compass-model-performance",
-    fetchModelPerformance,
+    `compass-model-performance-${portfolioType}`,
+    () => fetchModelPerformance(portfolioType),
     { refreshInterval: REFRESH }
   );
   return { performance: data, error, isLoading };

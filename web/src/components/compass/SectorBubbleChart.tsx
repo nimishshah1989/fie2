@@ -41,14 +41,12 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
       <p className="font-semibold text-slate-900">{s.display_name}</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5">
         <span className="text-slate-500">RS Score</span>
-        <span className="font-mono font-medium text-right">{s.rs_score}</span>
+        <span className={`font-mono font-medium text-right ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>
+          {s.rs_score > 0 ? "+" : ""}{s.rs_score}%
+        </span>
         <span className="text-slate-500">Momentum</span>
         <span className={`font-mono font-medium text-right ${s.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
           {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
-        </span>
-        <span className="text-slate-500">Rel. Return</span>
-        <span className={`font-mono font-medium text-right ${s.relative_return > 0 ? "text-emerald-600" : "text-red-600"}`}>
-          {s.relative_return > 0 ? "+" : ""}{s.relative_return}%
         </span>
         <span className="text-slate-500">Volume</span>
         <span className="font-medium text-right">{s.volume_signal?.replace("_", " ") || "—"}</span>
@@ -92,20 +90,22 @@ export function SectorBubbleChart({ sectors, onSectorClick }: Props) {
             type="number"
             dataKey="x"
             name="RS Score"
-            domain={[0, 100]}
+            domain={["auto", "auto"]}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
-            label={{ value: "RS Score (Relative Strength)", position: "bottom", offset: 0, style: { fontSize: 11, fill: "#64748b" } }}
+            tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(0)}%`}
+            label={{ value: "RS Score (% vs Benchmark)", position: "bottom", offset: 0, style: { fontSize: 11, fill: "#64748b" } }}
           />
           <YAxis
             type="number"
             dataKey="y"
             name="Momentum"
-            domain={[-50, 50]}
+            domain={["auto", "auto"]}
             tick={{ fontSize: 11, fill: "#94a3b8" }}
-            label={{ value: "Momentum", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#64748b" } }}
+            tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(0)}`}
+            label={{ value: "Momentum (4w change)", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#64748b" } }}
           />
           <ZAxis type="number" dataKey="z" range={[200, 1200]} />
-          <ReferenceLine x={50} stroke="#94a3b8" strokeDasharray="4 4" />
+          <ReferenceLine x={0} stroke="#94a3b8" strokeDasharray="4 4" />
           <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
           <Tooltip content={<CustomTooltip />} />
           <Scatter

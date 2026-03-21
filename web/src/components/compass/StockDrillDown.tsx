@@ -50,7 +50,7 @@ function StockTooltip({ active, payload }: { active?: boolean; payload?: Array<{
       <p className="text-xs text-slate-500">{s.ticker}</p>
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5">
         <span className="text-slate-500">RS Score</span>
-        <span className="font-mono font-medium text-right">{s.rs_score}</span>
+        <span className={`font-mono font-medium text-right ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score}%</span>
         <span className="text-slate-500">Momentum</span>
         <span className={`font-mono font-medium text-right ${s.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
           {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
@@ -102,7 +102,7 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
           </span>
         </div>
         <div className="flex items-center gap-6 text-sm">
-          <span className="text-slate-500">RS: <span className="font-mono font-semibold text-slate-900">{sectorInfo.rs_score}</span></span>
+          <span className="text-slate-500">RS: <span className={`font-mono font-semibold ${sectorInfo.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{sectorInfo.rs_score > 0 ? "+" : ""}{sectorInfo.rs_score}%</span></span>
           <span className="text-slate-500">Momentum: <span className={`font-mono font-semibold ${sectorInfo.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>{sectorInfo.rs_momentum > 0 ? "+" : ""}{sectorInfo.rs_momentum}</span></span>
           <span className="text-slate-500">Vol: <span className="font-medium">{sectorInfo.volume_signal?.replace("_", " ") || "—"}</span></span>
           {sectorInfo.etfs.length > 0 && (
@@ -137,12 +137,14 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
         <ResponsiveContainer width="100%" height={380}>
           <ScatterChart margin={{ top: 15, right: 25, bottom: 20, left: 15 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis type="number" dataKey="x" name="RS Score" domain={[0, 100]} tick={{ fontSize: 11, fill: "#94a3b8" }}
-              label={{ value: "RS Score (vs Sector)", position: "bottom", offset: 0, style: { fontSize: 11, fill: "#64748b" } }} />
-            <YAxis type="number" dataKey="y" name="Momentum" domain={[-50, 50]} tick={{ fontSize: 11, fill: "#94a3b8" }}
-              label={{ value: "Momentum", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#64748b" } }} />
+            <XAxis type="number" dataKey="x" name="RS Score" domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(0)}%`}
+              label={{ value: "RS Score (% vs Sector)", position: "bottom", offset: 0, style: { fontSize: 11, fill: "#64748b" } }} />
+            <YAxis type="number" dataKey="y" name="Momentum" domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#94a3b8" }}
+              tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(0)}`}
+              label={{ value: "Momentum (4w change)", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#64748b" } }} />
             <ZAxis type="number" dataKey="z" range={[150, 800]} />
-            <ReferenceLine x={50} stroke="#94a3b8" strokeDasharray="4 4" />
+            <ReferenceLine x={0} stroke="#94a3b8" strokeDasharray="4 4" />
             <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
             <Tooltip content={<StockTooltip />} />
             <Scatter data={chartData}>
@@ -185,7 +187,7 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
                         {s.action}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-right font-mono font-medium">{s.rs_score}</td>
+                    <td className={`px-3 py-2.5 text-right font-mono font-medium ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score}%</td>
                     <td className={`px-3 py-2.5 text-right font-mono font-medium ${s.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
                       {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
                     </td>

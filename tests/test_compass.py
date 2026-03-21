@@ -31,27 +31,34 @@ from services.compass_rs import (
 
 
 class TestClassifyQuadrant:
+    """RS Score is now a ratio centered at 0 (not percentile 0-100).
+    Positive = outperforming benchmark. Quadrant threshold is 0, not 50."""
+
     def test_leading(self):
-        assert _classify_quadrant(70, 10) == CompassQuadrant.LEADING
+        # Positive RS + positive momentum = LEADING
+        assert _classify_quadrant(5.2, 2.1) == CompassQuadrant.LEADING
 
     def test_weakening(self):
-        assert _classify_quadrant(60, -5) == CompassQuadrant.WEAKENING
+        # Positive RS + negative momentum = WEAKENING
+        assert _classify_quadrant(3.5, -1.8) == CompassQuadrant.WEAKENING
 
     def test_improving(self):
-        assert _classify_quadrant(30, 15) == CompassQuadrant.IMPROVING
+        # Negative RS + positive momentum = IMPROVING
+        assert _classify_quadrant(-2.0, 4.5) == CompassQuadrant.IMPROVING
 
     def test_lagging(self):
-        assert _classify_quadrant(40, -10) == CompassQuadrant.LAGGING
+        # Negative RS + negative momentum = LAGGING
+        assert _classify_quadrant(-5.0, -3.0) == CompassQuadrant.LAGGING
 
-    def test_boundary_score_50_momentum_0(self):
-        # Score=50 and momentum=0 → LAGGING (≤50, ≤0)
-        assert _classify_quadrant(50, 0) == CompassQuadrant.LAGGING
+    def test_boundary_zero_zero(self):
+        # RS=0 and momentum=0 → LAGGING (≤0, ≤0)
+        assert _classify_quadrant(0, 0) == CompassQuadrant.LAGGING
 
-    def test_score_exactly_50_positive_momentum(self):
-        assert _classify_quadrant(50, 5) == CompassQuadrant.IMPROVING
+    def test_zero_score_positive_momentum(self):
+        assert _classify_quadrant(0, 5) == CompassQuadrant.IMPROVING
 
-    def test_high_score_zero_momentum(self):
-        assert _classify_quadrant(80, 0) == CompassQuadrant.WEAKENING
+    def test_positive_score_zero_momentum(self):
+        assert _classify_quadrant(3.0, 0) == CompassQuadrant.WEAKENING
 
 
 class TestDeriveAction:
@@ -389,14 +396,15 @@ class TestCompassPortfolioRules:
 
     def test_no_data_performance(self, db_session):
         from services.compass_portfolio import get_performance_metrics
-        metrics = get_performance_metrics(db_session)
+        metrics = get_performance_metrics(db_session, portfolio_type="etf_only")
         assert metrics["status"] == "no_data"
 
     def test_rebalance_no_data(self, db_session):
         from services.compass_portfolio import run_weekly_rebalance
         result = run_weekly_rebalance(db_session, [])
-        assert result["entries"] == []
-        assert result["exits"] == []
+        # Now returns dict keyed by portfolio type
+        assert result["etf_only"]["entries"] == []
+        assert result["etf_only"]["exits"] == []
 
     def test_rebalance_with_buy_signal(self, db_session):
         from services.compass_portfolio import run_weekly_rebalance
@@ -407,8 +415,8 @@ class TestCompassPortfolioRules:
         scores = [{
             "sector_key": "NIFTYIT",
             "display_name": "NIFTY IT",
-            "rs_score": 75,
-            "rs_momentum": 12,
+            "rs_score": 5.2,
+            "rs_momentum": 2.1,
             "relative_return": 5.2,
             "volume_signal": "ACCUMULATION",
             "quadrant": "LEADING",
@@ -417,11 +425,14 @@ class TestCompassPortfolioRules:
             "category": "sectoral",
         }]
         result = run_weekly_rebalance(db_session, scores)
-        assert len(result["entries"]) == 1
-        assert result["entries"][0]["sector"] == "NIFTYIT"
+        etf_result = result["etf_only"]
+        assert len(etf_result["entries"]) == 1
+        assert etf_result["entries"][0]["sector"] == "NIFTYIT"
 
         # Verify position was created
-        pos = db_session.query(CompassModelState).filter_by(sector_key="NIFTYIT").first()
+        pos = db_session.query(CompassModelState).filter_by(
+            sector_key="NIFTYIT", portfolio_type="etf_only"
+        ).first()
         assert pos is not None
         assert pos.status == "OPEN"
         assert pos.instrument_id == "ITBEES"
@@ -429,9 +440,10 @@ class TestCompassPortfolioRules:
     def test_max_positions_respected(self, db_session):
         from services.compass_portfolio import run_weekly_rebalance
 
-        # Fill 6 positions
+        # Fill 6 positions for etf_only
         for i in range(6):
             db_session.add(CompassModelState(
+                portfolio_type="etf_only",
                 sector_key=f"SECTOR{i}",
                 instrument_id=f"ETF{i}",
                 instrument_type="etf",
@@ -443,15 +455,15 @@ class TestCompassPortfolioRules:
 
         scores = [{
             "sector_key": "NEWSECTOR",
-            "rs_score": 90,
-            "rs_momentum": 20,
+            "rs_score": 8.5,
+            "rs_momentum": 3.0,
             "quadrant": "LEADING",
             "action": "BUY",
             "etfs": ["NEWETF"],
             "volume_signal": "ACCUMULATION",
         }]
         result = run_weekly_rebalance(db_session, scores)
-        assert len(result["entries"]) == 0  # no room
+        assert len(result["etf_only"]["entries"]) == 0  # no room
 
 
 class TestCompassRSComputation:
@@ -475,7 +487,8 @@ class TestCompassRSComputation:
         assert len(scores) >= 3
 
         for s in scores:
-            assert 0 <= s["rs_score"] <= 100
+            # RS Score is now a ratio (% outperformance), can be any value
+            assert isinstance(s["rs_score"], float)
             assert s["quadrant"] in ("LEADING", "WEAKENING", "IMPROVING", "LAGGING")
             assert s["action"] in ("BUY", "ACCUMULATE", "WATCH", "HOLD", "SELL", "AVOID")
 

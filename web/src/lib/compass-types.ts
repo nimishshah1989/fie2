@@ -46,6 +46,8 @@ export interface ETFRS {
   action: CompassAction;
 }
 
+export type PortfolioType = "etf_only" | "stock_etf" | "stock_only";
+
 export interface PortfolioPosition {
   sector_key: string;
   sector_name: string;
@@ -55,9 +57,12 @@ export interface PortfolioPosition {
   entry_price: number;
   current_price: number | null;
   weight_pct: number | null;
+  volatility: number | null;
   stop_loss: number | null;
   trailing_stop: number | null;
   pnl_pct: number | null;
+  holding_days: number | null;
+  tax_type: string | null;
   status: string;
 }
 
@@ -73,6 +78,8 @@ export interface ModelTrade {
   reason: string | null;
   quadrant: Quadrant | null;
   rs_score: number | null;
+  pnl_pct: number | null;
+  tax_impact: number | null;
 }
 
 export interface NAVPoint {
@@ -82,9 +89,11 @@ export interface NAVPoint {
   fm_nav: number | null;
   cash_pct: number | null;
   num_positions: number | null;
+  max_drawdown: number | null;
 }
 
 export interface PortfolioState {
+  portfolio_type: PortfolioType;
   positions: PortfolioPosition[];
   num_open: number;
   max_positions: number;
@@ -93,6 +102,7 @@ export interface PortfolioState {
 }
 
 export interface PerformanceMetrics {
+  portfolio_type: PortfolioType;
   total_return_pct: number;
   benchmark_return_pct: number;
   alpha_vs_nifty: number;
@@ -101,6 +111,7 @@ export interface PerformanceMetrics {
   win_rate_pct: number;
   total_trades: number;
   avg_holding_days: number;
+  total_tax_paid: number;
   start_date: string;
   end_date: string;
   current_nav: number;

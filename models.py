@@ -700,14 +700,16 @@ class CompassModelState(Base):
     __tablename__ = "compass_model_state"
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_type  = Column(String(15), nullable=False, default="etf_only")  # etf_only, stock_etf, stock_only
     sector_key      = Column(String(50), nullable=False)
     instrument_id   = Column(String(50), nullable=False)   # ETF ticker or stock ticker
-    instrument_type = Column(String(10), nullable=False)   # 'etf' or 'stock'
+    instrument_type = Column(String(10), nullable=False)   # 'etf', 'stock', or 'index'
     entry_date      = Column(String(10), nullable=False)
     entry_price     = Column(Float, nullable=False)
     current_price   = Column(Float, nullable=True)
     quantity        = Column(Float, nullable=True)
     weight_pct      = Column(Float, nullable=True)
+    volatility      = Column(Float, nullable=True)          # annualized vol at entry (for sizing)
     stop_loss       = Column(Float, nullable=True)
     trailing_stop   = Column(Float, nullable=True)
     highest_since   = Column(Float, nullable=True)
@@ -716,10 +718,13 @@ class CompassModelState(Base):
     exit_price      = Column(Float, nullable=True)
     exit_reason     = Column(String(50), nullable=True)
     pnl_pct         = Column(Float, nullable=True)
+    holding_days    = Column(Integer, nullable=True)        # computed on exit
+    tax_type        = Column(String(10), nullable=True)     # STCG or LTCG
 
     __table_args__ = (
         Index("idx_compass_ms_status", "status"),
         Index("idx_compass_ms_sector", "sector_key"),
+        Index("idx_compass_ms_portfolio", "portfolio_type"),
     )
 
 
@@ -728,6 +733,7 @@ class CompassModelTrade(Base):
     __tablename__ = "compass_model_trades"
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_type  = Column(String(15), nullable=False, default="etf_only")
     trade_date      = Column(String(10), nullable=False)
     sector_key      = Column(String(50), nullable=False)
     instrument_id   = Column(String(50), nullable=False)
@@ -739,10 +745,13 @@ class CompassModelTrade(Base):
     reason          = Column(String(100), nullable=True)    # e.g. "LEADING+ACCUMULATION", "STOP_LOSS"
     quadrant        = Column(SQLEnum(CompassQuadrant), nullable=True)
     rs_score        = Column(Float, nullable=True)
+    pnl_pct         = Column(Float, nullable=True)          # P&L at exit
+    tax_impact      = Column(Float, nullable=True)          # estimated tax on this trade
     created_at      = Column(DateTime, default=func.now())
 
     __table_args__ = (
         Index("idx_compass_mt_date", "trade_date"),
+        Index("idx_compass_mt_portfolio", "portfolio_type"),
     )
 
 
@@ -751,15 +760,17 @@ class CompassModelNAV(Base):
     __tablename__ = "compass_model_nav"
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
-    date            = Column(String(10), nullable=False, unique=True)
+    portfolio_type  = Column(String(15), nullable=False, default="etf_only")
+    date            = Column(String(10), nullable=False)
     nav             = Column(Float, nullable=False)          # model portfolio NAV (base 100)
     benchmark_nav   = Column(Float, nullable=True)           # NIFTY NAV (base 100)
     fm_nav          = Column(Float, nullable=True)           # FM portfolio NAV (base 100)
     cash_pct        = Column(Float, nullable=True)
     num_positions   = Column(Integer, nullable=True)
     total_value     = Column(Float, nullable=True)           # in INR
+    max_drawdown    = Column(Float, nullable=True)           # running max drawdown %
     created_at      = Column(DateTime, default=func.now())
 
     __table_args__ = (
-        Index("idx_compass_nav_date", "date"),
+        Index("idx_compass_nav_date_type", "date", "portfolio_type", unique=True),
     )
