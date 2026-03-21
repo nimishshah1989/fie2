@@ -703,6 +703,15 @@ def compute_etf_rs_scores(
 
     market_regime = _compute_market_regime(benchmark_closes)
 
+    # Step 3: P/E — use sector P/E cache (ETF inherits parent sector's P/E)
+    sector_pe_cache = _get_cached_sector_pe(db)
+
+    # Also try to fetch P/E directly for ETFs without a sector mapping
+    etf_tickers_no_sector = [t for t, ps, _ in etf_data if not ps]
+    etf_direct_pe: dict[str, Optional[float]] = {}
+    if etf_tickers_no_sector:
+        etf_direct_pe = _fetch_etf_pe_ratios(etf_tickers_no_sector)
+
     results = []
     for ticker, parent_sector, rs_score in etf_data:
         past_rs = past_rs_map.get(ticker, rs_score)
@@ -714,11 +723,15 @@ def compute_etf_rs_scores(
         etf_closes = _get_etf_close_map(db, ticker, days=period_days + 60)
         abs_return = _compute_absolute_return(etf_closes, period_days) if etf_closes else None
 
+        # P/E: sector's P/E if mapped, else direct ETF P/E
+        pe_ratio = sector_pe_cache.get(parent_sector) if parent_sector else etf_direct_pe.get(ticker)
+        pe_zone = _classify_pe_zone(pe_ratio)
+
         quadrant = _classify_quadrant(rs_score, momentum)
         action, base_reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
         rich_reason = _build_rich_reason(
             ticker, action, base_reason, rs_score, abs_return,
-            momentum, volume_signal, None, None, market_regime["regime"],
+            momentum, volume_signal, pe_ratio, pe_zone, market_regime["regime"],
         )
 
         # Resolve display name: sector name > asset class > empty
@@ -739,6 +752,8 @@ def compute_etf_rs_scores(
             "quadrant": quadrant.value,
             "action": action.value,
             "action_reason": rich_reason,
+            "pe_ratio": pe_ratio,
+            "pe_zone": pe_zone,
         })
 
     results.sort(key=lambda x: x["rs_score"], reverse=True)
@@ -882,6 +897,32 @@ def fetch_pe_ratios_for_sectors(sector_keys: list[str]) -> dict[str, Optional[fl
         for f in futures:
             key, pe = f.result()
             result[key] = pe
+
+    return result
+
+
+def _fetch_etf_pe_ratios(tickers: list[str]) -> dict[str, Optional[float]]:
+    """Fetch P/E ratios for ETFs directly via yfinance (for ETFs without a sector mapping)."""
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor
+
+    result: dict[str, Optional[float]] = {}
+
+    def _fetch_one(ticker: str) -> tuple[str, Optional[float]]:
+        try:
+            info = yf.Ticker(f"{ticker}.NS").info
+            if info is None:
+                return ticker, None
+            pe = info.get("trailingPE") or info.get("forwardPE")
+            return ticker, round(float(pe), 2) if pe else None
+        except Exception:
+            return ticker, None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(_fetch_one, t) for t in tickers]
+        for f in futures:
+            ticker, pe = f.result()
+            result[ticker] = pe
 
     return result
 

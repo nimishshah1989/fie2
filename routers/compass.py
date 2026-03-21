@@ -103,6 +103,8 @@ class ETFRSResponse(BaseModel):
     quadrant: str
     action: str
     action_reason: str = ""
+    pe_ratio: Optional[float] = None
+    pe_zone: Optional[str] = None
 
 
 class PositionResponse(BaseModel):

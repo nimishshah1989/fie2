@@ -89,6 +89,8 @@ export interface ETFRS {
   quadrant: Quadrant;
   action: CompassAction;
   action_reason: string;
+  pe_ratio: number | null;
+  pe_zone: PEZone | null;
 }
 
 /** Volume signal with human-readable meaning */
