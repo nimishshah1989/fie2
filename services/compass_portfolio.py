@@ -68,6 +68,12 @@ def get_model_portfolio_state(db: Session, portfolio_type: str = "etf_only") -> 
         .first()
     )
 
+    # Compute current weight from position values (not stale entry-time allocation)
+    total_value = sum(
+        (p.current_price or p.entry_price or 0) * (p.quantity or 1)
+        for p in open_positions
+    )
+
     positions = []
     for p in open_positions:
         pnl_pct = None
@@ -75,6 +81,10 @@ def get_model_portfolio_state(db: Session, portfolio_type: str = "etf_only") -> 
             pnl_pct = round((p.current_price / p.entry_price - 1) * 100, 2)
         holding_days = _compute_holding_days(p.entry_date)
         tax_type = "LTCG" if holding_days >= STCG_HOLDING_DAYS else "STCG"
+
+        pos_value = (p.current_price or p.entry_price or 0) * (p.quantity or 1)
+        current_weight = round(pos_value / total_value * 100, 1) if total_value > 0 else 0
+
         positions.append({
             "sector_key": p.sector_key,
             "sector_name": NSE_DISPLAY_MAP.get(p.sector_key, p.sector_key),
@@ -83,7 +93,7 @@ def get_model_portfolio_state(db: Session, portfolio_type: str = "etf_only") -> 
             "entry_date": p.entry_date,
             "entry_price": p.entry_price,
             "current_price": p.current_price,
-            "weight_pct": p.weight_pct,
+            "weight_pct": current_weight,
             "volatility": p.volatility,
             "stop_loss": p.stop_loss,
             "trailing_stop": p.trailing_stop,
@@ -283,16 +293,10 @@ def _rebalance_portfolio(db: Session, sector_scores: list[dict], portfolio_type:
         should_exit = False
         exit_reason = ""
 
-        # Exit rule 1: LAGGING quadrant
-        if sector_data["quadrant"] == CompassQuadrant.LAGGING.value:
+        # Exit rule 1: SELL signal (LAGGING quadrant = underperforming + losing momentum)
+        if sector_data["action"] == CompassAction.SELL.value:
             should_exit = True
-            exit_reason = "LAGGING_QUADRANT"
-
-        # Exit rule 2: WEAKENING + DISTRIBUTION
-        elif (sector_data["quadrant"] == CompassQuadrant.WEAKENING.value
-              and sector_data.get("volume_signal") == CompassVolumeSignal.DISTRIBUTION.value):
-            should_exit = True
-            exit_reason = "WEAKENING+DISTRIBUTION"
+            exit_reason = "SELL_SIGNAL"
 
         # Exit rule 3: stop-loss
         if pos.current_price and pos.stop_loss and pos.current_price <= pos.stop_loss:
@@ -321,10 +325,15 @@ def _rebalance_portfolio(db: Session, sector_scores: list[dict], portfolio_type:
         held_sectors = {p.sector_key for p in open_positions if p.status == "OPEN"}
         buy_candidates = [
             s for s in sector_scores
-            if s["action"] in (CompassAction.BUY.value, CompassAction.ACCUMULATE.value)
+            if s["action"] == CompassAction.BUY.value
             and s["sector_key"] not in held_sectors
         ]
-        buy_candidates.sort(key=lambda x: x["rs_score"], reverse=True)
+        # Sort by RS score, but deprioritize overvalued sectors (P/E > 40)
+        PE_PENALTY_THRESHOLD = 40.0
+        buy_candidates.sort(
+            key=lambda x: x["rs_score"] - (5.0 if (x.get("pe_ratio") or 0) > PE_PENALTY_THRESHOLD else 0),
+            reverse=True,
+        )
 
         # Compute volatility-based weights for candidates
         vol_weights = _compute_volatility_weights(db, buy_candidates[:available_slots], portfolio_type)

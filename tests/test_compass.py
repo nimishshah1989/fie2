@@ -62,32 +62,32 @@ class TestClassifyQuadrant:
 
 
 class TestDeriveAction:
-    def test_leading_accumulation_is_buy(self):
+    def test_leading_is_buy(self):
         assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.ACCUMULATION) == CompassAction.BUY
 
-    def test_leading_weak_rally_is_accumulate(self):
-        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.WEAK_RALLY) == CompassAction.ACCUMULATE
+    def test_leading_any_volume_is_buy(self):
+        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.WEAK_RALLY) == CompassAction.BUY
 
-    def test_leading_no_volume_is_accumulate(self):
-        assert _derive_action(CompassQuadrant.LEADING, None) == CompassAction.ACCUMULATE
+    def test_leading_no_volume_is_buy(self):
+        assert _derive_action(CompassQuadrant.LEADING, None) == CompassAction.BUY
 
     def test_improving_is_watch(self):
         assert _derive_action(CompassQuadrant.IMPROVING, CompassVolumeSignal.ACCUMULATION) == CompassAction.WATCH
 
-    def test_weakening_distribution_is_sell(self):
-        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.DISTRIBUTION) == CompassAction.SELL
+    def test_weakening_is_hold(self):
+        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.DISTRIBUTION) == CompassAction.HOLD
 
-    def test_weakening_weak_decline_is_hold(self):
+    def test_weakening_any_volume_is_hold(self):
         assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.WEAK_DECLINE) == CompassAction.HOLD
 
     def test_weakening_no_volume_is_hold(self):
         assert _derive_action(CompassQuadrant.WEAKENING, None) == CompassAction.HOLD
 
-    def test_lagging_is_avoid(self):
-        assert _derive_action(CompassQuadrant.LAGGING, CompassVolumeSignal.DISTRIBUTION) == CompassAction.AVOID
+    def test_lagging_is_sell(self):
+        assert _derive_action(CompassQuadrant.LAGGING, CompassVolumeSignal.DISTRIBUTION) == CompassAction.SELL
 
-    def test_lagging_no_volume_is_avoid(self):
-        assert _derive_action(CompassQuadrant.LAGGING, None) == CompassAction.AVOID
+    def test_lagging_no_volume_is_sell(self):
+        assert _derive_action(CompassQuadrant.LAGGING, None) == CompassAction.SELL
 
 
 class TestComputeRelativeReturn:

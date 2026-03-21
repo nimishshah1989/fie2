@@ -9,31 +9,19 @@ const ACTION_CONFIG: Record<CompassAction, {
 }> = {
   BUY: {
     bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200",
-    label: "BUY", description: "Strong momentum + smart money accumulating. Enter via ETF or top stocks.",
-  },
-  ACCUMULATE: {
-    bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200",
-    label: "ACCUMULATE", description: "Improving strength. Add on dips or build position gradually.",
-  },
-  WATCH: {
-    bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200",
-    label: "WATCH", description: "Gaining momentum but volume not confirming yet. Wait for confirmation.",
+    label: "BUY", description: "Outperforming benchmark with rising momentum. Enter via ETF or top stocks.",
   },
   HOLD: {
     bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200",
-    label: "HOLD", description: "Still strong but momentum fading. Tighten stops, no new entries.",
+    label: "HOLD", description: "Still outperforming but momentum fading. Tighten stops, no new entries.",
+  },
+  WATCH: {
+    bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200",
+    label: "WATCH", description: "Underperforming but momentum turning up. Wait for confirmation.",
   },
   SELL: {
     bg: "bg-red-50", text: "text-red-700", border: "border-red-200",
-    label: "SELL", description: "Distribution confirmed. Exit positions. Book profits or cut losses.",
-  },
-  AVOID: {
-    bg: "bg-slate-50", text: "text-slate-600", border: "border-slate-200",
-    label: "AVOID", description: "Weak and getting weaker. No reason to be here. Wait for reversal.",
-  },
-  EXIT: {
-    bg: "bg-red-100", text: "text-red-800", border: "border-red-300",
-    label: "EXIT", description: "Immediate exit. Stop-loss or trailing stop triggered.",
+    label: "SELL", description: "Underperforming with falling momentum. Exit positions.",
   },
 };
 
@@ -50,7 +38,7 @@ export function ActionSummary({ sectors, onSectorClick }: Props) {
   }
 
   // Only show actions that have sectors, in priority order
-  const actionOrder: CompassAction[] = ["BUY", "ACCUMULATE", "SELL", "EXIT", "WATCH", "HOLD", "AVOID"];
+  const actionOrder: CompassAction[] = ["BUY", "SELL", "WATCH", "HOLD"];
   const activeActions = actionOrder.filter((a) => grouped[a]?.length);
 
   return (

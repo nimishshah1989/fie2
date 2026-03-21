@@ -614,12 +614,9 @@ class CompassQuadrant(str, enum.Enum):
 
 class CompassAction(str, enum.Enum):
     BUY = "BUY"
-    ACCUMULATE = "ACCUMULATE"
-    WATCH = "WATCH"
     HOLD = "HOLD"
+    WATCH = "WATCH"
     SELL = "SELL"
-    AVOID = "AVOID"
-    EXIT = "EXIT"
 
 
 class CompassVolumeSignal(str, enum.Enum):

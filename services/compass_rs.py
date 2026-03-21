@@ -195,23 +195,20 @@ def _derive_action(
     volume_signal: Optional[CompassVolumeSignal],
 ) -> CompassAction:
     """
-    Quadrant + Volume → Action signal.
+    Quadrant → Action signal. Simple 4-action model:
+    - LEADING  → BUY  (outperforming + gaining momentum)
+    - WEAKENING → HOLD (outperforming but momentum fading)
+    - IMPROVING → WATCH (underperforming but momentum turning up)
+    - LAGGING  → SELL (underperforming + losing momentum)
     """
     if quadrant == CompassQuadrant.LEADING:
-        if volume_signal == CompassVolumeSignal.ACCUMULATION:
-            return CompassAction.BUY
-        return CompassAction.ACCUMULATE
-
+        return CompassAction.BUY
+    elif quadrant == CompassQuadrant.WEAKENING:
+        return CompassAction.HOLD
     elif quadrant == CompassQuadrant.IMPROVING:
         return CompassAction.WATCH
-
-    elif quadrant == CompassQuadrant.WEAKENING:
-        if volume_signal == CompassVolumeSignal.DISTRIBUTION:
-            return CompassAction.SELL
-        return CompassAction.HOLD
-
     else:  # LAGGING
-        return CompassAction.AVOID
+        return CompassAction.SELL
 
 
 def compute_sector_rs_scores(
@@ -394,7 +391,7 @@ def compute_stock_rs_scores(
         quadrant = _classify_quadrant(rs_score, momentum)
         action = _derive_action(quadrant, volume_signal)
 
-        stop_loss_pct = 12.0 if action in (CompassAction.BUY, CompassAction.ACCUMULATE) else None
+        stop_loss_pct = 12.0 if action == CompassAction.BUY else None
 
         results.append({
             "ticker": ticker,

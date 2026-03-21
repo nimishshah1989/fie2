@@ -384,12 +384,21 @@ SECTOR_ETF_MAP = {
 # ═══════════════════════════════════════════════════════════
 
 # All NSE-traded sector/thematic ETFs with yfinance symbols
+# Comprehensive list: 80+ ETFs across sectors, themes, broad market, commodities
 COMPASS_ETF_UNIVERSE: dict[str, str] = {
-    # Broad market
+    # ── Broad Market ──
     "NIFTYBEES": "NIFTYBEES.NS",
     "JUNIORBEES": "JUNIORBEES.NS",
     "BANKBEES": "BANKBEES.NS",
-    # Sector
+    "MON100": "MON100.NS",
+    "NIFTY1": "NIFTY1.NS",
+    "NETFNIF100": "NETFNIF100.NS",
+    "UTINIFTETF": "UTINIFTETF.NS",
+    "HDFCNIFETF": "HDFCNIFETF.NS",
+    "LICNFNHGP": "LICNFNHGP.NS",
+    "NEXT50": "NEXT50.NS",
+    "MAFANG": "MAFANG.NS",
+    # ── Sector ETFs ──
     "ITBEES": "ITBEES.NS",
     "PHARMABEES": "PHARMABEES.NS",
     "PSUBNKBEES": "PSUBNKBEES.NS",
@@ -401,25 +410,87 @@ COMPASS_ETF_UNIVERSE: dict[str, str] = {
     "INFRAIETF": "INFRAIETF.NS",
     "CONSMETF": "CONSUMIETF.NS",
     "HEALTHIETF": "HEALTHIETF.NS",
-    "DIVOPPBEES": "DIVOPPBEES.NS",
     "PVTBANIETF": "PVTBANIETF.NS",
     "COMMOIETF": "COMMOIETF.NS",
     "REALTYIETF": "REALTYIETF.NS",
     "ENERGYIETF": "ENERGYIETF.NS",
     "MEDIAIETF": "MEDIAIETF.NS",
-    # MidCap/SmallCap
+    "FINIETF": "FINIETF.NS",
+    "TNIDETF": "TNIDETF.NS",
+    "ALPHAETF": "ALPHAETF.NS",
+    "HABORETF": "HABORETF.NS",
+    "SETFNIF50": "SETFNIF50.NS",
+    # ── Thematic / Strategy ETFs ──
+    "DIVOPPBEES": "DIVOPPBEES.NS",
+    "MOMETF": "MOMETF.NS",
+    "MOM100": "MOM100.NS",
+    "MOM30IETF": "MOM30IETF.NS",
+    "MOMENTUM": "MOMENTUM.NS",
+    "QUAL30IETF": "QUAL30IETF.NS",
+    "LOWVOLIETF": "LOWVOLIETF.NS",
+    "MOVALUE": "MOVALUE.NS",
+    "GROWWETF": "GROWWETF.NS",
+    "EQUAL50": "EQUAL50.NS",
+    "EQWT50ETF": "EQWT50ETF.NS",
+    "TOP10": "TOP10.NS",
+    "DEFENETF": "DEFENETF.NS",
+    "MFGIETF": "MFGIETF.NS",
+    "MAKEINDIA": "MAKEINDIA.NS",
+    "INDIAETF": "INDIAETF.NS",
+    "MONIFTY500": "MONIFTY500.NS",
+    "HNGSNGBEES": "HNGSNGBEES.NS",
+    "NV20IETF": "NV20IETF.NS",
+    "EVINDIA": "EVINDIA.NS",
+    "CAPMARKET": "CAPMARKET.NS",
+    "NIFTYTEES": "NIFTYTEES.NS",
+    "HDFCSML250": "HDFCSML250.NS",
+    "BFSI": "BFSI.NS",
+    "CONSDURETF": "CONSDURETF.NS",
+    "TECHIETF": "TECHIETF.NS",
+    "TATAETF50": "TATAETF50.NS",
+    # ── MidCap / SmallCap ──
     "MID150BEES": "MID150BEES.NS",
     "MIDCAPIETF": "MIDCAPIETF.NS",
     "SMALLCAPETF": "SMALLCAPETF.NS",
-    # Commodity
+    "MIDQ50": "MIDQ50.NS",
+    "MIDSELIETF": "MIDSELIETF.NS",
+    "MIDCAPETF": "MIDCAPETF.NS",
+    "MOSMALL250": "MOSMALL250.NS",
+    "MOTILALM50": "MOTILALM50.NS",
+    "SBIMCAP": "SBIMCAP.NS",
+    "NIPMIDIETF": "NIPMIDIETF.NS",
+    "ABSLNN50ET": "ABSLNN50ET.NS",
+    # ── Commodity ETFs ──
     "GOLDBEES": "GOLDBEES.NS",
     "SILVERBEES": "SILVERBEES.NS",
+    "GOLDIETF": "GOLDIETF.NS",
+    "SILVERIETF": "SILVERIETF.NS",
+    "AXISGOLD": "AXISGOLD.NS",
+    "GOLDETF": "GOLDETF.NS",
+    "HDFCGOLD": "HDFCGOLD.NS",
+    "SBISILVER": "SBISILVER.NS",
+    "GOLDSHARE": "GOLDSHARE.NS",
+    # ── Debt / Liquid ETFs ──
+    "LIQUIDCASE": "LIQUIDCASE.NS",
+    "LIQUIDBEES": "LIQUIDBEES.NS",
+    "LIQUIDIETF": "LIQUIDIETF.NS",
+    "LIQUIDETF": "LIQUIDETF.NS",
+    "ICICIB22": "ICICIB22.NS",
+    "NETFGILT5Y": "NETFGILT5Y.NS",
+    "GILT5YBEES": "GILT5YBEES.NS",
+    "CPSEBOND": "CPSEBOND.NS",
+    "BHARAT22": "BHARAT22.NS",
+    # ── International ──
+    "N100": "N100.NS",
+    "NASDAQ100": "NASDAQ100.NS",
+    "MON100": "MON100.NS",
+    "MOUS500": "MOUS500.NS",
 }
 
 # Maps sector index key -> list of ETFs that track it (for compass)
 COMPASS_SECTOR_ETF_MAP: dict[str, list[str]] = {
     "BANKNIFTY": ["BANKBEES"],
-    "NIFTYIT": ["ITBEES"],
+    "NIFTYIT": ["ITBEES", "TECHIETF"],
     "NIFTYPHARMA": ["PHARMABEES"],
     "NIFTYPSUBANK": ["PSUBNKBEES"],
     "NIFTYFMCG": ["FMCGIETF"],
@@ -435,6 +506,13 @@ COMPASS_SECTOR_ETF_MAP: dict[str, list[str]] = {
     "NIFTYREALTY": ["REALTYIETF"],
     "NIFTYENERGY": ["ENERGYIETF"],
     "NIFTYMEDIA": ["MEDIAIETF"],
+    "FINNIFTY": ["FINIETF", "BFSI"],
+    "NIFTYFINSERVICE": ["FINIETF"],
+    "NIFTYCONSUMERDURABLES": ["CONSDURETF"],
+    "NIFTYINDIADEFENCE": ["DEFENETF"],
+    "NIFTYINDIAMFG": ["MFGIETF", "MAKEINDIA"],
+    "NIFTYEVNEWAGE": ["EVINDIA"],
+    "NIFTYCAPITALMARKETS": ["CAPMARKET"],
 }
 
 # Sector indices used by compass (all sectoral + thematic with sufficient history)

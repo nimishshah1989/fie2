@@ -25,12 +25,9 @@ const QUADRANT_COLORS: Record<Quadrant, string> = {
 
 const ACTION_BADGE: Record<CompassAction, { bg: string; text: string }> = {
   BUY: { bg: "bg-emerald-100", text: "text-emerald-700" },
-  ACCUMULATE: { bg: "bg-teal-100", text: "text-teal-700" },
-  WATCH: { bg: "bg-blue-100", text: "text-blue-700" },
   HOLD: { bg: "bg-amber-100", text: "text-amber-700" },
+  WATCH: { bg: "bg-blue-100", text: "text-blue-700" },
   SELL: { bg: "bg-red-100", text: "text-red-700" },
-  AVOID: { bg: "bg-slate-100", text: "text-slate-600" },
-  EXIT: { bg: "bg-red-200", text: "text-red-800" },
 };
 
 interface Props {
@@ -105,14 +102,15 @@ export function ETFView({ base, period }: Props) {
         <ResponsiveContainer width="100%" height={400}>
           <ScatterChart margin={{ top: 15, right: 25, bottom: 20, left: 15 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis type="number" dataKey="x" name="RS Score" domain={[0, 100]}
+            <XAxis type="number" dataKey="x" name="RS Score" domain={["auto", "auto"]}
               tick={{ fontSize: 11, fill: "#94a3b8" }}
-              label={{ value: "RS Score", position: "bottom", offset: 0, style: { fontSize: 11, fill: "#64748b" } }} />
-            <YAxis type="number" dataKey="y" name="Momentum" domain={[-50, 50]}
+              tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v.toFixed(0)}%`}
+              label={{ value: "RS Score (% vs benchmark)", position: "bottom", offset: 0, style: { fontSize: 11, fill: "#64748b" } }} />
+            <YAxis type="number" dataKey="y" name="Momentum" domain={["auto", "auto"]}
               tick={{ fontSize: 11, fill: "#94a3b8" }}
               label={{ value: "Momentum", angle: -90, position: "insideLeft", style: { fontSize: 11, fill: "#64748b" } }} />
             <ZAxis type="number" dataKey="z" range={[200, 400]} />
-            <ReferenceLine x={50} stroke="#94a3b8" strokeDasharray="4 4" />
+            <ReferenceLine x={0} stroke="#94a3b8" strokeDasharray="4 4" />
             <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
             <Tooltip content={<ETFTooltip />} />
             <Scatter data={chartData} cursor="pointer">

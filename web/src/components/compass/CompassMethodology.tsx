@@ -58,20 +58,16 @@ Sectors naturally rotate through these quadrants: IMPROVING → LEADING → WEAK
   },
   {
     title: "Action Signals",
-    content: `Each sector gets a clear action based on its quadrant + volume confirmation:
+    content: `Each sector gets one of 4 clear actions based on its quadrant:
 
-| Quadrant | Volume Signal | Action |
-|----------|---------------|--------|
-| LEADING | ACCUMULATION | **BUY** — strongest signal |
-| LEADING | WEAK RALLY | **ACCUMULATE** — add on dips |
-| LEADING | DISTRIBUTION / WEAK DECLINE | **HOLD** — strength but volume diverging |
-| IMPROVING | ACCUMULATION | **ACCUMULATE** — early entry opportunity |
-| IMPROVING | Others | **WATCH** — wait for volume confirmation |
-| WEAKENING | DISTRIBUTION | **SELL** — exit signal |
-| WEAKENING | Others | **HOLD** — monitor closely |
-| LAGGING | Any | **AVOID** — no reason to be here |
+| Quadrant | Action | Meaning |
+|----------|--------|---------|
+| LEADING | **BUY** | Outperforming + gaining momentum — enter |
+| WEAKENING | **HOLD** | Still outperforming but momentum fading — tighten stops |
+| IMPROVING | **WATCH** | Underperforming but momentum turning up — wait |
+| LAGGING | **SELL** | Underperforming + losing momentum — exit |
 
-These are not predictions — they are systematic classifications based on current price and volume data.`,
+Simple rule: **BUY** what's strong and getting stronger. **SELL** what's weak and getting weaker. No ambiguity.`,
   },
   {
     title: "Stock Drill-Down",

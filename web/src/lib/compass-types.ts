@@ -1,7 +1,7 @@
 /** Sector Compass — TypeScript types */
 
 export type Quadrant = "LEADING" | "WEAKENING" | "IMPROVING" | "LAGGING";
-export type CompassAction = "BUY" | "ACCUMULATE" | "WATCH" | "HOLD" | "SELL" | "AVOID" | "EXIT";
+export type CompassAction = "BUY" | "HOLD" | "WATCH" | "SELL";
 export type VolumeSignal = "ACCUMULATION" | "WEAK_RALLY" | "DISTRIBUTION" | "WEAK_DECLINE";
 export type Period = "1M" | "3M" | "6M" | "12M";
 

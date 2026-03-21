@@ -167,7 +167,7 @@ export function ModelPortfolioDashboard() {
           </div>
         ) : (
           <div className="p-8 text-center text-sm text-slate-400">
-            No open positions. Model portfolio will start trading when sectors show BUY/ACCUMULATE signals.
+            No open positions. Model portfolio will start trading when sectors show BUY signals.
           </div>
         )}
       </div>

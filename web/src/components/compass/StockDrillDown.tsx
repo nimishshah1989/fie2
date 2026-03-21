@@ -26,12 +26,9 @@ const QUADRANT_COLORS: Record<Quadrant, string> = {
 
 const ACTION_BADGE: Record<CompassAction, { bg: string; text: string }> = {
   BUY: { bg: "bg-emerald-100", text: "text-emerald-700" },
-  ACCUMULATE: { bg: "bg-teal-100", text: "text-teal-700" },
-  WATCH: { bg: "bg-blue-100", text: "text-blue-700" },
   HOLD: { bg: "bg-amber-100", text: "text-amber-700" },
+  WATCH: { bg: "bg-blue-100", text: "text-blue-700" },
   SELL: { bg: "bg-red-100", text: "text-red-700" },
-  AVOID: { bg: "bg-slate-100", text: "text-slate-600" },
-  EXIT: { bg: "bg-red-200", text: "text-red-800" },
 };
 
 interface Props {
