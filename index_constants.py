@@ -516,7 +516,8 @@ COMPASS_ETF_UNIVERSE: dict[str, str] = {
 
 # Maps sector index key -> list of ETFs that track it (for compass)
 COMPASS_SECTOR_ETF_MAP: dict[str, list[str]] = {
-    "BANKNIFTY": ["BANKBEES"],
+    # ── Sectoral (direct index trackers) ──
+    "BANKNIFTY": ["BANKBEES", "KOTAKBKETF"],
     "NIFTYIT": ["ITBEES", "TECHIETF"],
     "NIFTYPHARMA": ["PHARMABEES"],
     "NIFTYPSUBANK": ["PSUBNKBEES"],
@@ -540,6 +541,59 @@ COMPASS_SECTOR_ETF_MAP: dict[str, list[str]] = {
     "NIFTYINDIAMFG": ["MFGIETF", "MAKEINDIA"],
     "NIFTYEVNEWAGE": ["EVINDIA"],
     "NIFTYCAPITALMARKETS": ["CAPMARKET"],
+    # ── Broad Market (tracks NIFTY 50 / Next 50 / 100 / 500) ──
+    "NIFTY50": [
+        "NIFTYBEES", "SETFNIF50", "NIFTY1", "HDFCNIFETF", "UTINIFTETF",
+        "LICNFNHGP", "TATAETF50", "KOTAKNIFTY", "NV20IETF", "EQUAL50",
+        "EQWT50ETF", "TOP10", "SHARIABEES",
+    ],
+    "NIFTYNEXT50": ["JUNIORBEES", "NEXT50", "SETFNN50", "UTINEXT50"],
+    "NIFTY100": ["MON100", "NETFNIF100", "ABSLNN50ET"],
+    "NIFTY500": ["MONIFTY500", "INDIAETF"],
+    # ── BSE / Sensex ──
+    "SENSEX": ["SENSEXIETF", "SENSEXBEES", "UTISENSETF"],
+    # ── MidCap / SmallCap ──
+    "NIFTYMIDCAP150": [
+        "MID150BEES", "MIDCAPIETF", "MIDCAPETF", "MIDSELIETF",
+        "SBIMCAP", "NIPMIDIETF", "MIDQ50",
+    ],
+    "NIFTYSMALLCAP250": ["SMALLCAPETF", "MOSMALL250", "HDFCSML250"],
+    "NIFTYMIDSMALLCAP400": ["MOTILALM50", "MIDSMALL"],
+    # ── Factor / Strategy (equity, broad-market-like) ──
+    "NIFTYFACTORS": [
+        "MOM100", "MOM30IETF", "MOMENTUM", "MOMETF", "MOVALUE",
+        "QUAL30IETF", "LOWVOLIETF", "HDFCVALUE", "SBIETFQLTY",
+        "ALPHAETF", "DIVOPPBEES", "GROWWETF", "NIFTYTEES", "HABORETF",
+    ],
+    # ── International (no NSE equity constituents) ──
+    "INTERNATIONAL": ["N100", "NASDAQ100", "MOUS500", "MASPTOP50", "MONQ50", "HNGSNGBEES", "MAFANG"],
+}
+
+# ── ETF Classification (for ETFs that don't map to a sector index) ──
+# Non-equity ETFs: no constituent stocks, but need a category label
+ETF_ASSET_CLASS: dict[str, str] = {
+    # Gold
+    "GOLDBEES": "Gold", "GOLDIETF": "Gold", "AXISGOLD": "Gold",
+    "GOLDETF": "Gold", "HDFCGOLD": "Gold", "GOLDSHARE": "Gold",
+    "TATAGOLD": "Gold", "KOTAKGOLD": "Gold",
+    # Silver
+    "SILVERBEES": "Silver", "SILVERIETF": "Silver",
+    "SBISILVER": "Silver", "KOTAKSILVER": "Silver",
+    # Debt / Liquid
+    "LIQUIDBEES": "Liquid/Cash", "LIQUIDCASE": "Liquid/Cash",
+    "LIQUIDIETF": "Liquid/Cash", "LIQUIDETF": "Liquid/Cash",
+    "ICICIB22": "Corporate Bond", "CPSEBOND": "PSU Bond",
+    "NETFGILT5Y": "Gilt (5Y)", "GILT5YBEES": "Gilt (5Y)",
+    "GSEC10YBEES": "Gilt (10Y)", "LTGILTBEES": "Long Gilt",
+    "EBBETF0430": "Bharat Bond 2030", "EBBETF0431": "Bharat Bond 2031",
+    "EBBETF0432": "Bharat Bond 2032", "EBBETF0433": "Bharat Bond 2033",
+    "BHARAT22": "CPSE Equity",
+    # International
+    "N100": "NASDAQ 100", "NASDAQ100": "NASDAQ 100",
+    "MOUS500": "S&P 500", "MASPTOP50": "S&P Top 50",
+    "MONQ50": "NASDAQ Q50", "HNGSNGBEES": "Hang Seng",
+    "MAFANG": "FAANG/Tech US",
+    "TNIDETF": "India Digital",
 }
 
 # Sector indices used by compass (all sectoral + thematic with sufficient history)

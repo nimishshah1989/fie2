@@ -19,6 +19,7 @@ from index_constants import (
     COMPASS_ETF_UNIVERSE,
     COMPASS_SECTOR_ETF_MAP,
     COMPASS_SECTOR_INDICES,
+    ETF_ASSET_CLASS,
     NSE_DISPLAY_MAP,
     NSE_INDEX_CATEGORIES,
 )
@@ -720,10 +721,16 @@ def compute_etf_rs_scores(
             momentum, volume_signal, None, None, market_regime["regime"],
         )
 
+        # Resolve display name: sector name > asset class > empty
+        if parent_sector:
+            sector_display = NSE_DISPLAY_MAP.get(parent_sector, parent_sector)
+        else:
+            sector_display = ETF_ASSET_CLASS.get(ticker)
+
         results.append({
             "ticker": ticker,
             "parent_sector": parent_sector,
-            "sector_name": NSE_DISPLAY_MAP.get(parent_sector, parent_sector) if parent_sector else None,
+            "sector_name": sector_display,
             "rs_score": round(rs_score, 2),
             "rs_momentum": round(momentum, 2),
             "relative_return": round(rs_score, 2),
