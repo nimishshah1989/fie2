@@ -11,12 +11,13 @@ import { StockDrillDown } from "@/components/compass/StockDrillDown";
 import { ETFView } from "@/components/compass/ETFView";
 import { ModelPortfolioDashboard } from "@/components/compass/ModelPortfolioDashboard";
 import { CompassMethodology } from "@/components/compass/CompassMethodology";
+import { LabDashboard } from "@/components/compass/LabDashboard";
 import { refreshCompass } from "@/lib/compass-api";
 import type { Period } from "@/lib/compass-types";
 
 const PERIODS: Period[] = ["1M", "3M", "6M", "12M"];
 const BASES = ["NIFTY", "NIFTY100", "NIFTY500"];
-const TABS = ["Sectors", "ETFs", "Model Portfolio", "Methodology"] as const;
+const TABS = ["Sectors", "ETFs", "Model Portfolio", "Lab", "Methodology"] as const;
 
 export default function CompassPage() {
   const [base, setBase] = useState("NIFTY");
@@ -182,6 +183,9 @@ export default function CompassPage() {
 
       {/* Model Portfolio tab */}
       {activeTab === "Model Portfolio" && <ModelPortfolioDashboard />}
+
+      {/* Lab tab */}
+      {activeTab === "Lab" && <LabDashboard />}
 
       {/* Methodology tab */}
       {activeTab === "Methodology" && <CompassMethodology />}

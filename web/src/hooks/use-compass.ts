@@ -86,3 +86,78 @@ export function useModelPerformance(portfolioType: PortfolioType = "etf_only") {
   );
   return { performance: data, error, isLoading };
 }
+
+// ─── Lab Hooks ──────────────────────────────────────────────
+
+import {
+  fetchLabStatus,
+  fetchLabRuns,
+  fetchLabConfigs,
+  fetchLabRules,
+  fetchLabDecisions,
+  fetchLabAccuracy,
+} from "@/lib/compass-api";
+import type {
+  LabStatus,
+  LabRun,
+  RegimeConfig,
+  DiscoveredRule,
+  LabDecision,
+  LabAccuracy,
+} from "@/lib/compass-api";
+
+const LAB_REFRESH = 30_000; // 30 seconds — lab changes frequently
+
+export function useLabStatus() {
+  const { data, error, isLoading, mutate } = useSWR<LabStatus | null>(
+    "lab-status",
+    fetchLabStatus,
+    { refreshInterval: LAB_REFRESH },
+  );
+  return { status: data, error, isLoading, mutate };
+}
+
+export function useLabRuns(limit = 10) {
+  const { data, error, isLoading } = useSWR<LabRun[]>(
+    `lab-runs-${limit}`,
+    () => fetchLabRuns(limit),
+    { refreshInterval: LAB_REFRESH },
+  );
+  return { runs: data ?? [], error, isLoading };
+}
+
+export function useLabConfigs() {
+  const { data, error, isLoading, mutate } = useSWR<RegimeConfig[]>(
+    "lab-configs",
+    fetchLabConfigs,
+    { refreshInterval: REFRESH },
+  );
+  return { configs: data ?? [], error, isLoading, mutate };
+}
+
+export function useLabRules() {
+  const { data, error, isLoading } = useSWR<DiscoveredRule[]>(
+    "lab-rules",
+    fetchLabRules,
+    { refreshInterval: REFRESH },
+  );
+  return { rules: data ?? [], error, isLoading };
+}
+
+export function useLabDecisions(portfolioType: PortfolioType = "etf_only", limit = 50) {
+  const { data, error, isLoading } = useSWR<LabDecision[]>(
+    `lab-decisions-${portfolioType}-${limit}`,
+    () => fetchLabDecisions(portfolioType, limit),
+    { refreshInterval: LAB_REFRESH },
+  );
+  return { decisions: data ?? [], error, isLoading };
+}
+
+export function useLabAccuracy(portfolioType: PortfolioType = "etf_only") {
+  const { data, error, isLoading } = useSWR<LabAccuracy | null>(
+    `lab-accuracy-${portfolioType}`,
+    () => fetchLabAccuracy(portfolioType),
+    { refreshInterval: REFRESH },
+  );
+  return { accuracy: data, error, isLoading };
+}
