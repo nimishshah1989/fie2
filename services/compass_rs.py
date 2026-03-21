@@ -231,7 +231,27 @@ def _compute_market_regime(benchmark_closes: dict[str, float]) -> dict:
     idx_3m = max(0, len(prices) - 63)
     ret_3m = (current / prices[idx_3m] - 1) * 100
 
-    # Classify regime
+    # Classify regime based on NIFTY technical health:
+    #
+    # BEAR (drawdown > 15%):
+    #   Market has fallen >15% from its 52-week peak. Structural damage.
+    #   Capital preservation mode — no new BUYs, only HOLDs allowed.
+    #   Example: March 2020 COVID crash, Oct 2008 GFC.
+    #
+    # CORRECTION (drawdown 8-15%, OR below 50DMA with 3M return < -5%):
+    #   Market pulled back meaningfully but not broken. Selective buying.
+    #   BUY signals need volume confirmation (no DISTRIBUTION or WEAK_RALLY).
+    #   Example: Jan 2025 budget selloff, Sept 2024 rotation.
+    #
+    # CAUTIOUS (below 50DMA but shallow drawdown):
+    #   Market trading below its 50-day moving average but drawdown is mild (<8%).
+    #   Could be a short-term dip or start of something deeper. No regime overrides
+    #   applied — actions pass through unchanged, but the label warns the FM.
+    #
+    # BULL (above 50DMA, drawdown < 8%):
+    #   Market in uptrend. All gate-based signals operate at face value.
+    #   No overrides. This is the default, healthy market state.
+    #
     if drawdown_pct < -15:
         regime = "BEAR"
     elif drawdown_pct < -8 or (below_50dma and ret_3m < -5):

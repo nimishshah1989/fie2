@@ -116,9 +116,12 @@ class PositionResponse(BaseModel):
     entry_price: float
     current_price: Optional[float] = None
     weight_pct: Optional[float] = None
+    volatility: Optional[float] = None
     stop_loss: Optional[float] = None
     trailing_stop: Optional[float] = None
     pnl_pct: Optional[float] = None
+    holding_days: Optional[int] = None
+    tax_type: Optional[str] = None
     status: str
 
 
@@ -134,6 +137,8 @@ class TradeResponse(BaseModel):
     reason: Optional[str] = None
     quadrant: Optional[str] = None
     rs_score: Optional[float] = None
+    pnl_pct: Optional[float] = None
+    tax_impact: Optional[float] = None
 
 
 class NAVResponse(BaseModel):
