@@ -67,7 +67,7 @@ def get_regime_configs(db: Session = Depends(get_db)):
     configs = db.query(CompassRegimeConfig).all()
 
     if not configs:
-        return {"status": "no_configs", "message": "Lab hasn't run yet. Configs will be generated after first sweep."}
+        return []
 
     return [
         {
@@ -209,7 +209,7 @@ def get_decision_accuracy(
     ).all()
 
     if not all_decisions:
-        return {"status": "no_data", "message": "No decisions with outcomes yet"}
+        return None
 
     total = len(all_decisions)
     correct = sum(1 for d in all_decisions if d.was_correct)
