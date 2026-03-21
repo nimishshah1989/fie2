@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { StockRS, SectorRS, Quadrant, CompassAction } from "@/lib/compass-types";
 
 const QUADRANT_COLORS: Record<Quadrant, string> = {
@@ -36,6 +37,7 @@ const ACTION_BADGE: Record<CompassAction, { bg: string; text: string }> = {
 interface Props {
   sectorInfo: SectorRS;
   stocks: StockRS[];
+  loadingStocks?: boolean;
   onBack: () => void;
 }
 
@@ -76,7 +78,7 @@ function StockTooltip({ active, payload }: { active?: boolean; payload?: Array<{
   );
 }
 
-export function StockDrillDown({ sectorInfo, stocks, onBack }: Props) {
+export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Props) {
   const chartData = stocks.map((s) => ({
     ...s,
     x: s.rs_score,
@@ -109,7 +111,28 @@ export function StockDrillDown({ sectorInfo, stocks, onBack }: Props) {
         </div>
       </div>
 
-      {/* Scatter chart */}
+      {/* Loading state */}
+      {loadingStocks && (
+        <div className="space-y-4">
+          <Skeleton className="h-[380px] w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
+      )}
+
+      {/* Empty state — data not yet backfilled */}
+      {!loadingStocks && stocks.length === 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+          <p className="text-sm text-slate-500 font-medium">Stock data is being backfilled</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Price history for constituent stocks is loading. This takes a few minutes on first startup.
+            Try again shortly or click Refresh RS.
+          </p>
+        </div>
+      )}
+
+      {/* Scatter chart + table */}
+      {!loadingStocks && stocks.length > 0 && (
+      <>
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <ResponsiveContainer width="100%" height={380}>
           <ScatterChart margin={{ top: 15, right: 25, bottom: 20, left: 15 }}>
@@ -183,6 +206,8 @@ export function StockDrillDown({ sectorInfo, stocks, onBack }: Props) {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

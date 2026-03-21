@@ -286,7 +286,10 @@ def compute_sector_rs_scores(
     for i, (key, _) in enumerate(past_sorted):
         past_rank_map[key] = ((i + 1) / past_n) * 100 if past_n > 0 else 50
 
-    # Step 4: build results
+    # Step 4: fetch P/E ratios from sector ETFs (cached, non-blocking)
+    pe_cache = _get_cached_sector_pe(db)
+
+    # Step 5: build results
     results = []
     today_str = datetime.now().strftime("%Y-%m-%d")
     for sector_key, display_name, rel_return in sector_returns:
@@ -318,6 +321,7 @@ def compute_sector_rs_scores(
             "action": action.value,
             "etfs": etfs,
             "category": _get_sector_category(sector_key),
+            "pe_ratio": pe_cache.get(sector_key),
         })
 
     return results
@@ -413,7 +417,11 @@ def compute_stock_rs_scores(
     for i, (ticker, _) in enumerate(past_sorted):
         past_rank_map[ticker] = ((i + 1) / past_n) * 100 if past_n > 0 else 50
 
-    # Step 4: build results
+    # Step 4: fetch P/E for stocks (threaded, fast)
+    stock_tickers = [t for t, _, _, _ in stock_returns]
+    pe_map = fetch_pe_ratios_for_stocks(stock_tickers)
+
+    # Step 5: build results
     results = []
     for ticker, name, rel_return, weight_pct in stock_returns:
         rs_score = rank_map.get(ticker, 50)
@@ -441,6 +449,7 @@ def compute_stock_rs_scores(
             "action": action.value,
             "weight_pct": weight_pct,
             "stop_loss_pct": stop_loss_pct,
+            "pe_ratio": pe_map.get(ticker),
         })
 
     # Sort by RS score descending
@@ -553,23 +562,77 @@ def persist_rs_scores(db: Session, scores: list[dict], instrument_type: str, dat
     return stored
 
 
+# ─── P/E Cache ────────────────────────────────────────
+# P/E ratios from yfinance are slow (1 call per index).
+# Cache for 24h so they only refresh once daily.
+_pe_cache: dict[str, Optional[float]] = {}
+_pe_cache_ts: float = 0
+PE_CACHE_TTL = 86400  # 24 hours
+
+
+def _get_cached_sector_pe(db: Session) -> dict[str, Optional[float]]:
+    """Get P/E ratios for sector indices, cached for 24h."""
+    import time
+    global _pe_cache, _pe_cache_ts
+
+    if _pe_cache and (time.time() - _pe_cache_ts) < PE_CACHE_TTL:
+        return _pe_cache
+
+    # Fetch in background — don't block if it fails
+    try:
+        sector_keys = [sk for sk, _ in COMPASS_SECTOR_INDICES]
+        _pe_cache = fetch_pe_ratios_for_sectors(sector_keys)
+        _pe_cache_ts = time.time()
+        logger.info("P/E cache refreshed: %d sectors", len(_pe_cache))
+    except Exception as e:
+        logger.warning("P/E cache refresh failed: %s", e)
+
+    return _pe_cache
+
+
 def fetch_pe_ratios_for_sectors(sector_keys: list[str]) -> dict[str, Optional[float]]:
-    """Fetch P/E ratios for sector indices via yfinance. Returns key->pe map."""
+    """Fetch P/E ratios for sector indices via yfinance.
+
+    Strategy: try index ticker first, then fall back to sector ETF's P/E.
+    ETFs usually have trailingPE even when index tickers don't.
+    """
     from index_constants import NSE_TICKER_MAP
     import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor
 
     result: dict[str, Optional[float]] = {}
-    for key in sector_keys:
+
+    def _fetch_pe(key: str) -> tuple[str, Optional[float]]:
+        # Try 1: index ticker (e.g. ^CNXPHARMA)
         yf_symbol = NSE_TICKER_MAP.get(key)
-        if not yf_symbol:
-            result[key] = None
-            continue
-        try:
-            info = yf.Ticker(yf_symbol).info
-            pe = info.get("trailingPE") or info.get("forwardPE")
-            result[key] = round(float(pe), 2) if pe else None
-        except Exception:
-            result[key] = None
+        if yf_symbol:
+            try:
+                info = yf.Ticker(yf_symbol).info
+                pe = info.get("trailingPE") or info.get("forwardPE")
+                if pe:
+                    return key, round(float(pe), 2)
+            except Exception:
+                pass
+
+        # Try 2: sector ETF (e.g. PHARMABEES.NS)
+        etfs = COMPASS_SECTOR_ETF_MAP.get(key, [])
+        for etf_ticker in etfs:
+            try:
+                info = yf.Ticker(f"{etf_ticker}.NS").info
+                pe = info.get("trailingPE") or info.get("forwardPE")
+                if pe:
+                    return key, round(float(pe), 2)
+            except Exception:
+                pass
+
+        return key, None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(_fetch_pe, k) for k in sector_keys]
+        for f in futures:
+            key, pe = f.result()
+            result[key] = pe
+
     return result
 
 

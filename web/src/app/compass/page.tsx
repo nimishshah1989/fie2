@@ -8,6 +8,7 @@ import { useCompassSectors, useCompassStocks } from "@/hooks/use-compass";
 import { SectorBubbleChart } from "@/components/compass/SectorBubbleChart";
 import { ActionSummary } from "@/components/compass/ActionSummary";
 import { StockDrillDown } from "@/components/compass/StockDrillDown";
+import { ETFView } from "@/components/compass/ETFView";
 import { ModelPortfolioDashboard } from "@/components/compass/ModelPortfolioDashboard";
 import { CompassMethodology } from "@/components/compass/CompassMethodology";
 import { refreshCompass } from "@/lib/compass-api";
@@ -15,7 +16,7 @@ import type { Period } from "@/lib/compass-types";
 
 const PERIODS: Period[] = ["1M", "3M", "6M", "12M"];
 const BASES = ["NIFTY", "NIFTY100", "NIFTY500"];
-const TABS = ["Sectors", "Model Portfolio", "Methodology"] as const;
+const TABS = ["Sectors", "ETFs", "Model Portfolio", "Methodology"] as const;
 
 export default function CompassPage() {
   const [base, setBase] = useState("NIFTY");
@@ -40,6 +41,15 @@ export default function CompassPage() {
       setRefreshing(false);
     }
   }, [mutateSectors]);
+
+  const handleSectorClick = useCallback((sectorKey: string) => {
+    setSelectedSector(sectorKey);
+    // If clicking from action board, switch to Sectors tab
+    if (activeTab !== "Sectors") setActiveTab("Sectors");
+  }, [activeTab]);
+
+  // Show base/period controls for Sectors and ETFs tabs
+  const showControls = (activeTab === "Sectors" && !selectedSector) || activeTab === "ETFs";
 
   return (
     <div className="space-y-4">
@@ -83,59 +93,59 @@ export default function CompassPage() {
         ))}
       </div>
 
+      {/* Base & Period controls — shared between Sectors and ETFs */}
+      {showControls && (
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">Base</span>
+            <div className="flex gap-1">
+              {BASES.map((b) => (
+                <button
+                  key={b}
+                  onClick={() => setBase(b)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    base === b
+                      ? "bg-teal-600 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {b}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 font-medium">Period</span>
+            <div className="flex gap-1">
+              {PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriod(p)}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    period === p
+                      ? "bg-teal-600 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <span className="text-xs text-slate-400 ml-auto">
+            {sectors.length} sectors tracked
+            {sectors[0]?.last_updated && (
+              <span className="ml-2 text-slate-300">
+                Updated: {sectors[0].last_updated}
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Sectors tab */}
       {activeTab === "Sectors" && (
         <>
-          {/* Controls */}
-          {!selectedSector && (
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-medium">Base</span>
-                <div className="flex gap-1">
-                  {BASES.map((b) => (
-                    <button
-                      key={b}
-                      onClick={() => setBase(b)}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                        base === b
-                          ? "bg-teal-600 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {b}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 font-medium">Period</span>
-                <div className="flex gap-1">
-                  {PERIODS.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setPeriod(p)}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                        period === p
-                          ? "bg-teal-600 text-white"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <span className="text-xs text-slate-400 ml-auto">
-                {sectors.length} sectors tracked
-                {sectors[0]?.last_updated && (
-                  <span className="ml-2 text-slate-300">
-                    Updated: {sectors[0].last_updated}
-                  </span>
-                )}
-              </span>
-            </div>
-          )}
-
-          {/* Content */}
           {loadingSectors ? (
             <div className="space-y-4">
               <Skeleton className="h-[480px] w-full rounded-xl" />
@@ -145,22 +155,28 @@ export default function CompassPage() {
             <StockDrillDown
               sectorInfo={selectedSectorInfo}
               stocks={stocks}
+              loadingStocks={loadingStocks}
               onBack={() => setSelectedSector(null)}
             />
           ) : (
             <>
               <SectorBubbleChart
                 sectors={sectors}
-                onSectorClick={(key) => setSelectedSector(key)}
+                onSectorClick={handleSectorClick}
               />
-              <ActionSummary sectors={sectors} />
+              <ActionSummary sectors={sectors} onSectorClick={handleSectorClick} />
             </>
           )}
         </>
       )}
 
+      {/* ETFs tab */}
+      {activeTab === "ETFs" && <ETFView base={base} period={period} />}
+
+      {/* Model Portfolio tab */}
       {activeTab === "Model Portfolio" && <ModelPortfolioDashboard />}
 
+      {/* Methodology tab */}
       {activeTab === "Methodology" && <CompassMethodology />}
     </div>
   );

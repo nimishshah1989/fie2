@@ -318,7 +318,7 @@ def run_weekly_rebalance(db: Session, sector_scores: list[dict]) -> dict:
         held_sectors = {p.sector_key for p in open_positions if p.status == "OPEN"}
         buy_candidates = [
             s for s in sector_scores
-            if s["action"] in (CompassAction.BUY.value,)
+            if s["action"] in (CompassAction.BUY.value, CompassAction.ACCUMULATE.value)
             and s["sector_key"] not in held_sectors
         ]
         # Sort by RS score descending — strongest first
