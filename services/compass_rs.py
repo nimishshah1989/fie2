@@ -418,13 +418,17 @@ def compute_sector_rs_scores(
                 market_regime.get("ret_3m", "?"))
 
     # Step 5: compute absolute returns for each sector
+    # Reuse sector_closes from step 1 (already fetched with sufficient lookback)
     abs_return_map: dict[str, float] = {}
     for sector_key, display_name in COMPASS_SECTOR_INDICES:
-        sector_closes = _get_index_close_map(db, sector_key, days=period_days + 60)
+        sector_closes = _get_index_close_map(db, sector_key, days=period_days + TRADING_DAYS_4W + 60)
         if sector_closes:
             abs_ret = _compute_absolute_return(sector_closes, period_days)
             if abs_ret is not None:
                 abs_return_map[sector_key] = abs_ret
+            else:
+                logger.debug("Abs return None for %s: %d data points, period=%d",
+                             sector_key, len(sector_closes), period_days)
 
     # Step 6: build results with gate-based decision engine
     results = []

@@ -62,12 +62,16 @@ class SectorRSResponse(BaseModel):
     rs_score: float
     rs_momentum: float
     relative_return: float
+    absolute_return: Optional[float] = None
     volume_signal: Optional[str] = None
     quadrant: str
     action: str
+    action_reason: str = ""
+    pe_ratio: Optional[float] = None
+    pe_zone: Optional[str] = None
     etfs: list[str] = []
     category: str = ""
-    pe_ratio: Optional[float] = None
+    market_regime: Optional[str] = None
     last_updated: Optional[str] = None
 
 
@@ -77,12 +81,14 @@ class StockRSResponse(BaseModel):
     rs_score: float
     rs_momentum: float
     relative_return: float
+    absolute_return: Optional[float] = None
     volume_signal: Optional[str] = None
     quadrant: str
     action: str
-    weight_pct: Optional[float] = None
-    stop_loss_pct: Optional[float] = None
+    action_reason: str = ""
     pe_ratio: Optional[float] = None
+    pe_zone: Optional[str] = None
+    weight_pct: Optional[float] = None
 
 
 class ETFRSResponse(BaseModel):
@@ -92,9 +98,11 @@ class ETFRSResponse(BaseModel):
     rs_score: float
     rs_momentum: float
     relative_return: float
+    absolute_return: Optional[float] = None
     volume_signal: Optional[str] = None
     quadrant: str
     action: str
+    action_reason: str = ""
 
 
 class PositionResponse(BaseModel):
