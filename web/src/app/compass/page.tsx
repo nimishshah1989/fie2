@@ -132,14 +132,21 @@ export default function CompassPage() {
               ))}
             </div>
           </div>
-          <span className="text-xs text-slate-400 ml-auto">
-            {sectors.length} sectors tracked
-            {sectors[0]?.last_updated && (
-              <span className="ml-2 text-slate-300">
-                Updated: {sectors[0].last_updated}
+          <div className="flex items-center gap-3 ml-auto">
+            {sectors[0]?.market_regime && (
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                sectors[0].market_regime === "BULL" ? "bg-emerald-100 text-emerald-700" :
+                sectors[0].market_regime === "CAUTIOUS" ? "bg-amber-100 text-amber-700" :
+                sectors[0].market_regime === "CORRECTION" ? "bg-orange-100 text-orange-700" :
+                "bg-red-100 text-red-700"
+              }`}>
+                {sectors[0].market_regime}
               </span>
             )}
-          </span>
+            <span className="text-xs text-slate-400">
+              {sectors.length} sectors tracked
+            </span>
+          </div>
         </div>
       )}
 

@@ -20,6 +20,7 @@ from models import (
 )
 from services.compass_rs import (
     _classify_quadrant,
+    _compute_conviction,
     _compute_relative_return,
     _compute_volume_signal,
     _derive_action,
@@ -62,32 +63,81 @@ class TestClassifyQuadrant:
 
 
 class TestDeriveAction:
-    def test_leading_is_buy(self):
-        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.ACCUMULATION) == CompassAction.BUY
+    def test_leading_high_conviction_is_buy(self):
+        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.ACCUMULATION, conviction=70) == CompassAction.BUY
 
-    def test_leading_any_volume_is_buy(self):
-        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.WEAK_RALLY) == CompassAction.BUY
+    def test_leading_low_conviction_is_hold(self):
+        # Even LEADING, if conviction is low, action is HOLD not BUY
+        assert _derive_action(CompassQuadrant.LEADING, CompassVolumeSignal.WEAK_RALLY, conviction=40) == CompassAction.HOLD
 
-    def test_leading_no_volume_is_buy(self):
-        assert _derive_action(CompassQuadrant.LEADING, None) == CompassAction.BUY
+    def test_leading_borderline_conviction_is_buy(self):
+        assert _derive_action(CompassQuadrant.LEADING, None, conviction=60) == CompassAction.BUY
 
     def test_improving_is_watch(self):
-        assert _derive_action(CompassQuadrant.IMPROVING, CompassVolumeSignal.ACCUMULATION) == CompassAction.WATCH
+        assert _derive_action(CompassQuadrant.IMPROVING, CompassVolumeSignal.ACCUMULATION, conviction=55) == CompassAction.WATCH
+
+    def test_improving_low_conviction_is_sell(self):
+        assert _derive_action(CompassQuadrant.IMPROVING, None, conviction=30) == CompassAction.SELL
 
     def test_weakening_is_hold(self):
-        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.DISTRIBUTION) == CompassAction.HOLD
+        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.DISTRIBUTION, conviction=50) == CompassAction.HOLD
 
     def test_weakening_any_volume_is_hold(self):
-        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.WEAK_DECLINE) == CompassAction.HOLD
-
-    def test_weakening_no_volume_is_hold(self):
-        assert _derive_action(CompassQuadrant.WEAKENING, None) == CompassAction.HOLD
+        assert _derive_action(CompassQuadrant.WEAKENING, CompassVolumeSignal.WEAK_DECLINE, conviction=40) == CompassAction.HOLD
 
     def test_lagging_is_sell(self):
-        assert _derive_action(CompassQuadrant.LAGGING, CompassVolumeSignal.DISTRIBUTION) == CompassAction.SELL
+        assert _derive_action(CompassQuadrant.LAGGING, CompassVolumeSignal.DISTRIBUTION, conviction=20) == CompassAction.SELL
 
     def test_lagging_no_volume_is_sell(self):
-        assert _derive_action(CompassQuadrant.LAGGING, None) == CompassAction.SELL
+        assert _derive_action(CompassQuadrant.LAGGING, None, conviction=10) == CompassAction.SELL
+
+
+class TestConviction:
+    def test_bull_accumulation_positive_returns(self):
+        """Full bullish setup: high RS, rising momentum, accumulation, positive abs return, bull market."""
+        score = _compute_conviction(
+            rs_score=15.0, momentum=8.0,
+            volume_signal=CompassVolumeSignal.ACCUMULATION,
+            absolute_return=10.0,
+            market_regime={"regime": "BULL"},
+        )
+        assert score >= 70, f"Full bull setup should have high conviction, got {score}"
+
+    def test_bear_market_correction_limits_score(self):
+        """Even with good RS, bear market + negative abs return should suppress conviction."""
+        score = _compute_conviction(
+            rs_score=10.0, momentum=5.0,
+            volume_signal=CompassVolumeSignal.WEAK_RALLY,
+            absolute_return=-8.0,
+            market_regime={"regime": "BEAR"},
+        )
+        assert score < 60, f"Bear market with negative abs return shouldn't reach BUY threshold, got {score}"
+
+    def test_distribution_volume_penalizes(self):
+        """Distribution volume (selling pressure) should significantly reduce conviction."""
+        with_accum = _compute_conviction(
+            rs_score=10.0, momentum=3.0,
+            volume_signal=CompassVolumeSignal.ACCUMULATION,
+            absolute_return=5.0,
+            market_regime={"regime": "CAUTIOUS"},
+        )
+        with_dist = _compute_conviction(
+            rs_score=10.0, momentum=3.0,
+            volume_signal=CompassVolumeSignal.DISTRIBUTION,
+            absolute_return=5.0,
+            market_regime={"regime": "CAUTIOUS"},
+        )
+        assert with_accum - with_dist >= 25, "Accumulation vs distribution should differ by 25+ pts"
+
+    def test_falling_sector_in_correction(self):
+        """Sector falling -10% in a correction: should have very low conviction."""
+        score = _compute_conviction(
+            rs_score=-5.0, momentum=-3.0,
+            volume_signal=CompassVolumeSignal.DISTRIBUTION,
+            absolute_return=-10.0,
+            market_regime={"regime": "CORRECTION"},
+        )
+        assert score < 20, f"Falling sector in correction should be very low, got {score}"
 
 
 class TestComputeRelativeReturn:

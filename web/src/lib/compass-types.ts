@@ -3,6 +3,7 @@
 export type Quadrant = "LEADING" | "WEAKENING" | "IMPROVING" | "LAGGING";
 export type CompassAction = "BUY" | "HOLD" | "WATCH" | "SELL";
 export type VolumeSignal = "ACCUMULATION" | "WEAK_RALLY" | "DISTRIBUTION" | "WEAK_DECLINE";
+export type MarketRegime = "BULL" | "CAUTIOUS" | "CORRECTION" | "BEAR";
 export type Period = "1M" | "3M" | "6M" | "12M";
 
 export interface SectorRS {
@@ -11,12 +12,15 @@ export interface SectorRS {
   rs_score: number;
   rs_momentum: number;
   relative_return: number;
+  absolute_return: number | null;
   volume_signal: VolumeSignal | null;
   quadrant: Quadrant;
   action: CompassAction;
+  conviction: number;
   etfs: string[];
   category: string;
   pe_ratio: number | null;
+  market_regime: MarketRegime | null;
   last_updated: string | null;
 }
 
@@ -26,9 +30,11 @@ export interface StockRS {
   rs_score: number;
   rs_momentum: number;
   relative_return: number;
+  absolute_return: number | null;
   volume_signal: VolumeSignal | null;
   quadrant: Quadrant;
   action: CompassAction;
+  conviction: number;
   weight_pct: number | null;
   stop_loss_pct: number | null;
   pe_ratio: number | null;
@@ -41,9 +47,11 @@ export interface ETFRS {
   rs_score: number;
   rs_momentum: number;
   relative_return: number;
+  absolute_return: number | null;
   volume_signal: VolumeSignal | null;
   quadrant: Quadrant;
   action: CompassAction;
+  conviction: number;
 }
 
 export type PortfolioType = "etf_only" | "stock_etf" | "stock_only";

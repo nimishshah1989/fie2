@@ -190,23 +190,157 @@ def _classify_quadrant(rs_score: float, momentum: float) -> CompassQuadrant:
         return CompassQuadrant.LAGGING
 
 
+def _compute_absolute_return(
+    asset_closes: dict[str, float], period_days: int,
+) -> Optional[float]:
+    """Compute absolute return of an asset over period_days (%)."""
+    dates = sorted(asset_closes.keys())
+    if len(dates) < period_days // 2:
+        return None
+    target_idx = max(0, len(dates) - period_days)
+    price_now = asset_closes.get(dates[-1])
+    price_then = asset_closes.get(dates[target_idx])
+    if not price_now or not price_then or price_then == 0:
+        return None
+    return (price_now / price_then - 1) * 100
+
+
+def _compute_market_regime(benchmark_closes: dict[str, float]) -> dict:
+    """
+    Assess market regime from benchmark price data.
+    Returns regime info: trend, drawdown, distance from moving averages.
+    """
+    dates = sorted(benchmark_closes.keys())
+    if len(dates) < 50:
+        return {"regime": "UNKNOWN", "drawdown_pct": 0, "below_50dma": False}
+
+    prices = [benchmark_closes[d] for d in dates]
+    current = prices[-1]
+
+    # 50-day moving average
+    avg_50d = sum(prices[-50:]) / 50
+    below_50dma = current < avg_50d
+
+    # Drawdown from peak (last 252 days or available)
+    lookback = prices[-min(252, len(prices)):]
+    peak = max(lookback)
+    drawdown_pct = (current / peak - 1) * 100
+
+    # 3-month return
+    idx_3m = max(0, len(prices) - 63)
+    ret_3m = (current / prices[idx_3m] - 1) * 100
+
+    # Classify regime
+    if drawdown_pct < -15:
+        regime = "BEAR"
+    elif drawdown_pct < -8 or (below_50dma and ret_3m < -5):
+        regime = "CORRECTION"
+    elif below_50dma:
+        regime = "CAUTIOUS"
+    else:
+        regime = "BULL"
+
+    return {
+        "regime": regime,
+        "drawdown_pct": round(drawdown_pct, 1),
+        "below_50dma": below_50dma,
+        "ret_3m": round(ret_3m, 1),
+    }
+
+
+def _compute_conviction(
+    rs_score: float,
+    momentum: float,
+    volume_signal: Optional[CompassVolumeSignal],
+    absolute_return: Optional[float],
+    market_regime: dict,
+) -> int:
+    """
+    Multi-factor conviction score (0-100) combining:
+    - Relative strength vs benchmark (0-25)
+    - Momentum direction and magnitude (0-20)
+    - Volume confirmation (0-20)
+    - Absolute return — is the sector actually going up? (0-20)
+    - Market regime — is the overall market supportive? (0-15)
+
+    A 30-year technical trader would never buy a sector just because
+    it fell less than the benchmark. This score requires multiple
+    confirming factors.
+    """
+    score = 0
+
+    # 1. Relative strength (0-25 pts)
+    # Positive RS is good, but diminishing returns above +15%
+    if rs_score > 0:
+        score += min(25, int(rs_score * 1.5))
+    else:
+        score += max(-10, int(rs_score * 0.5))  # penalty for underperformance
+
+    # 2. Momentum (0-20 pts)
+    # Rising RS is bullish, falling RS is bearish
+    if momentum > 0:
+        score += min(20, int(momentum * 2))
+    else:
+        score += max(-10, int(momentum * 1.5))  # penalty
+
+    # 3. Volume confirmation (0-20 pts)
+    # This is critical — volume MUST confirm price action
+    vol_scores = {
+        CompassVolumeSignal.ACCUMULATION: 20,   # best: price up + volume up
+        CompassVolumeSignal.WEAK_RALLY: 5,      # caution: price up but volume down
+        CompassVolumeSignal.DISTRIBUTION: -10,   # danger: price down + volume up (selling)
+        CompassVolumeSignal.WEAK_DECLINE: -5,    # mild: price down + volume down
+    }
+    if volume_signal:
+        score += vol_scores.get(volume_signal, 0)
+    # No penalty if volume data unavailable (many sectors lack ETF mapping)
+
+    # 4. Absolute return (0-20 pts)
+    # A sector MUST be in an uptrend to be a BUY, not just "falling less"
+    if absolute_return is not None:
+        if absolute_return > 5:
+            score += 20  # clearly rising
+        elif absolute_return > 0:
+            score += int(absolute_return * 3)  # marginally positive
+        elif absolute_return > -5:
+            score += int(absolute_return * 2)  # mild decline → small penalty
+        else:
+            score += max(-15, int(absolute_return * 1.5))  # significant decline
+
+    # 5. Market regime (0-15 pts)
+    regime_scores = {
+        "BULL": 15,       # broad market supportive
+        "CAUTIOUS": 5,    # mixed signals
+        "CORRECTION": -5, # headwinds — raise the bar for BUY
+        "BEAR": -15,      # strong headwinds — only exceptional sectors get BUY
+    }
+    score += regime_scores.get(market_regime.get("regime", "UNKNOWN"), 0)
+
+    return max(0, min(100, score))
+
+
 def _derive_action(
     quadrant: CompassQuadrant,
     volume_signal: Optional[CompassVolumeSignal],
+    conviction: int = 50,
 ) -> CompassAction:
     """
-    Quadrant → Action signal. Simple 4-action model:
-    - LEADING  → BUY  (outperforming + gaining momentum)
-    - WEAKENING → HOLD (outperforming but momentum fading)
-    - IMPROVING → WATCH (underperforming but momentum turning up)
-    - LAGGING  → SELL (underperforming + losing momentum)
+    Conviction-driven action signal. The quadrant sets the base direction,
+    but conviction gates whether we actually recommend action.
+
+    BUY:   Conviction ≥ 60 AND in LEADING quadrant
+    HOLD:  In LEADING/WEAKENING but conviction too low for BUY
+    WATCH: In IMPROVING quadrant (momentum turning up)
+    SELL:  Conviction < 30 OR in LAGGING quadrant
     """
-    if quadrant == CompassQuadrant.LEADING:
+    if quadrant == CompassQuadrant.LEADING and conviction >= 60:
         return CompassAction.BUY
-    elif quadrant == CompassQuadrant.WEAKENING:
+    elif quadrant in (CompassQuadrant.LEADING, CompassQuadrant.WEAKENING):
         return CompassAction.HOLD
     elif quadrant == CompassQuadrant.IMPROVING:
-        return CompassAction.WATCH
+        if conviction >= 50:
+            return CompassAction.WATCH
+        return CompassAction.SELL  # improving but too weak overall
     else:  # LAGGING
         return CompassAction.SELL
 
@@ -266,7 +400,22 @@ def compute_sector_rs_scores(
     # Step 3: fetch P/E ratios (cached)
     pe_cache = _get_cached_sector_pe(db)
 
-    # Step 4: build results
+    # Step 4: market regime — is NIFTY in bull/bear/correction?
+    market_regime = _compute_market_regime(benchmark_closes)
+    logger.info("Market regime: %s (drawdown: %s%%, 3M: %s%%)",
+                market_regime["regime"], market_regime["drawdown_pct"],
+                market_regime.get("ret_3m", "?"))
+
+    # Step 5: compute absolute returns for each sector
+    abs_return_map: dict[str, float] = {}
+    for sector_key, display_name in COMPASS_SECTOR_INDICES:
+        sector_closes = _get_index_close_map(db, sector_key, days=period_days + 60)
+        if sector_closes:
+            abs_ret = _compute_absolute_return(sector_closes, period_days)
+            if abs_ret is not None:
+                abs_return_map[sector_key] = abs_ret
+
+    # Step 6: build results with conviction scoring
     results = []
     for sector_key, display_name, rs_score in sector_data:
         past_rs = past_rs_map.get(sector_key, rs_score)
@@ -281,20 +430,25 @@ def compute_sector_rs_scores(
                 volume_signal = _compute_volume_signal(etf_vol_data)
 
         quadrant = _classify_quadrant(rs_score, momentum)
-        action = _derive_action(quadrant, volume_signal)
+        abs_return = abs_return_map.get(sector_key)
+        conviction = _compute_conviction(rs_score, momentum, volume_signal, abs_return, market_regime)
+        action = _derive_action(quadrant, volume_signal, conviction)
 
         results.append({
             "sector_key": sector_key,
             "display_name": display_name,
             "rs_score": round(rs_score, 2),
             "rs_momentum": round(momentum, 2),
-            "relative_return": round(rs_score, 2),  # same as rs_score now
+            "relative_return": round(rs_score, 2),
+            "absolute_return": round(abs_return, 2) if abs_return is not None else None,
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
+            "conviction": conviction,
             "etfs": etfs,
             "category": _get_sector_category(sector_key),
             "pe_ratio": pe_cache.get(sector_key),
+            "market_regime": market_regime["regime"],
         })
 
     return results
@@ -379,7 +533,11 @@ def compute_stock_rs_scores(
     stock_tickers = [t for t, _, _, _ in stock_data]
     pe_map = fetch_pe_ratios_for_stocks(stock_tickers)
 
-    # Step 4: build results
+    # Step 4: market regime + absolute returns for stocks
+    benchmark_closes = _get_index_close_map(db, base_index, days=period_days + TRADING_DAYS_4W + 60)
+    market_regime = _compute_market_regime(benchmark_closes) if benchmark_closes else {"regime": "UNKNOWN"}
+
+    # Step 5: build results
     results = []
     for ticker, name, rs_score, weight_pct in stock_data:
         past_rs = past_rs_map.get(ticker, rs_score)
@@ -388,8 +546,12 @@ def compute_stock_rs_scores(
         vol_data = _get_stock_volume_series(db, ticker)
         volume_signal = _compute_volume_signal(vol_data) if vol_data else None
 
+        stock_closes = _get_stock_close_map(db, ticker, days=period_days + 60)
+        abs_return = _compute_absolute_return(stock_closes, period_days) if stock_closes else None
+
         quadrant = _classify_quadrant(rs_score, momentum)
-        action = _derive_action(quadrant, volume_signal)
+        conviction = _compute_conviction(rs_score, momentum, volume_signal, abs_return, market_regime)
+        action = _derive_action(quadrant, volume_signal, conviction)
 
         stop_loss_pct = 12.0 if action == CompassAction.BUY else None
 
@@ -399,9 +561,11 @@ def compute_stock_rs_scores(
             "rs_score": round(rs_score, 2),
             "rs_momentum": round(momentum, 2),
             "relative_return": round(rs_score, 2),
+            "absolute_return": round(abs_return, 2) if abs_return is not None else None,
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
+            "conviction": conviction,
             "weight_pct": weight_pct,
             "stop_loss_pct": stop_loss_pct,
             "pe_ratio": pe_map.get(ticker),
@@ -460,6 +624,8 @@ def compute_etf_rs_scores(
         if past_rel is not None:
             past_rs_map[etf_ticker] = past_rel
 
+    market_regime = _compute_market_regime(benchmark_closes)
+
     results = []
     for ticker, parent_sector, rs_score in etf_data:
         past_rs = past_rs_map.get(ticker, rs_score)
@@ -468,8 +634,12 @@ def compute_etf_rs_scores(
         vol_data = _get_etf_volume_series(db, ticker)
         volume_signal = _compute_volume_signal(vol_data) if vol_data and len(vol_data) >= 60 else None
 
+        etf_closes = _get_etf_close_map(db, ticker, days=period_days + 60)
+        abs_return = _compute_absolute_return(etf_closes, period_days) if etf_closes else None
+
         quadrant = _classify_quadrant(rs_score, momentum)
-        action = _derive_action(quadrant, volume_signal)
+        conviction = _compute_conviction(rs_score, momentum, volume_signal, abs_return, market_regime)
+        action = _derive_action(quadrant, volume_signal, conviction)
 
         results.append({
             "ticker": ticker,
@@ -478,9 +648,11 @@ def compute_etf_rs_scores(
             "rs_score": round(rs_score, 2),
             "rs_momentum": round(momentum, 2),
             "relative_return": round(rs_score, 2),
+            "absolute_return": round(abs_return, 2) if abs_return is not None else None,
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
+            "conviction": conviction,
         })
 
     results.sort(key=lambda x: x["rs_score"], reverse=True)

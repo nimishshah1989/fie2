@@ -44,13 +44,21 @@ function ETFTooltip({ active, payload }: { active?: boolean; payload?: Array<{ p
       {e.sector_name && <p className="text-xs text-slate-500">{e.sector_name}</p>}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1.5">
         <span className="text-slate-500">RS Score</span>
-        <span className="font-mono font-medium text-right">{e.rs_score}</span>
+        <span className={`font-mono font-medium text-right ${e.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>
+          {e.rs_score > 0 ? "+" : ""}{e.rs_score.toFixed(1)}%
+        </span>
+        <span className="text-slate-500">Abs Return</span>
+        <span className={`font-mono font-medium text-right ${(e.absolute_return ?? 0) > 0 ? "text-emerald-600" : "text-red-600"}`}>
+          {e.absolute_return != null ? `${e.absolute_return > 0 ? "+" : ""}${e.absolute_return.toFixed(1)}%` : "—"}
+        </span>
         <span className="text-slate-500">Momentum</span>
         <span className={`font-mono font-medium text-right ${e.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
-          {e.rs_momentum > 0 ? "+" : ""}{e.rs_momentum}
+          {e.rs_momentum > 0 ? "+" : ""}{e.rs_momentum.toFixed(1)}
         </span>
         <span className="text-slate-500">Volume</span>
         <span className="text-right">{e.volume_signal?.replace("_", " ") || "—"}</span>
+        <span className="text-slate-500">Conviction</span>
+        <span className="font-mono font-medium text-right">{e.conviction ?? 0}/100</span>
         <span className="text-slate-500">Action</span>
         <span className="font-semibold text-right" style={{ color: QUADRANT_COLORS[e.quadrant] }}>{e.action}</span>
       </div>
@@ -97,7 +105,7 @@ export function ETFView({ base, period }: Props) {
       {/* Scatter chart */}
       <div className="bg-white rounded-xl border border-slate-200 p-4">
         <h3 className="text-sm font-semibold text-slate-900 mb-2">
-          ETF Relative Strength ({etfs.length} ETFs)
+          ETF Relative Strength ({etfs.length} ETFs tracked)
         </h3>
         <ResponsiveContainer width="100%" height={400}>
           <ScatterChart margin={{ top: 15, right: 25, bottom: 20, left: 15 }}>
@@ -138,16 +146,16 @@ export function ETFView({ base, period }: Props) {
                 <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3">ETF</th>
                 <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Sector</th>
                 <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Action</th>
-                <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Quadrant</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">RS</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Mtm</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Rel Return</th>
-                <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Volume</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Conviction score (0-100) combining RS, momentum, volume, absolute return, and market regime">Score</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Relative Strength: % outperformance vs NIFTY benchmark">RS %</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Absolute return of this ETF over the period">Abs %</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="4-week change in RS Score — is relative strength improving or fading?">Momentum</th>
+                <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Volume trend: 20d avg vs 60d avg + price direction">Volume</th>
               </tr>
             </thead>
             <tbody>
               {etfs
-                .sort((a, b) => b.rs_score - a.rs_score)
+                .sort((a, b) => (b.conviction ?? 0) - (a.conviction ?? 0))
                 .map((e) => {
                   const badge = ACTION_BADGE[e.action];
                   return (
@@ -157,15 +165,19 @@ export function ETFView({ base, period }: Props) {
                       <td className="px-3 py-2.5 text-center">
                         <span className={`${badge.bg} ${badge.text} rounded-full px-2 py-0.5 text-xs font-semibold`}>{e.action}</span>
                       </td>
-                      <td className="px-3 py-2.5 text-center">
-                        <span className="text-xs font-medium" style={{ color: QUADRANT_COLORS[e.quadrant] }}>{e.quadrant}</span>
+                      <td className="px-3 py-2.5 text-right font-mono font-medium">
+                        <span className={`${(e.conviction ?? 0) >= 60 ? "text-emerald-600" : (e.conviction ?? 0) >= 40 ? "text-amber-600" : "text-red-600"}`}>
+                          {e.conviction ?? 0}
+                        </span>
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono font-medium">{e.rs_score.toFixed(1)}</td>
+                      <td className={`px-3 py-2.5 text-right font-mono font-medium ${e.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {e.rs_score > 0 ? "+" : ""}{e.rs_score.toFixed(1)}
+                      </td>
+                      <td className={`px-3 py-2.5 text-right font-mono ${(e.absolute_return ?? 0) > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {e.absolute_return != null ? `${e.absolute_return > 0 ? "+" : ""}${e.absolute_return.toFixed(1)}%` : "—"}
+                      </td>
                       <td className={`px-3 py-2.5 text-right font-mono font-medium ${e.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
                         {e.rs_momentum > 0 ? "+" : ""}{e.rs_momentum.toFixed(1)}
-                      </td>
-                      <td className={`px-3 py-2.5 text-right font-mono ${e.relative_return > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                        {e.relative_return > 0 ? "+" : ""}{e.relative_return.toFixed(1)}%
                       </td>
                       <td className="px-3 py-2.5 text-center text-xs text-slate-500">{e.volume_signal?.replace("_", " ") || "—"}</td>
                     </tr>

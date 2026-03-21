@@ -162,12 +162,12 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
               <tr className="border-b border-slate-100 bg-slate-50">
                 <th className="text-left text-xs font-semibold text-slate-400 uppercase tracking-wider px-4 py-3">Stock</th>
                 <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Action</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">RS</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Mtm</th>
-                <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Volume</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Conviction score (0-100) — multi-factor confidence level">Score</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Relative Strength: % outperformance vs sector index">RS %</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="4-week change in RS Score">Momentum</th>
+                <th className="text-center text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Volume trend: 20d avg vs 60d avg + price direction">Volume</th>
                 <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">P/E</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Wt%</th>
-                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3">Stop</th>
+                <th className="text-right text-xs font-semibold text-slate-400 uppercase tracking-wider px-3 py-3" title="Index weight in sector">Wt%</th>
               </tr>
             </thead>
             <tbody>
@@ -184,6 +184,11 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
                         {s.action}
                       </span>
                     </td>
+                    <td className="px-3 py-2.5 text-right font-mono font-medium">
+                      <span className={`${(s.conviction ?? 0) >= 60 ? "text-emerald-600" : (s.conviction ?? 0) >= 40 ? "text-amber-600" : "text-red-600"}`}>
+                        {s.conviction ?? 0}
+                      </span>
+                    </td>
                     <td className={`px-3 py-2.5 text-right font-mono font-medium ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score}%</td>
                     <td className={`px-3 py-2.5 text-right font-mono font-medium ${s.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
                       {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
@@ -194,9 +199,6 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
                     <td className="px-3 py-2.5 text-right font-mono">{s.pe_ratio ?? "—"}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-slate-500">
                       {s.weight_pct ? `${s.weight_pct.toFixed(1)}` : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-500">
-                      {s.stop_loss_pct ? `${s.stop_loss_pct}%` : "—"}
                     </td>
                   </tr>
                 );

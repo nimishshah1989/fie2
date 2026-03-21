@@ -77,18 +77,24 @@ export function ActionSummary({ sectors, onSectorClick }: Props) {
                         </p>
                         <div className="flex items-center gap-3 mt-0.5">
                           <span className="text-xs text-slate-500">
-                            RS <span className="font-mono font-semibold">{s.rs_score.toFixed(1)}</span>
+                            RS <span className={`font-mono font-semibold ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score.toFixed(1)}%</span>
                           </span>
-                          <span className={`text-xs font-mono font-semibold ${s.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum.toFixed(1)}
+                          {s.absolute_return != null && (
+                            <span className={`text-xs font-mono ${s.absolute_return > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                              Abs {s.absolute_return > 0 ? "+" : ""}{s.absolute_return.toFixed(1)}%
+                            </span>
+                          )}
+                          <span className={`text-xs px-1.5 py-0.5 rounded font-mono font-semibold ${
+                            s.conviction >= 60 ? "bg-emerald-100 text-emerald-700" :
+                            s.conviction >= 40 ? "bg-amber-100 text-amber-700" :
+                            "bg-red-100 text-red-700"
+                          }`}>
+                            {s.conviction}
                           </span>
                           {s.volume_signal && (
                             <span className="text-xs text-slate-400">
                               {s.volume_signal.replace("_", " ")}
                             </span>
-                          )}
-                          {s.etfs.length > 0 && (
-                            <span className="text-xs text-teal-600 font-medium">{s.etfs[0]}</span>
                           )}
                         </div>
                       </div>
