@@ -779,3 +779,100 @@ class CompassModelNAV(Base):
     __table_args__ = (
         Index("idx_compass_nav_date_type", "date", "portfolio_type", unique=True),
     )
+
+
+# ─── Agentic Lab + Autonomous Trader Models ─────────────────
+
+
+class CompassLabRun(Base):
+    """Metadata for each Lab simulation sweep."""
+    __tablename__ = "compass_lab_runs"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    run_type      = Column(String(20), nullable=False)      # FULL, FOCUSED, DAILY
+    status        = Column(String(15), nullable=False, default="RUNNING")  # RUNNING, COMPLETED, FAILED
+    started_at    = Column(DateTime, nullable=False, default=func.now())
+    completed_at  = Column(DateTime, nullable=True)
+    combos_tested = Column(Integer, nullable=True)
+    best_sharpe   = Column(Float, nullable=True)
+    data_start    = Column(String(10), nullable=True)       # earliest date in price data
+    data_end      = Column(String(10), nullable=True)       # latest date in price data
+    notes         = Column(Text, nullable=True)
+
+
+class CompassRegimeConfig(Base):
+    """Lab-derived optimal parameter set per market regime."""
+    __tablename__ = "compass_regime_configs"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    regime          = Column(String(15), nullable=False, unique=True)   # BULL, CAUTIOUS, CORRECTION, BEAR
+    stop_loss_pct   = Column(Float, nullable=False, default=8.0)
+    trailing_trigger_pct = Column(Float, nullable=False, default=15.0)
+    trailing_stop_pct    = Column(Float, nullable=False, default=10.0)
+    max_positions   = Column(Integer, nullable=False, default=6)
+    min_rs_entry    = Column(Float, nullable=False, default=0.0)
+    min_holding_days = Column(Integer, nullable=False, default=0)
+    rs_period       = Column(String(5), nullable=False, default="3M")
+    evidence_sharpe = Column(Float, nullable=True)
+    evidence_n_trades = Column(Integer, nullable=True)
+    evidence_win_rate = Column(Float, nullable=True)
+    evidence_max_dd   = Column(Float, nullable=True)
+    lab_run_id      = Column(Integer, nullable=True)        # which Lab run produced this
+    updated_at      = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class CompassDecisionLog(Base):
+    """Every autonomous trader decision — full audit trail."""
+    __tablename__ = "compass_decision_log"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    date            = Column(String(10), nullable=False)
+    portfolio_type  = Column(String(15), nullable=False)
+    sector_key      = Column(String(50), nullable=False)
+    instrument_id   = Column(String(50), nullable=True)
+    decision        = Column(String(20), nullable=False)    # BUY, SELL, HOLD, SKIP
+    gate_g1         = Column(Boolean, nullable=True)        # absolute return > 0
+    gate_g2         = Column(Boolean, nullable=True)        # rs_score > min_rs
+    gate_g3         = Column(Boolean, nullable=True)        # momentum > 0
+    rs_score        = Column(Float, nullable=True)
+    momentum        = Column(Float, nullable=True)
+    absolute_return = Column(Float, nullable=True)
+    volume_signal   = Column(String(20), nullable=True)
+    market_regime   = Column(String(15), nullable=True)
+    pe_ratio        = Column(Float, nullable=True)
+    pe_zone         = Column(String(15), nullable=True)
+    regime_config   = Column(String(20), nullable=True)     # which RegimeConfig was active
+    reason_text     = Column(Text, nullable=True)           # rich decision reason
+    historical_precedent_n    = Column(Integer, nullable=True)  # how many similar setups in Lab
+    historical_precedent_win  = Column(Float, nullable=True)    # win rate of similar setups
+    # Outcome fields — backfilled by nightly job
+    outcome_5d_return   = Column(Float, nullable=True)
+    outcome_20d_return  = Column(Float, nullable=True)
+    outcome_60d_return  = Column(Float, nullable=True)
+    was_correct         = Column(Boolean, nullable=True)
+    created_at          = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("idx_decision_date_sector", "date", "sector_key"),
+    )
+
+
+class CompassDiscoveredRule(Base):
+    """Patterns discovered by Lab from historical simulations."""
+    __tablename__ = "compass_discovered_rules"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    discovered_date = Column(String(10), nullable=False)
+    condition       = Column(Text, nullable=False)          # human-readable: "regime=CORRECTION AND volume=DISTRIBUTION"
+    condition_json  = Column(Text, nullable=True)           # machine-parseable: {"regime": "CORRECTION", "volume": "DISTRIBUTION"}
+    historical_n    = Column(Integer, nullable=False)
+    historical_win_rate = Column(Float, nullable=False)
+    baseline_win_rate   = Column(Float, nullable=False)
+    override_action = Column(String(20), nullable=False)    # BLOCK_BUY, INCREASE_POSITION, etc.
+    confidence      = Column(String(10), nullable=False)    # HIGH, MEDIUM, LOW
+    status          = Column(String(20), nullable=False, default="MONITORING")  # MONITORING, AUTO_APPLIED, REJECTED
+    live_trades_since = Column(Integer, nullable=True, default=0)
+    live_win_rate   = Column(Float, nullable=True)
+    lab_run_id      = Column(Integer, nullable=True)
+    applied_date    = Column(String(10), nullable=True)
+    created_at      = Column(DateTime, default=func.now())

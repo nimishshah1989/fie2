@@ -258,22 +258,30 @@ def compass_intraday_refresh() -> None:
 
 
 def compass_eod_rebalance() -> None:
-    """EOD rebalance at 3:40 PM IST — compute RS, run portfolio trades, update NAV."""
+    """EOD rebalance at 3:40 PM IST — autonomous trader takes decisions."""
     db = SessionLocal()
     try:
-        from routers.compass import _clear_cache
-        from services.compass_data import daily_refresh_compass_prices
-        from services.compass_portfolio import run_weekly_rebalance, update_model_nav
-        from services.compass_rs import compute_sector_rs_scores, persist_rs_scores
+        from services.compass_autonomous_trader import run_autonomous_rebalance
 
-        daily_refresh_compass_prices(db)
-        scores = compute_sector_rs_scores(db, base_index="NIFTY", period_key="3M")
-        persist_rs_scores(db, scores, instrument_type="index")
-        run_weekly_rebalance(db, scores)
-        update_model_nav(db)
-        _clear_cache()
-        logger.info("Compass EOD rebalance: %d sectors scored", len(scores))
+        result = run_autonomous_rebalance(db)
+        logger.info("Autonomous rebalance complete: regime=%s", result.get("regime"))
     except Exception as e:
-        logger.warning("Compass EOD rebalance failed: %s", e)
+        logger.warning("Autonomous rebalance failed: %s", e)
+    finally:
+        db.close()
+
+
+def compass_lab_update() -> None:
+    """Update historical data for Lab + backfill decision outcomes. Runs at 4 AM IST."""
+    db = SessionLocal()
+    try:
+        from services.compass_history import update_historical_data
+        from services.compass_lab import backfill_decision_outcomes
+
+        update_historical_data()
+        backfill_decision_outcomes(db)
+        logger.info("Lab data update + outcome backfill complete")
+    except Exception as e:
+        logger.warning("Lab update failed: %s", e)
     finally:
         db.close()

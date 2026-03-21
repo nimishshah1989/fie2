@@ -50,7 +50,7 @@ from middleware.security import (
 from models import init_db
 
 # ─── Routers ─────────────────────────────────────────────
-from routers import alerts, baskets, compass, health, indices, pms, portfolios, recommendations, sentiment
+from routers import alerts, baskets, compass, compass_lab, health, indices, pms, portfolios, recommendations, sentiment
 # ═══════════════════════════════════════════════════════════
 #  APP SETUP
 # ═══════════════════════════════════════════════════════════
@@ -138,6 +138,7 @@ app.include_router(recommendations.router)
 app.include_router(pms.router)
 app.include_router(sentiment.router)
 app.include_router(compass.router)
+app.include_router(compass_lab.router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -164,6 +165,7 @@ async def start_scheduler():
         from services.eod_jobs import (
             compass_eod_rebalance,
             compass_intraday_refresh,
+            compass_lab_update,
             eod_sentiment_refresh,
             scheduled_eod_fetch,
         )
@@ -195,12 +197,27 @@ async def start_scheduler():
             id="compass_eod_rebalance",
             replace_existing=True,
         )
+        # Lab: historical data update + outcome backfill at 4 AM IST
+        scheduler.add_job(
+            compass_lab_update,
+            CronTrigger(hour=4, minute=0, timezone=ist),
+            id="compass_lab_update",
+            replace_existing=True,
+        )
 
         scheduler.start()
         logger.info(
-            "APScheduler started — EOD 3:30, sentiment 3:35, compass EOD 3:40 PM IST, "
-            "compass intraday every 15 min (9:15-3:45 Mon-Fri)"
+            "APScheduler started — EOD 3:30, sentiment 3:35, compass autonomous 3:40, "
+            "lab update 4:00 AM IST, compass intraday 15min (9:15-3:45 Mon-Fri)"
         )
+
+        # Start Lab daemon (background simulation sweeps)
+        try:
+            from services.compass_lab import start_lab_daemon
+            start_lab_daemon()
+            logger.info("Compass Lab daemon started")
+        except Exception as lab_err:
+            logger.warning("Compass Lab daemon failed to start: %s", lab_err)
     except Exception as e:
         logger.warning("APScheduler not available: %s (install apscheduler)", e)
 
