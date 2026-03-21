@@ -356,6 +356,58 @@ def _derive_action_gate(
     return action, reason
 
 
+def _build_rich_reason(
+    display_name: str,
+    action: CompassAction,
+    base_reason: str,
+    rs_score: float,
+    absolute_return: Optional[float],
+    momentum: float,
+    volume_signal: Optional[CompassVolumeSignal],
+    pe_ratio: Optional[float],
+    pe_zone: Optional[str],
+    market_regime: str,
+) -> str:
+    """Build a sector-specific reason with actual numbers and P/E commentary."""
+    abs_val = absolute_return if absolute_return is not None else 0
+    parts: list[str] = []
+
+    # Gate status with actual numbers
+    g1_str = f"{'up' if abs_val > 0 else 'down'} {abs(round(abs_val, 1))}%"
+    g2_str = f"{'outperforming' if rs_score > 0 else 'underperforming'} by {abs(round(rs_score, 1))}%"
+    g3_str = f"momentum {'gaining' if momentum > 0 else 'fading'} ({'+' if momentum > 0 else ''}{round(momentum, 1)})"
+
+    parts.append(f"{display_name} is {g1_str}, {g2_str} vs benchmark, {g3_str}.")
+
+    # Volume context
+    if volume_signal:
+        vol_map = {
+            CompassVolumeSignal.ACCUMULATION: "Volume shows accumulation (smart money buying)",
+            CompassVolumeSignal.DISTRIBUTION: "Volume shows distribution (smart money selling)",
+            CompassVolumeSignal.WEAK_RALLY: "Volume is thinning on the rise (weak rally)",
+            CompassVolumeSignal.WEAK_DECLINE: "Volume is drying up on the decline (selling exhaustion)",
+        }
+        parts.append(vol_map.get(volume_signal, ""))
+
+    # P/E commentary
+    if pe_ratio is not None and pe_zone:
+        pe_comments = {
+            "VALUE": f"Trades at {pe_ratio:.0f}x P/E — in value territory, attractive entry if action confirms.",
+            "FAIR": f"Trades at {pe_ratio:.0f}x P/E — fairly valued, no valuation edge.",
+            "STRETCHED": f"Trades at {pe_ratio:.0f}x P/E — stretched valuations, limited upside margin.",
+            "EXPENSIVE": f"Trades at {pe_ratio:.0f}x P/E — expensive, any weakness could correct sharply.",
+        }
+        parts.append(pe_comments.get(pe_zone, ""))
+
+    # Market regime context (only if it's affecting the action)
+    if market_regime == "BEAR":
+        parts.append("Market is in BEAR regime — capital preservation priority.")
+    elif market_regime == "CORRECTION":
+        parts.append("Market in CORRECTION — selectivity required.")
+
+    return " ".join(p for p in parts if p)
+
+
 def compute_sector_rs_scores(
     db: Session,
     base_index: str = "NIFTY",
@@ -447,8 +499,12 @@ def compute_sector_rs_scores(
         quadrant = _classify_quadrant(rs_score, momentum)
         abs_return = abs_return_map.get(sector_key)
         pe_ratio = pe_cache.get(sector_key)
-        action, reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
+        action, base_reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
         pe_zone = _classify_pe_zone(pe_ratio)
+        rich_reason = _build_rich_reason(
+            display_name, action, base_reason, rs_score, abs_return,
+            momentum, volume_signal, pe_ratio, pe_zone, market_regime["regime"],
+        )
 
         results.append({
             "sector_key": sector_key,
@@ -460,7 +516,7 @@ def compute_sector_rs_scores(
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
-            "action_reason": reason,
+            "action_reason": rich_reason,
             "pe_ratio": pe_ratio,
             "pe_zone": pe_zone,
             "etfs": etfs,
@@ -568,8 +624,12 @@ def compute_stock_rs_scores(
 
         quadrant = _classify_quadrant(rs_score, momentum)
         pe_ratio = pe_map.get(ticker)
-        action, reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
+        action, base_reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
         pe_zone = _classify_pe_zone(pe_ratio)
+        rich_reason = _build_rich_reason(
+            name, action, base_reason, rs_score, abs_return,
+            momentum, volume_signal, pe_ratio, pe_zone, market_regime["regime"],
+        )
 
         results.append({
             "ticker": ticker,
@@ -581,7 +641,7 @@ def compute_stock_rs_scores(
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
-            "action_reason": reason,
+            "action_reason": rich_reason,
             "pe_ratio": pe_ratio,
             "pe_zone": pe_zone,
             "weight_pct": weight_pct,
@@ -654,7 +714,11 @@ def compute_etf_rs_scores(
         abs_return = _compute_absolute_return(etf_closes, period_days) if etf_closes else None
 
         quadrant = _classify_quadrant(rs_score, momentum)
-        action, reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
+        action, base_reason = _derive_action_gate(abs_return, rs_score, momentum, volume_signal, market_regime)
+        rich_reason = _build_rich_reason(
+            ticker, action, base_reason, rs_score, abs_return,
+            momentum, volume_signal, None, None, market_regime["regime"],
+        )
 
         results.append({
             "ticker": ticker,
@@ -667,7 +731,7 @@ def compute_etf_rs_scores(
             "volume_signal": volume_signal.value if volume_signal else None,
             "quadrant": quadrant.value,
             "action": action.value,
-            "action_reason": reason,
+            "action_reason": rich_reason,
         })
 
     results.sort(key=lambda x: x["rs_score"], reverse=True)
