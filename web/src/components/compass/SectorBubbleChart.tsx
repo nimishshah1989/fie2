@@ -13,7 +13,7 @@ import {
   ZAxis,
 } from "recharts";
 import type { SectorRS, Quadrant, CompassAction } from "@/lib/compass-types";
-import { actionLabel } from "@/lib/compass-types";
+import { actionLabel, volumeLabel, peZoneLabel } from "@/lib/compass-types";
 
 const QUADRANT_COLORS: Record<Quadrant, string> = {
   LEADING: "#059669",    // emerald-600
@@ -57,15 +57,17 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Array<
           {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
         </span>
         <span className="text-slate-500">Volume</span>
-        <span className="font-medium text-right">{s.volume_signal?.replace("_", " ") || "—"}</span>
+        <span className="font-medium text-right">
+          {s.volume_signal ? volumeLabel(s.volume_signal) : (s.etfs.length === 0 ? "No ETF mapped" : "—")}
+        </span>
         <span className="text-slate-500">Action</span>
         <span className="font-semibold text-right" style={{ color: ACTION_COLORS[s.action] || "#334155" }}>
           {actionLabel(s.action)}
         </span>
-        {s.pe_ratio && (
+        {s.pe_zone && (
           <>
             <span className="text-slate-500">P/E</span>
-            <span className="font-mono text-right">{s.pe_ratio.toFixed(1)} · {s.pe_zone || ""}</span>
+            <span className="font-mono text-right">{peZoneLabel(s.pe_zone, s.pe_ratio)}</span>
           </>
         )}
         {s.etfs.length > 0 && (

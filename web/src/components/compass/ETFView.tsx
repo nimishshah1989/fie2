@@ -15,7 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCompassETFs } from "@/hooks/use-compass";
 import type { ETFRS, CompassAction, Period } from "@/lib/compass-types";
-import { actionLabel } from "@/lib/compass-types";
+import { actionLabel, volumeDescription, volumeLabel } from "@/lib/compass-types";
 
 const ACTION_COLORS: Record<string, string> = {
   BUY: "#059669",
@@ -63,7 +63,7 @@ function ETFTooltip({ active, payload }: { active?: boolean; payload?: Array<{ p
           {e.rs_momentum > 0 ? "+" : ""}{e.rs_momentum.toFixed(1)}
         </span>
         <span className="text-slate-500">Volume</span>
-        <span className="text-right">{e.volume_signal?.replace("_", " ") || "—"}</span>
+        <span className="text-right">{volumeLabel(e.volume_signal)}</span>
         <span className="text-slate-500">Action</span>
         <span className="font-semibold text-right" style={{ color: ACTION_COLORS[e.action] || "#334155" }}>{actionLabel(e.action)}</span>
       </div>
@@ -174,7 +174,9 @@ export function ETFView({ base, period }: Props) {
                       <td className={`px-3 py-2.5 text-right font-mono font-medium ${e.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
                         {e.rs_momentum > 0 ? "+" : ""}{e.rs_momentum.toFixed(1)}
                       </td>
-                      <td className="px-3 py-2.5 text-center text-xs text-slate-500">{e.volume_signal?.replace("_", " ") || "—"}</td>
+                      <td className="px-3 py-2.5 text-center text-xs text-slate-500" title={volumeDescription(e.volume_signal)}>
+                        {volumeDescription(e.volume_signal)}
+                      </td>
                       <td className="px-3 py-2.5 text-xs text-slate-500 italic">{e.action_reason}</td>
                     </tr>
                   );

@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import type { SectorRS, CompassAction } from "@/lib/compass-types";
-import { actionLabel, watchSubLabel, isWatch } from "@/lib/compass-types";
+import { actionLabel, watchSubLabel, isWatch, volumeLabel, peZoneLabel } from "@/lib/compass-types";
 
 const ACTION_CONFIG: Record<CompassAction, {
   bg: string; text: string; border: string;
@@ -43,6 +44,58 @@ const ACTION_ORDER: CompassAction[] = [
   "BUY", "SELL", "HOLD", "WATCH_EMERGING", "WATCH_RELATIVE", "WATCH_EARLY", "AVOID",
 ];
 
+function SectorButton({ sector: s, onClick }: { sector: SectorRS; onClick: () => void }) {
+  const [showReason, setShowReason] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={onClick}
+        onMouseEnter={() => setShowReason(true)}
+        onMouseLeave={() => setShowReason(false)}
+        className="w-full flex items-center justify-between bg-white/70 hover:bg-white rounded-lg px-3 py-2 transition-colors group text-left"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-900 truncate">
+            {s.display_name}
+          </p>
+          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+            <span className="text-xs text-slate-500">
+              RS <span className={`font-mono font-semibold ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score.toFixed(1)}%</span>
+            </span>
+            {s.absolute_return != null && (
+              <span className={`text-xs font-mono ${s.absolute_return > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                Abs {s.absolute_return > 0 ? "+" : ""}{s.absolute_return.toFixed(1)}%
+              </span>
+            )}
+            {s.pe_zone && (
+              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                s.pe_zone === "VALUE" ? "bg-emerald-100 text-emerald-700" :
+                s.pe_zone === "FAIR" ? "bg-slate-100 text-slate-600" :
+                s.pe_zone === "STRETCHED" ? "bg-amber-100 text-amber-700" :
+                "bg-red-100 text-red-700"
+              }`}>
+                {peZoneLabel(s.pe_zone, s.pe_ratio)}
+              </span>
+            )}
+            {s.volume_signal && (
+              <span className="text-xs text-slate-400">
+                {volumeLabel(s.volume_signal)}
+              </span>
+            )}
+          </div>
+        </div>
+        <ArrowUpRight className="h-3.5 w-3.5 text-slate-300 group-hover:text-slate-500 shrink-0 ml-2" />
+      </button>
+      {showReason && s.action_reason && (
+        <div className="absolute left-0 right-0 top-full z-10 mt-0.5 mx-2 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg">
+          {s.action_reason}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   sectors: SectorRS[];
   onSectorClick?: (sectorKey: string) => void;
@@ -82,43 +135,7 @@ export function ActionSummary({ sectors, onSectorClick }: Props) {
                 {items
                   .sort((a, b) => b.rs_score - a.rs_score)
                   .map((s) => (
-                    <button
-                      key={s.sector_key}
-                      onClick={() => onSectorClick?.(s.sector_key)}
-                      className="w-full flex items-center justify-between bg-white/70 hover:bg-white rounded-lg px-3 py-2 transition-colors group text-left"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
-                          {s.display_name}
-                        </p>
-                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                          <span className="text-xs text-slate-500">
-                            RS <span className={`font-mono font-semibold ${s.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{s.rs_score > 0 ? "+" : ""}{s.rs_score.toFixed(1)}%</span>
-                          </span>
-                          {s.absolute_return != null && (
-                            <span className={`text-xs font-mono ${s.absolute_return > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                              Abs {s.absolute_return > 0 ? "+" : ""}{s.absolute_return.toFixed(1)}%
-                            </span>
-                          )}
-                          {s.pe_zone && (
-                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                              s.pe_zone === "VALUE" ? "bg-emerald-100 text-emerald-700" :
-                              s.pe_zone === "FAIR" ? "bg-slate-100 text-slate-600" :
-                              s.pe_zone === "STRETCHED" ? "bg-amber-100 text-amber-700" :
-                              "bg-red-100 text-red-700"
-                            }`}>
-                              {s.pe_zone}{s.pe_ratio ? ` (${s.pe_ratio.toFixed(0)})` : ""}
-                            </span>
-                          )}
-                          {s.volume_signal && (
-                            <span className="text-xs text-slate-400">
-                              {s.volume_signal.replace("_", " ")}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <ArrowUpRight className="h-3.5 w-3.5 text-slate-300 group-hover:text-slate-500 shrink-0 ml-2" />
-                    </button>
+                    <SectorButton key={s.sector_key} sector={s} onClick={() => onSectorClick?.(s.sector_key)} />
                   ))}
               </div>
             </div>

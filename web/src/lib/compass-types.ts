@@ -91,6 +91,35 @@ export interface ETFRS {
   action_reason: string;
 }
 
+/** Volume signal with human-readable meaning */
+export function volumeDescription(signal: VolumeSignal | null): string {
+  switch (signal) {
+    case "ACCUMULATION": return "Accumulation — smart money buying";
+    case "WEAK_RALLY": return "Weak Rally — low conviction rise";
+    case "DISTRIBUTION": return "Distribution — smart money selling";
+    case "WEAK_DECLINE": return "Weak Decline — selling exhaustion";
+    default: return "—";
+  }
+}
+
+/** Short volume label (for compact display) */
+export function volumeLabel(signal: VolumeSignal | null): string {
+  switch (signal) {
+    case "ACCUMULATION": return "Accumulation";
+    case "WEAK_RALLY": return "Weak Rally";
+    case "DISTRIBUTION": return "Distribution";
+    case "WEAK_DECLINE": return "Weak Decline";
+    default: return "—";
+  }
+}
+
+/** P/E zone formatted for display: "P/E: Value (12)" */
+export function peZoneLabel(zone: PEZone | null, ratio: number | null): string {
+  if (!zone) return "";
+  const label = zone.charAt(0) + zone.slice(1).toLowerCase();
+  return ratio != null ? `P/E: ${label} (${ratio.toFixed(0)})` : `P/E: ${label}`;
+}
+
 export type PortfolioType = "etf_only" | "stock_etf" | "stock_only";
 
 export interface PortfolioPosition {

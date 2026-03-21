@@ -16,7 +16,7 @@ import { ArrowLeft, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StockRS, SectorRS, CompassAction } from "@/lib/compass-types";
-import { actionLabel } from "@/lib/compass-types";
+import { actionLabel, volumeDescription, volumeLabel, peZoneLabel } from "@/lib/compass-types";
 
 const ACTION_COLORS: Record<string, string> = {
   BUY: "#059669",
@@ -64,7 +64,7 @@ function StockTooltip({ active, payload }: { active?: boolean; payload?: Array<{
           {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
         </span>
         <span className="text-slate-500">Volume</span>
-        <span className="text-right">{s.volume_signal?.replace("_", " ") || "—"}</span>
+        <span className="text-right">{volumeLabel(s.volume_signal)}</span>
         <span className="text-slate-500">Action</span>
         <span className="font-semibold text-right" style={{ color: ACTION_COLORS[s.action] || "#334155" }}>
           {actionLabel(s.action)}
@@ -110,7 +110,7 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
               sectorInfo.pe_zone === "STRETCHED" ? "bg-amber-100 text-amber-700" :
               "bg-red-100 text-red-700"
             }`}>
-              {sectorInfo.pe_zone}{sectorInfo.pe_ratio ? ` (P/E ${sectorInfo.pe_ratio.toFixed(0)})` : ""}
+              {peZoneLabel(sectorInfo.pe_zone, sectorInfo.pe_ratio)}
             </span>
           )}
         </div>
@@ -119,7 +119,7 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
           <span className="text-slate-500">RS: <span className={`font-mono font-semibold ${sectorInfo.rs_score > 0 ? "text-emerald-600" : "text-red-600"}`}>{sectorInfo.rs_score > 0 ? "+" : ""}{sectorInfo.rs_score}%</span></span>
           <span className="text-slate-500">Abs: <span className={`font-mono font-semibold ${(sectorInfo.absolute_return ?? 0) > 0 ? "text-emerald-600" : "text-red-600"}`}>{sectorInfo.absolute_return != null ? `${sectorInfo.absolute_return > 0 ? "+" : ""}${sectorInfo.absolute_return.toFixed(1)}%` : "—"}</span></span>
           <span className="text-slate-500">Momentum: <span className={`font-mono font-semibold ${sectorInfo.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>{sectorInfo.rs_momentum > 0 ? "+" : ""}{sectorInfo.rs_momentum}</span></span>
-          <span className="text-slate-500">Vol: <span className="font-medium">{sectorInfo.volume_signal?.replace("_", " ") || "—"}</span></span>
+          <span className="text-slate-500">Vol: <span className="font-medium">{volumeLabel(sectorInfo.volume_signal)}</span></span>
           {sectorInfo.etfs.length > 0 && (
             <span className="text-slate-500">ETF: <span className="font-semibold text-teal-600">{sectorInfo.etfs.join(", ")}</span></span>
           )}
@@ -209,8 +209,8 @@ export function StockDrillDown({ sectorInfo, stocks, loadingStocks, onBack }: Pr
                     <td className={`px-3 py-2.5 text-right font-mono font-medium ${s.rs_momentum > 0 ? "text-emerald-600" : "text-red-600"}`}>
                       {s.rs_momentum > 0 ? "+" : ""}{s.rs_momentum}
                     </td>
-                    <td className="px-3 py-2.5 text-center text-xs">
-                      {s.volume_signal?.replace("_", " ") || "—"}
+                    <td className="px-3 py-2.5 text-center text-xs" title={volumeDescription(s.volume_signal)}>
+                      {volumeDescription(s.volume_signal)}
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono">
                       {s.pe_ratio ?? "—"}
